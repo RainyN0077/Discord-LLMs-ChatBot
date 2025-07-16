@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    restart: always
+    volumes:
+      - ./backend/app/config.json:/app/config.json
+    ports:
+      - "8000:8000"
+    # --- 新增部分开始 ---
+    # 为此容器设置环境变量，使其通过你的Windows主机代理访问网络
+    environment:
+      # 请将 "7890" 替换为你的代理软件（如Clash, V2RayN）实际的HTTP代理端口
+      - HTTP_PROXY=http://10.255.255.254:7890
+      - HTTPS_PROXY=http://10.255.255.254:7890
+      # NO_PROXY用于指定哪些地址不走代理，比如内部服务间的通信
+      - NO_PROXY=localhost,127.0.0.1,backend,frontend
+    # --- 新增部分结束 ---
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

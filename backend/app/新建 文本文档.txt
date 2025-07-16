@@ -1,0 +1,111 @@
+import asyncio
+import json
+import os
+import subprocess
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+import litellm
+from pydantic import BaseModel
+
+from bot import run_bot
+
+CONFIG_FILE = "config.json"
+bot_task = None
+active_config = {}
+
+def load_config():
+    global active_config
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            config_data = json.load(f)
+            if "api_key" in config_data or "base_url" in config_data:
+                api_keys = config_data.get("api_keys", {})
+                if config_data.get("api_key"): api_keys["OPENAI_API_KEY"] = config_data["api_key"]
+                if config_data.get("base_url"): api_keys["OPENAI_API_BASE"] = config_data["base_url"]
+                config_data["api_keys"] = api_keys
+                for key in ["api_key", "base_url"]:
+                    if key in config_data: del config_data[key]
+                save_config(config_data)
+            active_config = config_data
+            return active_config
+    return {}
+
+def save_config(config_data):
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(config_data, f, indent=2)
+    global active_config
+    active_config = config_data
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global bot_task
+    load_config()
+    loop = asyncio.get_event_loop()
+    bot_task = loop.create_task(run_bot())
+    yield
+    if bot_task: bot_task.cancel()
+
+app = FastAPI(lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+class Config(BaseModel):
+    discord_token: str
+    model_name: str
+    system_prompt: str
+    trigger_keywords: list[str]
+    stream_response: bool
+    api_keys: dict[str, str] = {}
+
+class ModelTest(BaseModel):
+    api_keys: dict[str, str] = {}
+
+@app.get("/api/config")
+async def get_config():
+    return load_config()
+
+@app.post("/api/config")
+async def update_config(config: Config):
+    global bot_task
+    save_config(config.dict())
+    if bot_task and not bot_task.done(): bot_task.cancel()
+    loop = asyncio.get_event_loop()
+    bot_task = loop.create_task(run_bot())
+    return {"message": "Configuration updated and bot restarted."}
+
+@app.post("/api/test-and-fetch-models")
+async def test_and_fetch_models(payload: ModelTest):
+    env = os.environ.copy()
+    for key, value in payload.api_keys.items():
+        if value: env[key] = value
+
+    try:
+        # --- 关键修改：使用 subprocess 调用 LiteLLM CLI ---
+        command = ["litellm", "--models"]
+        
+        # 将环境变量传递给子进程
+        # universal_newlines=True 使输出为文本，capture_output=True 捕获输出
+        result = subprocess.run(
+            command,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,  # 如果命令返回非零退出码，则抛出异常
+            timeout=60 # 设置60秒超时
+        )
+        
+        # 解析输出
+        output_lines = result.stdout.strip().split('\n')
+        models = [line.strip() for line in output_lines if line.strip() and not line.startswith("LiteLLM")]
+        
+        chat_models = sorted([m for m in models if 'embedding' not in m.lower()])
+        return {"models": chat_models}
+
+    except subprocess.CalledProcessError as e:
+        error_detail = e.stderr.strip()
+        raise HTTPException(status_code=400, detail=f"Failed to fetch models: {error_detail}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=408, detail="Fetching models timed out after 60 seconds.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
