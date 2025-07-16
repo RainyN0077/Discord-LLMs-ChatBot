@@ -44,8 +44,8 @@
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://github.com/YourUsername/YourRepoName.git
-    cd YourRepoName
+    git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
+    cd Discord-LLMs-ChatBot
     ```
 
 2.  **Build and run the containers:**
@@ -103,8 +103,8 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 1.  **克隆本仓库:**
     ```sh
-    git clone https://github.com/YourUsername/YourRepoName.git
-    cd YourRepoName
+    git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
+    cd Discord-LLMs-ChatBot
     ```
 
 2.  **构建并运行容器:**
