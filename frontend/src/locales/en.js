@@ -20,7 +20,15 @@ export default {
     },
     contextControl: {
         title: "Conversation Context Control",
-        info: "Allow the bot to read previous messages for context. Set messages to 0 to disable. The bot will stop reading when either limit is reached.",
+        contextMode: "Context Mode",
+        modes: {
+            none: "Disabled",
+            channel: "Channel Mode",
+            memory: "Memory Mode"
+        },
+        noneModeInfo: "The bot will not read any past messages. It only responds to the current message.",
+        channelModeInfo: "The bot reads all recent messages in the channel to understand context. Good for public discussions.",
+        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context. Good for personal assistant style.",
         historyLimit: "Message History Limit",
         messages: "messages",
         charLimit: "Character Limit for History",
@@ -52,6 +60,28 @@ export default {
             stream: "Stream",
             nonStream: "Non-Stream",
         }
+    },
+    customParams: {
+        title: "Custom LLM Parameters",
+        add: "+ Add Parameter",
+        paramName: "Parameter Name",
+        paramValue: "Value",
+        types: {
+            text: "Text",
+            number: "Number",
+            boolean: "Boolean",
+            json: "JSON"
+        }
+    },
+    sessionManagement: {
+        title: "Session Management",
+        info: "To start a new conversation in a channel without old context, get the Channel ID from Discord (enable Developer Mode, then right-click a channel) and clear its memory here. This only affects the bot's current session and will reset on bot restart.",
+        channelIdPlaceholder: "Paste Channel ID here",
+        clearButton: "Clear Channel Memory",
+        clearing: "Clearing memory...",
+        clearSuccess: "Memory cleared successfully for the specified channel!",
+        clearFailed: "Failed to clear memory: ",
+        errorNoId: "Please enter a Channel ID first."
     },
     buttons: {
         save: "Save Configuration & Restart Bot",

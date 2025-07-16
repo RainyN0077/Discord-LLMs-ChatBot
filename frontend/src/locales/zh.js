@@ -20,7 +20,15 @@ export default {
     },
     contextControl: {
         title: "对话上下文控制",
-        info: "允许机器人读取之前的消息以联系上下文。设为0则禁用。任一限制达到上限则停止读取。",
+        contextMode: "上下文模式",
+        modes: {
+            none: "禁用",
+            channel: "频道模式",
+            memory: "记忆模式"
+        },
+        noneModeInfo: "机器人将不读取任何历史消息，仅对当前消息做出回应。",
+        channelModeInfo: "机器人会读取频道内所有近期消息来理解上下文，适合公共讨论。",
+        memoryModeInfo: "机器人只记忆与它直接相关的对话（提及、回复、关键词）及其上下文，适合个人助理场景。",
         historyLimit: "历史消息数量限制",
         messages: "条消息",
         charLimit: "历史消息字数限制",
@@ -52,6 +60,28 @@ export default {
             stream: "流式",
             nonStream: "非流式",
         }
+    },
+    customParams: {
+        title: "自定义 LLM 参数",
+        add: "+ 添加参数",
+        paramName: "参数名称",
+        paramValue: "值",
+        types: {
+            text: "文本",
+            number: "数字",
+            boolean: "布尔值",
+            json: "JSON"
+        }
+    },
+    sessionManagement: {
+        title: "会话管理",
+        info: "如需在某个频道开启一段全新的、不受旧上下文影响的对话，请在Discord中获取该频道的ID（开启开发者模式后，右键点击频道复制ID），然后在此处清除其记忆。此操作仅对机器人当前会话有效，机器人重启后将重置。",
+        channelIdPlaceholder: "在此处粘贴频道ID",
+        clearButton: "清除频道记忆",
+        clearing: "正在清除记忆...",
+        clearSuccess: "已成功为指定频道清除记忆！",
+        clearFailed: "清除记忆失败：",
+        errorNoId: "请先输入一个频道ID。"
     },
     buttons: {
         save: "保存配置并重启机器人",
