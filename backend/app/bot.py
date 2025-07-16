@@ -7,9 +7,45 @@ from io import BytesIO
 from typing import AsyncGenerator, Dict, List, Union, Any, Set
 from datetime import datetime
 
+import logging
+from logging.handlers import RotatingFileHandler
+
 import openai
 import google.generativeai as genai
 import anthropic
+
+# --- 日志系统设置开始 ---
+def setup_logging():
+    """配置日志系统，输出到控制台和文件。"""
+    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # 获取根日志记录器
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+
+    # 如果已经有处理器，则不再添加，防止重复记录
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    # 控制台处理器
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter)
+    logger.addHandler(stream_handler)
+
+    # 文件处理器（滚动）
+    # 创建logs目录（如果不存在）
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    file_handler = RotatingFileHandler(
+        'logs/bot.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8'
+    )
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+
+# 在模块加载时获取日志记录器实例
+logger = logging.getLogger(__name__)
+# --- 日志系统设置结束 ---
+
 
 CONFIG_FILE = "config.json"
 
@@ -18,7 +54,8 @@ async def download_image(url: str) -> bytes | None:
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
                 if resp.status == 200: return await resp.read()
-    except Exception as e: print(f"Error downloading image from {url}: {e}")
+    except Exception as e:
+        logger.warning(f"Error downloading image from {url}", exc_info=True)
     return None
 
 def get_rich_identity(author: Union[discord.User, discord.Member], personas: Dict[str, Any]) -> str:
@@ -70,7 +107,7 @@ def process_custom_params(params_list: List[Dict[str, Any]]) -> Dict[str, Any]:
                 elif not isinstance(value, str): processed_params[name] = value
             else: processed_params[name] = str(value)
         except (ValueError, json.JSONDecodeError) as e:
-            print(f"Warning: Could not process custom parameter '{name}'. Invalid value '{value}' for type '{param_type}': {e}")
+            logger.warning(f"Could not process custom parameter '{name}'. Invalid value '{value}' for type '{param_type}': {e}")
     return processed_params
 
 async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> AsyncGenerator[tuple[str, str], None]:
@@ -134,14 +171,17 @@ async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> Asyn
     yield "full", full_response
 
 async def run_bot(memory_cutoffs: Dict[int, datetime]):
+    # 在机器人主函数开始时，配置日志
+    setup_logging()
+
     try:
         with open(CONFIG_FILE) as f: config = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        print("Config file not found or corrupted. Bot will not start.")
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.critical(f"Config file '{CONFIG_FILE}' not found or corrupted. Bot cannot start.", exc_info=True)
         return
         
     if not (token := config.get("discord_token")):
-        print("Token not found in config. Bot will not start.")
+        logger.critical("Discord token not found in config. Bot will not start.")
         return
     
     intents = discord.Intents.default()
@@ -150,7 +190,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
     @client.event
     async def on_ready():
-        print(f'Logged in as {client.user}')
+        logger.info(f'Logged in successfully as {client.user} (ID: {client.user.id})')
         await client.change_presence(activity=discord.Game(name="Chatting reliably"))
 
     @client.event
@@ -158,19 +198,23 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if message.author == client.user: return
         try:
             with open(CONFIG_FILE) as f: bot_config = json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError): return
+        except (FileNotFoundError, json.JSONDecodeError):
+            logger.warning(f"Could not load config file for message {message.id}. Aborting processing.")
+            return
 
         trigger_keywords = bot_config.get("trigger_keywords", [])
         is_keyword_trigger = any(k.lower() in message.content.lower() for k in trigger_keywords)
         is_mention_trigger = client.user in message.mentions
         is_reply_trigger = message.reference and message.reference.resolved and message.reference.resolved.author == client.user
         
-        # We also need to check if it's a non-reply mention to trigger
         is_trigger = is_keyword_trigger or is_mention_trigger or is_reply_trigger
         
         if not is_trigger: return
         
+        logger.info(f"Bot triggered for message {message.id} by user {message.author.id} in channel {message.channel.id}.")
+
         async with message.channel.typing():
+            # ... (这部分逻辑保持不变)
             current_user, user_personas = message.author, bot_config.get("user_personas", {})
             history_messages, history_for_llm = [], []
             context_mode = bot_config.get('context_mode', 'none')
@@ -207,7 +251,6 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             relevant_users.add(current_user)
             for user in message.mentions: relevant_users.add(user)
             for hist_msg in history_messages: relevant_users.add(hist_msg.author)
-            # Also add the author of the replied message, if any
             if message.reference and isinstance(message.reference.resolved, discord.Message):
                 relevant_users.add(message.reference.resolved.author)
 
@@ -276,23 +319,15 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             for keyword in trigger_keywords: final_text_content = final_text_content.replace(keyword, "")
             final_text_content = final_text_content.strip()
             
-            # --- 新增/修改逻辑：处理当前消息的回复引用 ---
-            
             request_block_parts = []
             
-            # 1. 检查当前消息是否为回复
             if message.reference and isinstance(message.reference.resolved, discord.Message):
                 replied_to_msg = message.reference.resolved
-                
-                # 2. 格式化被回复的消息内容
                 replied_author_info = get_rich_identity(replied_to_msg.author, user_personas)
                 replied_content = escape_content(replied_to_msg.clean_content)
-                
-                # 告知LLM该消息包含附件（如果存在）
                 attachment_notice = ""
                 if replied_to_msg.attachments:
                     attachment_notice = f"\n(Note: The message above contained {len(replied_to_msg.attachments)} attachment(s).)"
-
                 replied_context_str = (
                     f"[CONTEXT: The user is replying to the following message]\n"
                     f"Sender: {replied_author_info}\n"
@@ -300,19 +335,14 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 )
                 request_block_parts.append(replied_context_str)
 
-            # 3. 格式化当前用户的消息
             current_user_message_str = format_user_message(current_user, final_text_content, user_personas)
             request_block_parts.append(f"[The user's direct message follows]\n{current_user_message_str}")
-            
-            # 4. 组合成最终的用户请求块
-            final_formatted_content = "[USER_REQUEST_BLOCK]\n\n" + "\n\n".join(request_block_parts) + "\n[/USER_REQUEST_BLOCK]"
 
-            # --- 逻辑修改结束 ---
+            final_formatted_content = "[USER_REQUEST_BLOCK]\n\n" + "\n\n".join(request_block_parts) + "\n[/USER_REQUEST_BLOCK]"
 
             user_message_parts: List[Dict[str, Any]] = [{"type": "text", "text": final_formatted_content}]
             image_urls = set()
             for attachment in message.attachments: image_urls.add(attachment.url)
-            # 这段代码已经能正确处理被回复消息中的图片了，所以无需改动
             if message.reference and isinstance(message.reference.resolved, discord.Message):
                 for attachment in message.reference.resolved.attachments: image_urls.add(attachment.url)
             for url in image_urls: user_message_parts.append({"type": "image_url", "image_url": {"url": url}})
@@ -321,6 +351,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             final_messages.append({"role": "user", "content": user_message_parts})
 
             try:
+                logger.info(f"Sending request to LLM provider '{bot_config.get('llm_provider')}' with model '{bot_config.get('model_name')}'.")
                 response_obj, full_response = None, ""
                 last_edit_time = 0
                 is_direct_reply_action = is_mention_trigger or is_reply_trigger
@@ -339,6 +370,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                                 await response_obj.edit(content=display_content)
                                 last_edit_time = current_time
                 if full_response:
+                    logger.info(f"Successfully received full response for message {message.id}.")
                     parts = split_message(full_response)
                     if not parts: return
                     if response_obj:
@@ -347,16 +379,25 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         response_obj = await (message.reply(parts[0]) if is_direct_reply_action else message.channel.send(parts[0]))
                     for i in range(1, len(parts)):
                         await message.channel.send(parts[i])
-                else: await message.channel.send("（空回应）")
+                else: 
+                    logger.warning(f"Received an empty response from LLM for message {message.id}.")
+                    await message.channel.send("（空回应）")
             except Exception as e:
-                error_msg = f"发生错误: {e}"
-                print(f"Error details: {error_msg}")
+                # 使用 exc_info=True 来记录完整的错误堆栈！
+                logger.error(f"An unhandled error occurred while processing message {message.id}.", exc_info=True)
+                error_msg = f"发生错误: {type(e).__name__}"
                 try: await message.reply(error_msg, mention_author=False)
-                except discord.errors.Forbidden: pass
+                except discord.errors.Forbidden:
+                    logger.warning(f"No permission to reply to message {message.id} in channel {message.channel.id}.")
 
     try:
         await client.start(token)
-    except discord.errors.LoginFailure: print("登录失败. 请检查你的令牌.")
-    except Exception as e: print(f"运行时发生严重错误: {e}")
+    except discord.errors.LoginFailure:
+        logger.critical("Login failed. Please check your Discord token in the config file.")
+    except Exception as e:
+        logger.critical("A fatal error occurred during bot runtime.", exc_info=True)
     finally:
-        if client and not client.is_closed(): await client.close()
+        if client and not client.is_closed():
+            logger.info("Closing bot client.")
+            await client.close()
+
