@@ -1,0 +1,5 @@
+文件夹 PATH 列表
+卷序列号为 D2D4-D7C2
+F:.
+├─app
+└─plugins

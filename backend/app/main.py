@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from bot import run_bot
+from .bot import run_bot
 
 CONFIG_FILE = "config.json"
 LOG_FILE = "logs/bot.log"
@@ -41,7 +41,8 @@ def load_config():
         'context_mode': 'channel',
         'channel_context_settings': {'message_limit': 10, 'char_limit': 4000},
         'memory_context_settings': {'message_limit': 15, 'char_limit': 6000},
-        'custom_parameters': []
+        'custom_parameters': [],
+        'plugins': []  # 新增插件列表默认值
     }
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding='utf-8') as f:
@@ -117,6 +118,21 @@ class CustomParameter(BaseModel):
     type: str
     value: Any
 
+class PluginHttpRequestConfig(BaseModel):
+    url: str = ""
+    method: str = "GET"
+    headers: str = "{}" # 以JSON字符串形式存储
+    body_template: str = "{}" # 以JSON字符串形式存储
+
+class PluginConfig(BaseModel):
+    name: str = "New Plugin"
+    enabled: bool = True
+    trigger_type: str = "command"
+    triggers: List[str] = Field(default_factory=list)
+    action_type: str = "http_request"
+    http_request_config: PluginHttpRequestConfig = Field(default_factory=PluginHttpRequestConfig)
+    llm_prompt_template: str = "Please summarize the following data based on the user's request '{user_input}':\n\n{api_result}"
+
 class Config(BaseModel):
     discord_token: str
     llm_provider: str
@@ -132,6 +148,7 @@ class Config(BaseModel):
     channel_context_settings: ContextSettings = Field(default_factory=lambda: ContextSettings(message_limit=10, char_limit=4000))
     memory_context_settings: ContextSettings = Field(default_factory=lambda: ContextSettings(message_limit=15, char_limit=6000))
     custom_parameters: List[CustomParameter] = Field(default_factory=list)
+    plugins: List[PluginConfig] = Field(default_factory=list)
 
 class ClearMemoryRequest(BaseModel):
     channel_id: str
