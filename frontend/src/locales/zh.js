@@ -35,13 +35,23 @@ export default {
         charLimitPlaceholder: "例如: 4000",
     },
     userPortrait: {
-        title: "用户肖像管理",
-        info: "为特定用户分配自定义的称呼和人设。其他用户将使用下方设定的默认人设。",
+        title: "特定用户肖像",
+        info: "为特定用户分配自定义的称呼和人设。此设置将覆盖任何基于身份组的设置。",
         userId: "Discord 用户ID",
-        customNickname: "自定义称呼",
         customNicknamePlaceholder: "例如：小姐, 阁下, 主人",
         personaPrompt: "描述该用户的专属人设提示词",
         add: "+ 添加用户肖像",
+    },
+    roleConfig: {
+        title: "基于身份组的配置",
+        info: "为不同的Discord身份组设置专属人设、头衔和使用频率限制。用户的最高身份组配置将生效。特定用户设置会覆盖此处的配置。",
+        add: "+ 添加身份组配置",
+        roleId: "Discord 身份组ID",
+        roleTitle: "自定义头衔 (例如：尊贵的会员)",
+        rolePrompt: "此身份组成员专属的人设提示词",
+        msgLimit: "消息条数",
+        charLimit: "字符数",
+        minutes: "分钟"
     },
     defaultBehavior: {
         title: "默认模型与行为",
@@ -82,6 +92,11 @@ export default {
         clearSuccess: "已成功为指定频道清除记忆！",
         clearFailed: "清除记忆失败：",
         errorNoId: "请先输入一个频道ID。"
+    },
+    logViewer: {
+        title: "后端日志查看器",
+        filterLevel: "筛选等级",
+        autoscroll: "自动滚动"
     },
     buttons: {
         save: "保存配置并重启机器人",

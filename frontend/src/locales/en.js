@@ -35,13 +35,23 @@ export default {
         charLimitPlaceholder: "e.g., 4000",
     },
     userPortrait: {
-        title: "User Portrait Management",
-        info: "Assign a custom nickname and persona prompt to specific users.",
+        title: "User-Specific Portrait",
+        info: "Assign a custom nickname and persona to specific users. This will override any role-based settings.",
         userId: "Discord User ID",
-        customNickname: "Custom Nickname",
         customNicknamePlaceholder: "e.g., Master, Miss",
         personaPrompt: "Persona prompt describing this user",
         add: "+ Add User Portrait",
+    },
+    roleConfig: {
+        title: "Role-Based Configuration",
+        info: "Set personas, custom titles, and usage limits for Discord roles. The user's highest role takes precedence. User-specific settings will override these.",
+        add: "+ Add Role Configuration",
+        roleId: "Discord Role ID",
+        roleTitle: "Custom Title (e.g., VIP Member)",
+        rolePrompt: "Persona prompt for members of this role",
+        msgLimit: "Msg Limit",
+        charLimit: "Char Limit",
+        minutes: "min"
     },
     defaultBehavior: {
         title: "Default Model & Behavior",
@@ -82,6 +92,11 @@ export default {
         clearSuccess: "Memory cleared successfully for the specified channel!",
         clearFailed: "Failed to clear memory: ",
         errorNoId: "Please enter a Channel ID first."
+    },
+    logViewer: {
+        title: "Backend Log Viewer",
+        filterLevel: "Filter Level",
+        autoscroll: "Auto-scroll"
     },
     buttons: {
         save: "Save Configuration & Restart Bot",
