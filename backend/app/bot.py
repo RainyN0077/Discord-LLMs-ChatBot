@@ -1,4 +1,5 @@
-from .utils import split_message
+# backend/app/bot.py
+
 import asyncio
 import json
 import discord
@@ -11,8 +12,8 @@ from datetime import datetime, timedelta, timezone
 import logging
 from logging.handlers import RotatingFileHandler
 
-# 导入新的插件管理器
 from plugins.manager import PluginManager
+from .utils import split_message # 从 utils 导入
 
 import openai
 import google.generativeai as genai
@@ -104,7 +105,7 @@ def format_user_message(author_rich_id: str, content: str) -> str:
     escaped_content = escape_content(content)
     return f"Sender: {author_rich_id}\nMessage:\n---\n{escaped_content}\n---"
 
-
+# (split_message 函数已从此文件移除)
 
 def process_custom_params(params_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     processed_params = {}
@@ -238,13 +239,10 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
         except (FileNotFoundError, json.JSONDecodeError):
             logger.warning(f"Could not load config file for message {message.id}. Aborting."); return
         
-        # --- 集成插件系统 ---
-        # 在处理任何事情之前，先检查插件
         plugin_manager = PluginManager(bot_config.get('plugins', []), get_llm_response)
         if await plugin_manager.process_message(message, bot_config):
             logger.info(f"Message {message.id} was handled by a plugin. Processing finished.")
-            return # 如果插件处理了消息，就此结束
-        # --- 修改结束 ---
+            return
         
         if message.content.strip().lower() == '!myquota':
             await handle_quota_command(message, bot_config); return
@@ -258,6 +256,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
         logger.info(f"Bot triggered for message {message.id} by user {message.author.id} in channel {message.channel.id}.")
 
         async with message.channel.typing():
+            # (后续所有对话处理逻辑保持不变)
+            # ...
             current_user, user_personas = message.author, bot_config.get("user_personas", {})
             role_based_configs, role_name, role_config = bot_config.get('role_based_config', {}), None, None
             if isinstance(current_user, discord.Member):
@@ -294,7 +294,6 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                                          relevant_messages.append(replied_to_msg); processed_ids.add(replied_to_msg.id)
                         history_messages.extend(relevant_messages)
 
-            # 核心修改区：重构Bot人设确定逻辑
             global_system_prompt = bot_config.get("system_prompt", "You are a helpful assistant.")
             specific_persona_prompt = None
             
