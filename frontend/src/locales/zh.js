@@ -8,11 +8,7 @@ export default {
     llmProvider: {
         title: "LLM 服务商配置",
         select: "选择服务商",
-        providers: {
-            openai: "OpenAI 及兼容模型",
-            google: "Google Gemini",
-            anthropic: "Anthropic Claude",
-        },
+        providers: { openai: "OpenAI 及兼容模型", google: "Google Gemini", anthropic: "Anthropic Claude" },
         apiKey: "API 密钥",
         apiKeyPlaceholder: "输入所选服务商的 API 密钥",
         baseUrl: "API Base URL (代理选填)",
@@ -21,11 +17,7 @@ export default {
     contextControl: {
         title: "对话上下文控制",
         contextMode: "上下文模式",
-        modes: {
-            none: "禁用",
-            channel: "频道模式",
-            memory: "记忆模式"
-        },
+        modes: { none: "禁用", channel: "频道模式", memory: "记忆模式" },
         noneModeInfo: "机器人将不读取任何历史消息，仅对当前消息做出回应。",
         channelModeInfo: "机器人会读取频道内所有近期消息来理解上下文，适合公共讨论。",
         memoryModeInfo: "机器人只记忆与它直接相关的对话（提及、回复、关键词）及其上下文，适合个人助理场景。",
@@ -44,48 +36,42 @@ export default {
     },
     roleConfig: {
         title: "基于身份组的配置",
-        info: "为不同的Discord身份组设置专属人设、头衔和使用频率限制。用户的最高身份组配置将生效。特定用户设置会覆盖此处的配置。",
+        info: "为不同的Discord身份组设置专属人设、头衔和使用频率限制。用户的最高身份组配置将生效。特定用户设置会覆盖此处的配置。用户可在服务器中发送 `!myquota` 指令查询自己的额度。",
         add: "+ 添加身份组配置",
         roleId: "Discord 身份组ID",
         roleTitle: "自定义头衔 (例如：尊贵的会员)",
         rolePrompt: "此身份组成员专属的人设提示词",
-        msgLimit: "消息条数",
+        enableMsgLimit: "启用消息数限制器",
+        enableCharLimit: "启用字符数限制器",
+        msgLimit: "消息数",
         charLimit: "字符数",
-        minutes: "分钟"
+        minutes: "分钟",
+        displayColor: "额度查询框颜色",
+        previewTitle: "额度显示预览",
+        previewHeader: "用户的额度状态",
+        disabled: "未启用"
     },
     defaultBehavior: {
         title: "默认模型与行为",
         modelName: "模型名称 (手动输入)",
-        modelPlaceholders: {
-            openai: "例如: gpt-4o",
-            google: "例如: gemini-1.5-pro-latest",
-            anthropic: "例如: claude-3-opus-20240229",
-        },
+        modelPlaceholders: { openai: "例如: gpt-4o", google: "例如: gemini-1.5-pro-latest", anthropic: "例如: claude-3-opus-20240229" },
         systemPrompt: "默认系统提示词",
         systemPromptPlaceholder: "这是用于未设定专属肖像的用户的提示词。",
         triggerKeywords: "触发词 (英文逗号分隔)",
         triggerKeywordsPlaceholder: "例如: 贾维斯, aibot",
         responseMode: "回应模式",
-        modes: {
-            stream: "流式",
-            nonStream: "非流式",
-        }
+        modes: { stream: "流式", nonStream: "非流式" }
     },
     customParams: {
         title: "自定义 LLM 参数",
         add: "+ 添加参数",
         paramName: "参数名称",
         paramValue: "值",
-        types: {
-            text: "文本",
-            number: "数字",
-            boolean: "布尔值",
-            json: "JSON"
-        }
+        types: { text: "文本", number: "数字", boolean: "布尔值", json: "JSON" }
     },
     sessionManagement: {
         title: "会话管理",
-        info: "如需在某个频道开启一段全新的、不受旧上下文影响的对话，请在Discord中获取该频道的ID（开启开发者模式后，右键点击频道复制ID），然后在此处清除其记忆。此操作仅对机器人当前会话有效，机器人重启后将重置。",
+        info: "如需在某个频道开启一段全新的对话，请在此处清除其记忆。此操作仅对机器人当前会话有效。",
         channelIdPlaceholder: "在此处粘贴频道ID",
         clearButton: "清除频道记忆",
         clearing: "正在清除记忆...",

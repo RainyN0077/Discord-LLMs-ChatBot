@@ -17,26 +17,25 @@ LOG_FILE = "logs/bot.log"
 bot_task = None
 
 # --- 状态追踪器 ---
-# 存储频道记忆清除时间戳
 MEMORY_CUTOFFS: Dict[int, datetime] = {}
-# 追踪用户用量以进行频率限制
-# 结构: { user_id: { "count": int, "chars": int, "timestamp": datetime } }
 USER_USAGE_TRACKER: Dict[int, Dict[str, Any]] = {}
 
 
 def load_config():
     """加载配置，并为新字段设置默认值。"""
+    default_role_config_fields = {
+        'title': '', 'prompt': '',
+        'message_limit': 0, 'message_refresh_minutes': 60,
+        'char_limit': 0, 'char_refresh_minutes': 60,
+        'enable_message_limit': False,
+        'enable_char_limit': False,
+        'display_color': '#ffffff'
+    }
     default_config = {
-        'discord_token': '',
-        'llm_provider': 'openai',
-        'api_key': '',
-        'base_url': None,
-        'model_name': 'gpt-4o',
-        'system_prompt': 'You are a helpful assistant.',
-        'trigger_keywords': [],
-        'stream_response': True,
-        'user_personas': {},
-        'role_based_config': {},
+        'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
+        'model_name': 'gpt-4o', 'system_prompt': 'You are a helpful assistant.',
+        'trigger_keywords': [], 'stream_response': True,
+        'user_personas': {}, 'role_based_config': {},
         'context_mode': 'channel',
         'channel_context_settings': {'message_limit': 10, 'char_limit': 4000},
         'memory_context_settings': {'message_limit': 15, 'char_limit': 6000},
@@ -46,9 +45,14 @@ def load_config():
         with open(CONFIG_FILE, "r", encoding='utf-8') as f:
             try:
                 data = json.load(f)
-                # 确保所有默认键都存在
                 for key, value in default_config.items():
                     data.setdefault(key, value)
+                
+                # 确保每个角色配置都包含新字段
+                if isinstance(data.get('role_based_config'), dict):
+                    for role_id, role_cfg in data['role_based_config'].items():
+                        for field, default_val in default_role_config_fields.items():
+                            role_cfg.setdefault(field, default_val)
                 return data
             except json.JSONDecodeError:
                 return default_config
@@ -64,7 +68,6 @@ async def lifespan(app: FastAPI):
     """FastAPI应用的生命周期管理。"""
     global bot_task
     loop = asyncio.get_event_loop()
-    # 将两个状态追踪器传递给机器人
     bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
     yield
     if bot_task and not bot_task.done():
@@ -74,16 +77,8 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             print("Bot task successfully cancelled.")
 
-
 app = FastAPI(lifespan=lifespan)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 # --- Pydantic 模型定义 ---
 class Persona(BaseModel):
@@ -93,10 +88,13 @@ class Persona(BaseModel):
 class RoleConfig(BaseModel):
     title: str = ""
     prompt: str = ""
+    enable_message_limit: bool = False
     message_limit: int = Field(0, ge=0)
-    message_refresh_minutes: int = Field(60, ge=0)
+    message_refresh_minutes: int = Field(60, ge=1)
+    enable_char_limit: bool = False
     char_limit: int = Field(0, ge=0)
-    char_refresh_minutes: int = Field(60, ge=0)
+    char_refresh_minutes: int = Field(60, ge=1)
+    display_color: str = "#ffffff"
 
 class ContextSettings(BaseModel):
     message_limit: int = Field(ge=0)
@@ -128,42 +126,33 @@ class ClearMemoryRequest(BaseModel):
 
 # --- API Endpoints ---
 @app.get("/api/config")
-async def get_config():
-    return load_config()
+async def get_config(): return load_config()
 
 @app.post("/api/config")
 async def update_config(config: Config):
     global bot_task
     save_config(config.dict(by_alias=True))
-    
     if bot_task and not bot_task.done():
         bot_task.cancel()
         try: await bot_task
         except asyncio.CancelledError: pass
-    
     loop = asyncio.get_event_loop()
-    # 重启机器人时传递状态追踪器
     bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
     return {"message": "Configuration updated and bot restarted."}
 
 @app.post("/api/memory/clear")
 async def clear_channel_memory(request: ClearMemoryRequest):
-    if not request.channel_id.isdigit():
-        raise HTTPException(status_code=400, detail="Channel ID must be a number.")
-    
-    channel_id_int = int(request.channel_id)
-    MEMORY_CUTOFFS[channel_id_int] = datetime.now(timezone.utc)
-    print(f"Memory cutoff set for channel {channel_id_int} at {MEMORY_CUTOFFS[channel_id_int]}")
+    if not request.channel_id.isdigit(): raise HTTPException(status_code=400, detail="Channel ID must be a number.")
+    MEMORY_CUTOFFS[int(request.channel_id)] = datetime.now(timezone.utc)
     return {"message": f"Memory for channel {request.channel_id} will be ignored before this point."}
 
 @app.get("/api/logs", response_class=Response)
 async def get_logs():
     try:
         with open(LOG_FILE, 'r', encoding='utf-8') as f:
-            last_lines = deque(f, 200)
-        log_content = "".join(last_lines)
+            log_content = "".join(deque(f, 200))
         return Response(content=log_content, media_type="text/plain; charset=utf-8")
     except FileNotFoundError:
-        return Response(content=f"Log file not found at '{LOG_FILE}'. The bot may not have run yet or path is incorrect.", media_type="text/plain; charset=utf-8", status_code=404)
+        return Response(content=f"Log file not found at '{LOG_FILE}'.", media_type="text/plain; charset=utf-8", status_code=404)
     except Exception as e:
         return Response(content=f"An error occurred while reading logs: {e}", media_type="text/plain; charset=utf-8", status_code=500)

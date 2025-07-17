@@ -8,11 +8,7 @@ export default {
     llmProvider: {
         title: "LLM Provider Configuration",
         select: "Select Provider",
-        providers: {
-            openai: "OpenAI & Compatible",
-            google: "Google Gemini",
-            anthropic: "Anthropic Claude",
-        },
+        providers: { openai: "OpenAI & Compatible", google: "Google Gemini", anthropic: "Anthropic Claude" },
         apiKey: "API Key",
         apiKeyPlaceholder: "Enter API Key for the selected provider",
         baseUrl: "API Base URL (Optional)",
@@ -21,14 +17,10 @@ export default {
     contextControl: {
         title: "Conversation Context Control",
         contextMode: "Context Mode",
-        modes: {
-            none: "Disabled",
-            channel: "Channel Mode",
-            memory: "Memory Mode"
-        },
+        modes: { none: "Disabled", channel: "Channel Mode", memory: "Memory Mode" },
         noneModeInfo: "The bot will not read any past messages. It only responds to the current message.",
-        channelModeInfo: "The bot reads all recent messages in the channel to understand context. Good for public discussions.",
-        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context. Good for personal assistant style.",
+        channelModeInfo: "The bot reads all recent messages in the channel to understand context.",
+        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context.",
         historyLimit: "Message History Limit",
         messages: "messages",
         charLimit: "Character Limit for History",
@@ -44,48 +36,42 @@ export default {
     },
     roleConfig: {
         title: "Role-Based Configuration",
-        info: "Set personas, custom titles, and usage limits for Discord roles. The user's highest role takes precedence. User-specific settings will override these.",
+        info: "Set personas, custom titles, and usage limits for Discord roles. The user's highest role takes precedence. User-specific settings will override these. Users can check their quota with the `!myquota` command.",
         add: "+ Add Role Configuration",
         roleId: "Discord Role ID",
         roleTitle: "Custom Title (e.g., VIP Member)",
         rolePrompt: "Persona prompt for members of this role",
-        msgLimit: "Msg Limit",
-        charLimit: "Char Limit",
-        minutes: "min"
+        enableMsgLimit: "Enable Message Limit",
+        enableCharLimit: "Enable Character Limit",
+        msgLimit: "Messages",
+        charLimit: "Characters",
+        minutes: "min",
+        displayColor: "Quota Embed Color",
+        previewTitle: "Quota Display Preview",
+        previewHeader: "Quota Status for User",
+        disabled: "Disabled"
     },
     defaultBehavior: {
         title: "Default Model & Behavior",
         modelName: "Model Name (Manual Input)",
-        modelPlaceholders: {
-            openai: "e.g., gpt-4o",
-            google: "e.g., gemini-1.5-pro-latest",
-            anthropic: "e.g., claude-3-opus-20240229",
-        },
+        modelPlaceholders: { openai: "e.g., gpt-4o", google: "e.g., gemini-1.5-pro-latest", anthropic: "e.g., claude-3-opus-20240229" },
         systemPrompt: "Default System Prompt",
         systemPromptPlaceholder: "This is the prompt for users without a specific persona.",
         triggerKeywords: "Trigger Keywords (comma-separated)",
         triggerKeywordsPlaceholder: "e.g., jarvis, aibot",
         responseMode: "Response Mode",
-        modes: {
-            stream: "Stream",
-            nonStream: "Non-Stream",
-        }
+        modes: { stream: "Stream", nonStream: "Non-Stream" }
     },
     customParams: {
         title: "Custom LLM Parameters",
         add: "+ Add Parameter",
         paramName: "Parameter Name",
         paramValue: "Value",
-        types: {
-            text: "Text",
-            number: "Number",
-            boolean: "Boolean",
-            json: "JSON"
-        }
+        types: { text: "Text", number: "Number", boolean: "Boolean", json: "JSON" }
     },
     sessionManagement: {
         title: "Session Management",
-        info: "To start a new conversation in a channel without old context, get the Channel ID from Discord (enable Developer Mode, then right-click a channel) and clear its memory here. This only affects the bot's current session and will reset on bot restart.",
+        info: "To start a new conversation in a channel without old context, get the Channel ID from Discord and clear its memory here. This only affects the bot's current session.",
         channelIdPlaceholder: "Paste Channel ID here",
         clearButton: "Clear Channel Memory",
         clearing: "Clearing memory...",
