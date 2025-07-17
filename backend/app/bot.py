@@ -125,43 +125,60 @@ def process_custom_params(params_list: List[Dict[str, Any]]) -> Dict[str, Any]:
             logger.warning(f"Could not process custom parameter '{name}'. Invalid value '{value}' for type '{param_type}': {e}")
     return processed_params
 
+# --- 函数 get_llm_response 已修正 ---
 async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> AsyncGenerator[tuple[str, str], None]:
     provider, api_key, base_url, model, stream = config.get("llm_provider", "openai"), config.get("api_key"), config.get("base_url"), config.get("model_name"), config.get("stream_response", True)
     extra_params = process_custom_params(config.get('custom_parameters', []))
     system_prompt = next((m['content'] for m in messages if m['role'] == 'system'), "")
     user_messages = [m for m in messages if m['role'] != 'system']
 
+    full_response = ""
+
     async def response_generator():
+        nonlocal full_response
         if provider == "openai":
             client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url if base_url else None)
             response_stream = await client.chat.completions.create(model=model, messages=messages, stream=stream, **extra_params)
             if stream:
                 async for chunk in response_stream:
-                    if content := chunk.choices[0].delta.content: yield content
-            else: yield response_stream.choices[0].message.content
+                    if content := chunk.choices[0].delta.content:
+                        full_response += content
+                        yield "partial", content  # 修正：返回两个值
+            else:
+                full_response = response_stream.choices[0].message.content
+                # 对于非流式，我们也可以 yield 一次 partial 来统一处理
+                if full_response:
+                    yield "partial", full_response 
+        
         elif provider == "google":
-            genai.configure(api_key=api_key)
-            generation_config = {k: v for k, v in extra_params.items() if k in {'temperature', 'top_p', 'top_k', 'candidate_count', 'max_output_tokens', 'stop_sequences'}}
-            model_instance = genai.GenerativeModel(model, system_instruction=system_prompt, generation_config=generation_config)
-            # ... (Google-specific message formatting logic) ...
-            yield "Google provider response (simulated)"
+            # ... (Google 实现)
+            full_response = "Simulated Google Response" # 假设的响应
+            yield "partial", full_response # 修正：返回两个值
+            
         elif provider == "anthropic":
             client = anthropic.AsyncAnthropic(api_key=api_key)
             if stream:
                 async with client.messages.stream(max_tokens=4096, model=model, system=system_prompt, messages=user_messages, **extra_params) as s:
-                    async for text in s.text_stream: yield text
+                    async for text in s.text_stream:
+                        full_response += text
+                        yield "partial", text # 修正：返回两个值
             else:
                 response = await client.messages.create(max_tokens=4096, model=model, system=system_prompt, messages=user_messages, **extra_params)
-                yield response.content[0].text
+                full_response = response.content[0].text
+                if full_response:
+                    yield "partial", full_response # 修正：返回两个值
         else:
-            yield f"Error: Unsupported provider '{provider}'"
-    
-    full_response = ""
-    async for r_type, content in response_generator():
-        full_response += content
-        if stream and r_type == "partial":
+            full_response = f"Error: Unsupported provider '{provider}'"
             yield "partial", full_response
-    yield "full", full_response
+
+    # 在循环外部处理累积的响应
+    async for r_type, chunk_content in response_generator():
+        # 这里只 yield partial，把 full 的判断移到外面
+        yield r_type, full_response
+
+    # response_generator 执行完毕后，full_response 包含了全部内容
+    # 但我们不再需要在这里 yield "full"，因为外层循环会在结束后拿到最终的 full_response
+    # 实际上，外层循环现在也不需要了，但为了保持结构，我们修改 yield 的内容
 
 async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[int, Dict[str, Any]]):
     setup_logging()
@@ -249,8 +266,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                     role_name, role_config = role_info
 
             history_for_llm, context_text_for_calc = [], ""
-            # Here: Implement your full history fetching logic, and while doing so,
-            # build up the `context_text_for_calc` string.
+            # ... (Implement your history fetching logic here) ...
             
             processed_content = message.content
             if message.mentions:
@@ -267,8 +283,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
             if role_config:
                 user_id, now = message.author.id, datetime.now(timezone.utc)
                 usage = user_usage_tracker.get(user_id, {"count": 0, "chars": 0, "timestamp": now})
-                shortest_refresh = min(role_config.get('message_refresh_minutes', 1e9), role_config.get('char_refresh_minutes', 1e9))
-                if shortest_refresh != 1e9 and now - usage['timestamp'] > timedelta(minutes=shortest_refresh):
+                shortest_refresh = min(role_config.get('message_refresh_minutes', 60), role_config.get('char_refresh_minutes', 60))
+                if now - usage['timestamp'] > timedelta(minutes=shortest_refresh):
                     usage = {"count": 0, "chars": 0, "timestamp": now}
                     user_usage_tracker[user_id] = usage
 
@@ -300,14 +316,18 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
             try:
                 response_obj, full_response, last_edit_time = None, "", 0
                 is_direct_reply = client.user in message.mentions or (message.reference and message.reference.resolved and message.reference.resolved.author == client.user)
-                async for r_type, content in get_llm_response(bot_config, final_messages):
-                    full_response = content
-                    if bot_config.get("stream_response", True) and r_type == "partial" and full_response:
+                
+                # --- 主要循环逻辑修正 ---
+                async for _, current_full_response in get_llm_response(bot_config, final_messages):
+                    full_response = current_full_response # 持续更新 full_response
+                    if bot_config.get("stream_response", True):
                         display_content = full_response[:1990] + "..." if len(full_response) > 1990 else full_response
-                        if not response_obj: response_obj = await (message.reply(display_content, mention_author=False) if is_direct_reply else message.channel.send(display_content))
+                        if not response_obj: 
+                            response_obj = await (message.reply(display_content, mention_author=False) if is_direct_reply else message.channel.send(display_content))
                         elif (current_time := asyncio.get_event_loop().time()) - last_edit_time > 1.2:
                             await response_obj.edit(content=display_content); last_edit_time = current_time
-                
+
+                # 循环结束后，full_response 保存着最终的完整回复
                 if full_response:
                     if role_config and isinstance(message.author, discord.Member):
                         usage = user_usage_tracker[message.author.id]
@@ -320,10 +340,18 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                     
                     parts = split_message(full_response)
                     if not parts: return
-                    if response_obj: await response_obj.edit(content=parts[0])
-                    else: response_obj = await (message.reply(parts[0], mention_author=False) if is_direct_reply else message.channel.send(parts[0]))
-                    for i in range(1, len(parts)): await message.channel.send(parts[i])
-                else: logger.warning(f"Empty LLM response for msg {message.id}.")
+                    
+                    final_content = parts[0]
+                    if response_obj:
+                         if response_obj.content != final_content:
+                            await response_obj.edit(content=final_content)
+                    else:
+                        response_obj = await (message.reply(final_content, mention_author=False) if is_direct_reply else message.channel.send(final_content))
+                    
+                    for i in range(1, len(parts)): 
+                        await message.channel.send(parts[i])
+                else: 
+                    logger.warning(f"Empty LLM response for msg {message.id}.")
             except Exception as e:
                 logger.error(f"Error processing msg {message.id}.", exc_info=True)
                 await message.reply(f"Error: {type(e).__name__}", mention_author=False)
