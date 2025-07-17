@@ -239,9 +239,18 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
         except (FileNotFoundError, json.JSONDecodeError):
             logger.warning(f"Could not load config file for message {message.id}. Aborting."); return
         
+        # --- 【【【核心修改区：处理插件返回结果】】】 ---
         plugin_manager = PluginManager(bot_config.get('plugins', []), get_llm_response)
-        if await plugin_manager.process_message(message, bot_config):
-            logger.info(f"Message {message.id} was handled by a plugin. Processing finished.")
+        plugin_result = await plugin_manager.process_message(message, bot_config)
+        
+        injected_data_str = None
+        if isinstance(plugin_result, tuple) and plugin_result[0] == 'append':
+            # 这是'追加'模式，我们拿到了数据，继续往下走
+            injected_data_str = plugin_result[1]
+            logger.info("Continuing process with appended data from plugin.")
+        elif plugin_result is True:
+            # 这是'覆盖'模式或者http直接输出，流程已经结束
+            logger.info(f"Message {message.id} was handled by a plugin in override mode. Processing finished.")
             return
         
         if message.content.strip().lower() == '!myquota':
@@ -370,6 +379,9 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                          rich_id_str = get_rich_identity(member, user_personas, m_role_config)
                          processed_content = processed_content.replace(f'<@{mentioned_user.id}>', rich_id_str).replace(f'<@!{mentioned_user.id}>', rich_id_str)
             final_text_content = processed_content.replace(f'<@{client.user.id}>', '').replace(f'<@!{client.user.id}>', '').strip()
+                        # ... (processed_content 和 final_text_content 的处理逻辑保持不变)
+
+            # --- 【【【新的替换代码块从这里开始】】】 ---
             request_block_parts = []
             if message.reference and isinstance(message.reference.resolved, discord.Message):
                 replied_msg = message.reference.resolved
@@ -379,10 +391,22 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                 if isinstance(replied_member, discord.Member): _, replied_role_config = get_highest_configured_role(replied_member, role_based_configs) or (None, None)
                 replied_author_info = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
                 request_block_parts.append(f"[CONTEXT: The user is replying to a message from {replied_author_info}]\nReplied Message Content: {escape_content(replied_msg.clean_content)}")
+
+            # 1. 格式化用户的直接消息
             author_rich_id = get_rich_identity(current_user, user_personas, role_config)
+            # 如果是关键词触发的追加模式，final_text_content 可能是重复的，但保留它以提供完整的用户意图
             current_user_message_str = format_user_message(author_rich_id, final_text_content)
             request_block_parts.append(f"[The user's direct message follows]\n{current_user_message_str}")
+            
+            # 2. 如果有从插件注入的数据，把它作为附加上下文加进去
+            if injected_data_str:
+                # 使用更清晰的标签告诉LLM这是工具提供的信息
+                request_block_parts.append(f"[ADDITIONAL CONTEXT FROM A TOOL]\nThis is the result from a tool you just executed based on the user's request. Use this information to formulate your response:\n---\n{injected_data_str}\n---")
+
+            # 3. 组合成最终的用户请求块
             final_formatted_content = "[USER_REQUEST_BLOCK]\n\n" + "\n\n".join(request_block_parts) + "\n[/USER_REQUEST_BLOCK]"
+            # --- 【【【新的替换代码块到这里结束】】】 ---
+
             if role_config:
                 provider, model = bot_config.get("llm_provider"), bot_config.get("model_name")
                 user_id, now = current_user.id, datetime.now(timezone.utc)

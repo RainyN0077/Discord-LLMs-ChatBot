@@ -102,7 +102,7 @@ class CustomParameter(BaseModel):
 class PluginHttpRequestConfig(BaseModel):
     url: str = ""; method: str = "GET"; headers: str = "{}"; body_template: str = "{}"
 class PluginConfig(BaseModel):
-    name: str = "New Plugin"; enabled: bool = True; trigger_type: str = "command"
+    name: str = "New Plugin"; enabled: bool = True; trigger_type: str = "command";injection_mode: str = "override";
     triggers: List[str] = Field(default_factory=list); action_type: str = "http_request"
     http_request_config: PluginHttpRequestConfig = Field(default_factory=PluginHttpRequestConfig)
     llm_prompt_template: str = "Summarize: {api_result}"
