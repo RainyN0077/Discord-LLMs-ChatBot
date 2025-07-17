@@ -1,9 +1,10 @@
 fastapi
 uvicorn
+python-dotenv
+pydantic
+aiohttp
 discord.py
 openai
 google-generativeai
 anthropic
-aiohttp
-python-dotenv
-requests
+tiktoken

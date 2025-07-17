@@ -3,7 +3,7 @@ import json
 import os
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from collections import deque
 
 from fastapi import FastAPI, HTTPException, Response
@@ -25,10 +25,12 @@ def load_config():
     """加载配置，并为新字段设置默认值。"""
     default_role_config_fields = {
         'title': '', 'prompt': '',
-        'message_limit': 0, 'message_refresh_minutes': 60,
-        'char_limit': 0, 'char_refresh_minutes': 60,
         'enable_message_limit': False,
-        'enable_char_limit': False,
+        'message_limit': 0, 'message_refresh_minutes': 60,
+        'message_output_budget': 1,
+        'enable_char_limit': False, # 后端保留此字段名，但语义为 token
+        'char_limit': 0, 'char_refresh_minutes': 60,
+        'char_output_budget': 300,
         'display_color': '#ffffff'
     }
     default_config = {
@@ -48,7 +50,6 @@ def load_config():
                 for key, value in default_config.items():
                     data.setdefault(key, value)
                 
-                # 确保每个角色配置都包含新字段
                 if isinstance(data.get('role_based_config'), dict):
                     for role_id, role_cfg in data['role_based_config'].items():
                         for field, default_val in default_role_config_fields.items():
@@ -78,7 +79,14 @@ async def lifespan(app: FastAPI):
             print("Bot task successfully cancelled.")
 
 app = FastAPI(lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- Pydantic 模型定义 ---
 class Persona(BaseModel):
@@ -91,9 +99,13 @@ class RoleConfig(BaseModel):
     enable_message_limit: bool = False
     message_limit: int = Field(0, ge=0)
     message_refresh_minutes: int = Field(60, ge=1)
-    enable_char_limit: bool = False
+    message_output_budget: int = Field(1, ge=1)
+    
+    enable_char_limit: bool = False # 在后端，'char'相关字段的语义是'token'
     char_limit: int = Field(0, ge=0)
     char_refresh_minutes: int = Field(60, ge=1)
+    char_output_budget: int = Field(300, ge=0)
+    
     display_color: str = "#ffffff"
 
 class ContextSettings(BaseModel):
@@ -126,24 +138,32 @@ class ClearMemoryRequest(BaseModel):
 
 # --- API Endpoints ---
 @app.get("/api/config")
-async def get_config(): return load_config()
+async def get_config():
+    return load_config()
 
 @app.post("/api/config")
 async def update_config(config: Config):
     global bot_task
     save_config(config.dict(by_alias=True))
+    
     if bot_task and not bot_task.done():
         bot_task.cancel()
-        try: await bot_task
-        except asyncio.CancelledError: pass
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
+    
     loop = asyncio.get_event_loop()
     bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
     return {"message": "Configuration updated and bot restarted."}
 
 @app.post("/api/memory/clear")
 async def clear_channel_memory(request: ClearMemoryRequest):
-    if not request.channel_id.isdigit(): raise HTTPException(status_code=400, detail="Channel ID must be a number.")
-    MEMORY_CUTOFFS[int(request.channel_id)] = datetime.now(timezone.utc)
+    if not request.channel_id.isdigit():
+        raise HTTPException(status_code=400, detail="Channel ID must be a number.")
+    
+    channel_id_int = int(request.channel_id)
+    MEMORY_CUTOFFS[channel_id_int] = datetime.now(timezone.utc)
     return {"message": f"Memory for channel {request.channel_id} will be ignored before this point."}
 
 @app.get("/api/logs", response_class=Response)
