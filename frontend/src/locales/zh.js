@@ -1,5 +1,18 @@
 export default {
     title: "Discord LLM 机器人控制面板",
+    uiSettings: {
+        title: "界面设置",
+        font:{
+            loadButton: "加载字体文件",
+            resetButton: "重置为默认字体",
+            currentFont: "当前字体: {fontName}",
+            defaultFont: "正在使用系统默认字体。",
+            loadSuccess: "字体 '{fontName}' 加载成功！",
+            loadError: "读取字体文件时出错。",
+            resetSuccess: "已重置为默认字体。",
+            localStorageError: "无法保存字体。浏览器的本地存储可能已满或被禁用。",
+        }
+    },
     globalConfig: { 
         title: "全局配置", 
         token: "Discord 机器人令牌", 
@@ -22,37 +35,49 @@ export default {
         baseUrl: "API Base URL (代理选填)", 
         baseUrlPlaceholder: "例如: https://api.openai-proxy.com/v1"
     },
-    contextControl: { 
-        title: "对话上下文控制", 
-        contextMode: "上下文模式", 
-        modes: { 
-            none: "禁用", 
-            channel: "频道模式", 
-            memory: "记忆模式" 
-        }, 
-        noneModeInfo: "机器人将不读取任何历史消息，仅对当前消息做出回应。", 
-        channelModeInfo: "机器人会读取频道内所有近期消息来理解上下文，适合公共讨论。", 
-        memoryModeInfo: "机器人只记忆与它直接相关的对话（提及、回复、关键词）及其上下文，适合个人助理场景。", 
-        historyLimit: "历史消息数量限制", 
-        messages: "条消息", 
-        charLimit: "历史消息字数限制", 
-        charLimitPlaceholder: "例如: 4000"
+    scopedPrompts: {
+        enabled: "启用",
+        mode: {
+            title: "模式",
+            override: "覆盖Bot身份",
+            append: "追加为场景"
+        },
+        channel: {
+            title: "频道特定指令 (Bot身份最高优先级)",
+            info: "为特定频道定义Bot的核心身份(覆盖模式)或场景上下文(追加模式)。频道的“覆盖”指令是决定Bot人设的最高优先级规则。",
+            add: "+ 添加频道指令",
+            id: "频道ID",
+            idPlaceholder: "输入Discord频道ID",
+            prompt: "指令提示词",
+            overridePlaceholder: "Bot将仅在此频道扮演这个人设…",
+            appendPlaceholder: "描述此频道的用途或当前话题…"
+        },
+        guild: {
+            title: "服务器特定指令 (Bot身份中等优先级)",
+            info: "为整个服务器定义Bot的身份(覆盖模式)或场景上下文(追加模式)。仅当没有激活的频道“覆盖”指令时，此设置才生效。",
+            add: "+ 添加服务器指令",
+            id: "服务器ID",
+            idPlaceholder: "输入Discord服务器ID",
+            prompt: "指令提示词",
+            overridePlaceholder: "Bot将在此服务器全程扮演这个人设…",
+            appendPlaceholder: "描述这个服务器的主题或背景…"
+        }
     },
     userPortrait: { 
-        title: "特定用户肖像", 
-        info: "为特定用户分配自定义的称呼和人设。此设置将覆盖任何基于身份组的设置。", 
+        title: "用户肖像 (用户上下文最高优先级)", 
+        info: "定义特定用户在Bot眼中的身份。这不是用来设置Bot自身人设的，而是告知Bot'用户是谁'。此信息将作为最重要的上下文被Bot知晓。", 
         userId: "Discord 用户ID", 
-        customNicknamePlaceholder: "例如：小姐, 阁下, 主人", 
-        personaPrompt: "描述该用户的专属人设提示词", 
+        customNicknamePlaceholder: "该用户的自定义称呼", 
+        personaPrompt: "描述这个用户 (例如：‘这艘船的船长’，‘我的创造者和主人’)", 
         add: "+ 添加用户肖像"
     },
     roleConfig: { 
-        title: "基于身份组的配置", 
-        info: "为不同身份组设置专属人设、头衔和使用频率限制。系统会根据所选模型，使用官方方式精确计算Token消耗。触发时，系统会根据“输出预算”来预估并检查本次消耗。用户可使用 `!myquota` 查询额度。", 
+        title: "基于身份组的配置 (Bot身份低优先级)", 
+        info: "定义Bot在与特定身份组成员互动时的自身人设。仅当没有频道或服务器的“覆盖”指令生效时，此设置才会被采用。你也可以在此处设置使用限制。", 
         add: "+ 添加身份组配置", 
         roleId: "Discord 身份组ID", 
         roleTitle: "自定义头衔 (例如：尊贵的会员)", 
-        rolePrompt: "此身份组成员专属的人设提示词", 
+        rolePrompt: "Bot对此身份组的人设 (例如：‘一位恭敬的管家’)", 
         enableMsgLimit: "启用消息数限制器", 
         enableTokenLimit: "启用Token限制器", 
         msgLimit: "消息数", 
@@ -66,15 +91,17 @@ export default {
         disabled: "未启用" 
     },
     defaultBehavior: { 
-        title: "默认模型与行为", 
+        title: "默认模型与行为 (最低优先级)", 
         modelName: "模型名称 (手动输入)", 
         modelPlaceholders: { 
             openai: "例如: gpt-4o", 
             google: "例如: gemini-1.5-pro-latest", 
             anthropic: "例如: claude-3-opus-20240229" 
         }, 
-        systemPrompt: "默认系统提示词", 
-        systemPromptPlaceholder: "这是用于未设定专属肖像的用户的提示词。", 
+        systemPrompt: "默认系统提示词 (基础人设)", 
+        systemPromptPlaceholder: "Bot的基础、备用人设。", 
+        blockedResponse: "内容屏蔽回复模板",
+        blockedResponseInfo: "抱歉，通讯出了一些问题，这是一条自动回复：【{reason}】 (可使用 {reason} 作为屏蔽原因的占位符)",
         triggerKeywords: "触发词 (英文逗号分隔)", 
         triggerKeywordsPlaceholder: "例如: 贾维斯, aibot", 
         responseMode: "回应模式", 
@@ -137,6 +164,22 @@ export default {
         body: "请求体模板 (JSON格式, 用于POST/PUT)",
         llmPrompt: "LLM 提示词模板",
         templateInfo: "可使用占位符: {user_input}, {author_name}, {channel_id} 等。对于LLM增强工具，额外使用 {api_result} 来引用获取到的数据。",
+    },
+    contextControl: { 
+        title: "对话上下文控制", 
+        contextMode: "上下文模式", 
+        modes: { 
+            none: "禁用", 
+            channel: "频道模式", 
+            memory: "记忆模式" 
+        }, 
+        noneModeInfo: "机器人将不读取任何历史消息，仅对当前消息做出回应。", 
+        channelModeInfo: "机器人会读取频道内所有近期消息来理解上下文，适合公共讨论。", 
+        memoryModeInfo: "机器人只记忆与它直接相关的对话（提及、回复、关键词）及其上下文，适合个人助理场景。", 
+        historyLimit: "历史消息数量限制", 
+        messages: "条消息", 
+        charLimit: "历史消息字数限制", 
+        charLimitPlaceholder: "例如: 4000"
     },
     logViewer: { 
         title: "后端日志查看器", 

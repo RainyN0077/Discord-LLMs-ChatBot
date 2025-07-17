@@ -1,5 +1,18 @@
 export default {
     title: "Discord LLM Bot Control Panel",
+    uiSettings: {
+        title: "UI Settings",
+        font: {
+            loadButton: "Load Font File",
+            resetButton: "Reset to Default Font",
+            currentFont: "Current font: {fontName}",
+            defaultFont: "Using default system font.",
+            loadSuccess: "Font '{fontName}' loaded successfully!",
+            loadError: "Error reading font file.",
+            resetSuccess: "Font reset to default.",
+            localStorageError: "Failed to save font. Local storage might be full or disabled.",
+        }
+    },
     globalConfig: { 
         title: "Global Configuration", 
         token: "Discord Bot Token", 
@@ -22,37 +35,49 @@ export default {
         baseUrl: "API Base URL (Optional)", 
         baseUrlPlaceholder: "e.g., https://api.openai.com/v1"
     },
-    contextControl: { 
-        title: "Conversation Context Control", 
-        contextMode: "Context Mode", 
-        modes: { 
-            none: "Disabled", 
-            channel: "Channel Mode", 
-            memory: "Memory Mode" 
-        }, 
-        noneModeInfo: "The bot will not read any past messages. It only responds to the current message.", 
-        channelModeInfo: "The bot reads all recent messages in the channel to understand context.", 
-        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context.", 
-        historyLimit: "Message History Limit", 
-        messages: "messages", 
-        charLimit: "Character Limit for History", 
-        charLimitPlaceholder: "e.g., 4000"
+    scopedPrompts: {
+        enabled: "Enabled",
+        mode: {
+            title: "Mode",
+            override: "Override Bot's Identity",
+            append: "Append as Scene Context"
+        },
+        channel: {
+            title: "Channel-Specific Directive (Highest Priority for Bot's Identity)",
+            info: "Define the bot's core identity (Override) or the scene's context (Append) for a specific channel. A channel's 'Override' directive is the highest priority rule for determining the bot's persona.",
+            add: "+ Add Channel Directive",
+            id: "Channel ID",
+            idPlaceholder: "Enter Discord Channel ID",
+            prompt: "Directive Prompt",
+            overridePlaceholder: "The bot will adopt this persona in THIS channel ONLY...",
+            appendPlaceholder: "Describe this channel's purpose or current topic..."
+        },
+        guild: {
+            title: "Server-Specific Directive (Mid Priority for Bot's Identity)",
+            info: "Define the bot's identity (Override) or scene context (Append) for an entire server. This is applied only if there is NO channel-specific 'Override' directive active.",
+            add: "+ Add Server Directive",
+            id: "Server ID",
+            idPlaceholder: "Enter Discord Server ID",
+            prompt: "Directive Prompt",
+            overridePlaceholder: "The bot will adopt this persona for the whole server...",
+            appendPlaceholder: "Describe this server's theme or context..."
+        }
     },
     userPortrait: { 
-        title: "User-Specific Portrait", 
-        info: "Assign a custom nickname and persona to specific users. This will override any role-based settings.", 
+        title: "User Portrait (Highest Priority for User Context)", 
+        info: "Define a specific user's identity IN THE EYES OF THE BOT. This is NOT for setting the bot's persona, but to inform the bot about the user. This information is always included as critical context.", 
         userId: "Discord User ID", 
-        customNicknamePlaceholder: "e.g., Master, Miss", 
-        personaPrompt: "Persona prompt for this user", 
+        customNicknamePlaceholder: "Custom Nickname for this user", 
+        personaPrompt: "Describe THIS USER (e.g., 'The captain of the ship', 'My creator and master')", 
         add: "+ Add User Portrait"
     },
     roleConfig: { 
-        title: "Role-Based Configuration", 
-        info: "Set personas, titles, and usage limits. The system uses the official tokenizer for each model to calculate consumption. Users can check quota with `!myquota`. When triggered, the system pre-calculates consumption based on an output budget.", 
+        title: "Role-Based Configuration (Low Priority for Bot's Identity)", 
+        info: "Define the BOT's persona when interacting with users of a certain role. This is applied only if no Channel or Server 'Override' directives are active. You can also set usage limits.", 
         add: "+ Add Role Configuration", 
         roleId: "Discord Role ID", 
         roleTitle: "Custom Title (e.g., VIP Member)", 
-        rolePrompt: "Persona prompt for this role", 
+        rolePrompt: "Bot's persona FOR THIS ROLE (e.g., 'A respectful butler')", 
         enableMsgLimit: "Enable Message Limit", 
         enableTokenLimit: "Enable Token Limit", 
         msgLimit: "Messages", 
@@ -66,15 +91,17 @@ export default {
         disabled: "Disabled" 
     },
     defaultBehavior: { 
-        title: "Default Model & Behavior", 
+        title: "Default Model & Behavior (Lowest Priority)", 
         modelName: "Model Name (Manual Input)", 
         modelPlaceholders: { 
             openai: "e.g., gpt-4o", 
             google: "e.g., gemini-1.5-pro-latest", 
             anthropic: "e.g., claude-3-opus-20240229" 
         }, 
-        systemPrompt: "Default System Prompt", 
-        systemPromptPlaceholder: "Prompt for users without a specific persona.", 
+        systemPrompt: "Default System Prompt (Foundation)", 
+        systemPromptPlaceholder: "The bot's foundational, fallback persona.", 
+        blockedResponse: "Blocked Response Template",
+        blockedResponseInfo: "Sorry, a communication issue occurred. This is an automated reply: [{reason}] (Use {reason} as a placeholder for the block code.)",
         triggerKeywords: "Trigger Keywords (comma-separated)", 
         triggerKeywordsPlaceholder: "e.g., jarvis, aibot", 
         responseMode: "Response Mode", 
@@ -137,6 +164,22 @@ export default {
         body: "Body Template (JSON format, for POST/PUT)",
         llmPrompt: "LLM Prompt Template",
         templateInfo: "You can use placeholders: {user_input}, {author_name}, {channel_id}, etc. For LLM-Augmented tools, also use {api_result} to include the data fetched.",
+    },
+    contextControl: { 
+        title: "Conversation Context Control", 
+        contextMode: "Context Mode", 
+        modes: { 
+            none: "Disabled", 
+            channel: "Channel Mode", 
+            memory: "Memory Mode" 
+        }, 
+        noneModeInfo: "The bot will not read any past messages. It only responds to the current message.", 
+        channelModeInfo: "The bot reads all recent messages in the channel to understand context.", 
+        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context.", 
+        historyLimit: "Message History Limit", 
+        messages: "messages", 
+        charLimit: "Character Limit for History", 
+        charLimitPlaceholder: "e.g., 4000"
     },
     logViewer: { 
         title: "Backend Log Viewer", 

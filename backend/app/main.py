@@ -36,12 +36,14 @@ def load_config():
     default_config = {
         'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
         'model_name': 'gpt-4o', 'system_prompt': 'You are a helpful assistant.',
+        'blocked_prompt_response': '抱歉，通讯出了一些问题，这是一条自动回复：【{reason}】',
         'trigger_keywords': [], 'stream_response': True,
         'user_personas': {}, 'role_based_config': {},
         'context_mode': 'channel',
         'channel_context_settings': {'message_limit': 10, 'char_limit': 4000},
         'memory_context_settings': {'message_limit': 15, 'char_limit': 6000},
         'custom_parameters': [], 'plugins': [],
+        'scoped_prompts': {'guilds': {}, 'channels': {}},
         'api_secret_key': secrets.token_hex(32)
     }
     if os.path.exists(CONFIG_FILE):
@@ -54,6 +56,8 @@ def load_config():
                     for role_id, role_cfg in data['role_based_config'].items():
                         for field, default_val in default_role_config_fields.items():
                             role_cfg.setdefault(field, default_val)
+                if 'guilds' not in data.get('scoped_prompts', {}): data['scoped_prompts']['guilds'] = {}
+                if 'channels' not in data.get('scoped_prompts', {}): data['scoped_prompts']['channels'] = {}
                 return data
             except json.JSONDecodeError:
                 return default_config
@@ -106,11 +110,20 @@ class PluginConfig(BaseModel):
     triggers: List[str] = Field(default_factory=list); action_type: str = "http_request"
     http_request_config: PluginHttpRequestConfig = Field(default_factory=PluginHttpRequestConfig)
     llm_prompt_template: str = "Summarize: {api_result}"
+
+class ScopedPromptItem(BaseModel):
+    enabled: bool = True; mode: str = "append"; prompt: str = ""
+class ScopedPrompts(BaseModel):
+    guilds: Dict[str, ScopedPromptItem] = Field(default_factory=dict)
+    channels: Dict[str, ScopedPromptItem] = Field(default_factory=dict)
 class Config(BaseModel):
     discord_token: str; llm_provider: str; api_key: str; base_url: str = None
-    model_name: str; system_prompt: str; trigger_keywords: List[str]; stream_response: bool
+    model_name: str; system_prompt: str; 
+    blocked_prompt_response: str = '抱歉，通讯除了一些问题，这是一条自动回复：【{reason}】'
+    trigger_keywords: List[str]; stream_response: bool
     user_personas: Dict[str, Persona] = Field(default_factory=dict)
     role_based_config: Dict[str, RoleConfig] = Field(default_factory=dict)
+    scoped_prompts: ScopedPrompts = Field(default_factory=ScopedPrompts)
     context_mode: str = Field(default='channel')
     channel_context_settings: ContextSettings = Field(default_factory=lambda: ContextSettings(message_limit=10, char_limit=4000))
     memory_context_settings: ContextSettings = Field(default_factory=lambda: ContextSettings(message_limit=15, char_limit=6000))
