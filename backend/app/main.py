@@ -297,9 +297,52 @@ async def get_available_models(request: AvailableModelsRequest):
         elif request.provider == "google":
             genai.configure(api_key=request.api_key)
             models = genai.list_models()
-            # 过滤出支持聊天的模型
-            chat_models = [m.name.replace('models/', '') for m in models 
-                          if 'generateContent' in [method.name for method in m.supported_generation_methods]]
+            
+            # 调试：打印模型信息
+            logger.info(f"Google returned {len(list(models))} models")
+            
+            chat_models = []
+            for model in genai.list_models():  # 重新获取，因为models可能是生成器
+                try:
+                    # 调试：打印模型对象的属性
+                    logger.info(f"Model type: {type(model)}")
+                    logger.info(f"Model attributes: {dir(model)}")
+                    
+                    # 尝试不同的方式获取模型名称
+                    model_name = None
+                    if hasattr(model, 'name'):
+                        model_name = model.name
+                        logger.info(f"Model name: {model_name}")
+                    elif isinstance(model, str):
+                        model_name = model
+                        logger.info(f"Model is string: {model_name}")
+                    else:
+                        logger.warning(f"Unknown model format: {model}")
+                        continue
+                    
+                    # 检查是否支持聊天
+                    supports_chat = False
+                    if hasattr(model, 'supported_generation_methods'):
+                        methods = model.supported_generation_methods
+                        logger.info(f"Supported methods: {methods}")
+                        if 'generateContent' in methods:
+                            supports_chat = True
+                    else:
+                        # 如果没有supported_generation_methods属性，假设所有gemini模型都支持聊天
+                        if model_name and ('gemini' in model_name.lower() or 'palm' in model_name.lower()):
+                            supports_chat = True
+                    
+                    if supports_chat and model_name:
+                        # 清理模型名称
+                        if model_name.startswith('models/'):
+                            model_name = model_name.replace('models/', '')
+                        chat_models.append(model_name)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing individual model: {e}")
+                    continue
+            
+            logger.info(f"Final chat models: {chat_models}")
             return {"models": sorted(chat_models)}
             
         elif request.provider == "anthropic":
@@ -313,8 +356,12 @@ async def get_available_models(request: AvailableModelsRequest):
             ]}
             
     except Exception as e:
-        logger.error(f"Failed to fetch models: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(f"Failed to fetch models: {e}", exc_info=True)
+        # 返回更详细的错误信息
+        error_detail = f"{type(e).__name__}: {str(e)}"
+        raise HTTPException(status_code=400, detail=error_detail)
+
+
 
 # 测试模型连接
 @app.post("/api/models/test")
