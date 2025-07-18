@@ -190,8 +190,11 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
             try:
                 channel_id_str = str(message.channel.id)
                 guild_id_str = str(message.guild.id) if message.guild else None
-                role_name, role_config = (get_highest_configured_role(message.author, BOT_CONFIG.get('role_based_config', {})) 
-                                        if isinstance(message.author, discord.Member) else (None, None))
+                role_name, role_config = (None, None)
+                if isinstance(message.author, discord.Member):
+                    role_info = get_highest_configured_role(message.author, BOT_CONFIG.get('role_based_config', {}))
+                    if role_info:
+                        role_name, role_config = role_info
                 
                 cutoff_ts = memory_cutoffs.get(message.channel.id)
                 history_messages, history_for_llm = await build_context_history(client, BOT_CONFIG, message, cutoff_ts)
