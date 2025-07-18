@@ -69,3 +69,26 @@ export async function simulateDebug(payload) {
   });
   return handleResponse(response);
 }
+
+export async function fetchAvailableModels(provider, apiKey, baseUrl) {
+  const response = await fetch(`${BASE_URL}/models/list`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, api_key: apiKey, base_url: baseUrl }),
+  });
+  return handleResponse(response);
+}
+
+export async function testModel(provider, apiKey, baseUrl, modelName) {
+  const response = await fetch(`${BASE_URL}/models/test`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ 
+      provider, 
+      api_key: apiKey, 
+      base_url: baseUrl,
+      model_name: modelName 
+    }),
+  });
+  return handleResponse(response);
+}

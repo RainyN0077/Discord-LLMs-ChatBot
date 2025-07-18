@@ -1,241 +1,248 @@
-// en.js (Updated with error message)
+// src/locales/en.js
 export default {
-    title: "Discord LLM Bot Control Panel",
-    nav: {
-        controlPanel: "Control Panel",
-        debugger: "Prompt Debugger",
-    },
-    errors: { // <-- NEW SECTION
-        duplicateId: "Error: The ID '{id}' is already in use. Please choose a unique ID.",
-    },
+    title: 'Discord LLM Bot Control Panel',
     tabs: {
-        core: "Core Settings",
-        directives: "Directives",
-        advanced: "Advanced Tools",
+      core: 'Core Settings',
+      directives: 'Identity Directives',
+      advanced: 'Advanced Tools'
     },
-    // ... rest of the file remains the same
-    prompts: {
-        saveConfirm: "Are you sure you want to save and restart the bot? The bot will have a brief downtime.",
+    buttons: {
+      save: 'Save Configuration & Restart Bot',
+      saving: 'Saving...'
     },
-    debugger: {
-        title: "Prompt & Persona Debugger",
-        info: "Simulate a message to see the exact System Prompt that gets generated and test the LLM's response. This helps fine-tune your persona configuration without spamming Discord channels.",
-        userId: "User ID",
-        userIdPlaceholder: "Simulated User ID (required)",
-        channelId: "Channel ID",
-        channelIdPlaceholder: "Target Channel ID (required)",
-        guildId: "Server ID (Optional)",
-        guildIdPlaceholder: "Target Server ID",
-        roleId: "Role ID (Optional)",
-        roleIdPlaceholder: "Simulated Role ID",
-        message: "Message Content",
-        messagePlaceholder: "Enter the message to simulate... (required)",
-        button: "Simulate Response",
-        simulating: "Simulating...",
-        generatedPrompt: "Generated System Prompt",
-        llmResponse: "Simulated LLM Response",
-        error: "Simulation failed: ",
-        errorIncomplete: "User ID, Channel ID, and Message Content are required.",
+    status: {
+      loading: 'Loading configuration...',
+      saving: 'Saving...',
+      saveSuccess: 'Configuration saved and bot restarted!',
+      saveFailed: 'Save failed: {error}',
+      loadFailed: 'Failed to load configuration: {error}'
     },
-    uiSettings: {
-        title: "UI Settings",
-        font: {
-            loadButton: "Load Font File",
-            resetButton: "Reset to Default Font",
-            currentFont: "Current font: {fontName}",
-            defaultFont: "Using default system font.",
-            loadSuccess: "Font '{fontName}' loaded successfully!",
-            loadError: "Error reading font file.",
-            resetSuccess: "Font reset to default.",
-            localStorageError: "Failed to save font. Local storage might be full or disabled.",
-        }
+    errors: {
+      duplicateId: 'ID "{id}" already exists, please use another ID'
     },
-    globalConfig: { 
-        title: "Global Configuration", 
-        token: "Discord Bot Token", 
-        tokenPlaceholder: "Enter your bot token",
-        apiKey: "RESTful API Key",
-        apiKeyUnavailable: "API Key will be generated after first save.",
-        apiKeyInfo: "Use this key in the 'X-API-Key' header to trigger plugins via the RESTful API.",
-        copy: "Copy"
+    globalConfig: {
+      title: 'Global Configuration',
+      token: 'Discord Bot Token',
+      tokenPlaceholder: 'Enter your Discord Bot Token',
+      apiKey: 'RESTful API Key',
+      apiKeyUnavailable: 'API key unavailable',
+      copy: 'Copy',
+      apiKeyInfo: 'This is your unique API key for external services to call plugin endpoints. Keep it safe and do not share with others.'
     },
-    llmProvider: { 
-        title: "LLM Provider Configuration", 
-        select: "Select Provider", 
-        providers: { 
-            openai: "OpenAI & Compatible", 
-            google: "Google Gemini", 
-            anthropic: "Anthropic Claude" 
-        }, 
-        apiKey: "API Key", 
-        apiKeyPlaceholder: "Enter API Key for the selected provider", 
-        baseUrl: "API Base URL (Optional)", 
-        baseUrlPlaceholder: "e.g., https://api.openai.com/v1"
+    llmProvider: {
+      title: 'LLM Provider',
+      select: 'Select Provider',
+      providers: {
+        openai: 'OpenAI',
+        google: 'Google Gemini',
+        anthropic: 'Anthropic Claude'
+      },
+      apiKey: 'API Key',
+      apiKeyPlaceholder: 'Enter your API Key',
+      baseUrl: 'Base URL (Optional)',
+      baseUrlPlaceholder: 'Leave empty for official API, or enter custom endpoint',
+      fetchModels: 'Fetch Models',
+      loading: 'Loading...',
+      testConnection: 'Test Connection',
+      testing: 'Testing...',
+      selectModel: 'Select Model',
+      noApiKey: 'Please enter API key first',
+      modelsLoaded: 'Model list loaded successfully',
+      modelsLoadFailed: 'Failed to load model list: ',
+      selectModelFirst: 'Please select a model first',
+      testSuccess: 'Connection test successful!',
+      testFailed: 'Connection test failed: ',
+      testError: 'Test error: ',
+      testResult: 'Test Result',
+      modelResponded: 'Model responded',
+      toggleInputMode: 'Toggle input mode',
+      fetchModelsTooltip: 'Fetch or refresh available model list',
+      modelListInfo: 'Loaded {count} available models, click ✏️ to switch to manual input'
+    },
+    defaultBehavior: {
+      title: 'Default Behavior',
+      modelName: 'Model Name',
+      modelPlaceholders: {
+        openai: 'e.g., gpt-4o, gpt-3.5-turbo',
+        google: 'e.g., gemini-1.5-flash, gemini-1.5-pro',
+        anthropic: 'e.g., claude-3-opus-20240229'
+      },
+      systemPrompt: 'System Prompt',
+      systemPromptPlaceholder: 'Define the bot\'s base persona and behavior guidelines...',
+      blockedResponse: 'Blocked Response Template',
+      blockedResponseInfo: 'Message sent when content is blocked by filter. Use {reason} to insert the block reason.',
+      triggerKeywords: 'Trigger Keywords',
+      triggerKeywordsPlaceholder: 'Enter keywords, separated by commas',
+      responseMode: 'Response Mode',
+      modes: {
+        stream: 'Stream Response (show typing)',
+        nonStream: 'Complete Response (send at once)'
+      }
+    },
+    contextControl: {
+      title: 'Context Control',
+      contextMode: 'Context Mode',
+      modes: {
+        none: 'No Context',
+        channel: 'Channel-based',
+        memory: 'Memory-based'
+      },
+      channelModeInfo: 'Bot will read recent chat history from the channel as context.',
+      memoryModeInfo: 'Bot only remembers conversations related to it (mentions, replies, keywords).',
+      noneModeInfo: 'Bot will not read any message history, each conversation is independent.',
+      historyLimit: 'History Limit',
+      messages: 'messages',
+      charLimit: 'Token Limit',
+      charLimitPlaceholder: 'Enter max token count'
     },
     scopedPrompts: {
-        enabled: "Enabled",
-        remove: "Remove",
-        mode: {
-            title: "Mode",
-            override: "Override Bot's Identity",
-            append: "Append as Scene Context"
-        },
-        channels: {
-            title: "Channel-Specific Directive (Highest Priority for Bot's Identity)",
-            info: "Define the bot's core identity (Override) or the scene's context (Append) for a specific channel. A channel's 'Override' directive is the highest priority rule for determining the bot's persona.",
-            add: "+ Add Channel Directive",
-            id: "Channel ID",
-            idPlaceholder: "Enter Discord Channel ID",
-            prompt: "Directive Prompt",
-            overridePlaceholder: "The bot will adopt this persona in THIS channel ONLY...",
-            appendPlaceholder: "Describe this channel's purpose or current topic..."
-        },
-        guilds: {
-            title: "Server-Specific Directive (Mid Priority for Bot's Identity)",
-            info: "Define the bot's identity (Override) or scene context (Append) for an entire server. This is applied only if there is NO channel-specific 'Override' directive active.",
-            add: "+ Add Server Directive",
-            id: "Server ID",
-            idPlaceholder: "Enter Discord Server ID",
-            prompt: "Directive Prompt",
-            overridePlaceholder: "The bot will adopt this persona for the whole server...",
-            appendPlaceholder: "Describe this server's theme or context..."
-        }
+      enabled: 'Enabled',
+      mode: {
+        title: 'Mode',
+        override: 'Override',
+        append: 'Append'
+      },
+      remove: 'Remove',
+      channels: {
+        title: 'Channel-Specific Directives',
+        info: 'Set bot identity or context for specific channels. Override mode completely replaces the persona, append mode adds contextual information.',
+        id: 'Channel ID',
+        idPlaceholder: 'Enter channel ID',
+        prompt: 'Directive Content',
+        overridePlaceholder: 'In this channel, the bot will completely act as...',
+        appendPlaceholder: 'Describe the scene or atmosphere of this channel...',
+        add: 'Add Channel Directive'
+      },
+      guilds: {
+        title: 'Server-Specific Directives',
+        info: 'Set bot identity or context for entire servers. Lower priority than channel directives.',
+        id: 'Server ID',
+        idPlaceholder: 'Enter server ID',
+        prompt: 'Directive Content',
+        overridePlaceholder: 'In this server, the bot\'s default identity is...',
+        appendPlaceholder: 'Background setting or special rules for this server...',
+        add: 'Add Server Directive'
+      }
     },
-    userPortrait: { 
-        title: "User Portrait (Highest Priority for User Context)", 
-        info: "Define a specific user's identity IN THE EYES OF THE BOT. This is NOT for setting the bot's persona, but to inform the bot about the user. This information is always included as critical context.", 
-        userId: "Discord User ID", 
-        customNicknamePlaceholder: "Custom Nickname for this user", 
-        personaPrompt: "Describe THIS USER (e.g., 'The captain of the ship', 'My creator and master')", 
-        add: "+ Add User Portrait"
+    roleConfig: {
+      title: 'Role-Based Configuration',
+      info: 'Set exclusive bot personas and usage limits for users with different roles.',
+      roleId: 'Role ID',
+      roleTitle: 'Display Name',
+      rolePrompt: 'Exclusive Persona Prompt',
+      enableMsgLimit: 'Enable Message Limit',
+      enableTokenLimit: 'Enable Token Limit',
+      totalQuota: 'Total Quota',
+      minutes: 'minutes',
+      outputBudget: 'Output Budget',
+      previewTitle: 'Quota Display Preview',
+      previewHeader: 'Quota Status',
+      msgLimit: 'Message Quota',
+      tokenLimit: 'Token Quota',
+      disabled: 'Disabled',
+      displayColor: 'Display Color',
+      add: 'Add Role Config',
+      remove: 'Remove'
     },
-    roleConfig: { 
-        title: "Role-Based Configuration (Low Priority for Bot's Identity)", 
-        info: "Define the BOT's persona when interacting with users of a certain role. This is applied only if no Channel or Server 'Override' directives are active. You can also set usage limits.", 
-        add: "+ Add Role Configuration", 
-        remove: "Remove",
-        roleId: "Discord Role ID", 
-        roleTitle: "Custom Title (e.g., VIP Member)", 
-        rolePrompt: "Bot's persona FOR THIS ROLE (e.g., 'A respectful butler')", 
-        enableMsgLimit: "Enable Message Limit", 
-        enableTokenLimit: "Enable Token Limit", 
-        msgLimit: "Messages", 
-        tokenLimit: "Tokens", 
-        minutes: "min", 
-        totalQuota: "Total Quota", 
-        outputBudget: "Output Budget", 
-        displayColor: "Quota Embed Color", 
-        previewTitle: "Quota Display Preview", 
-        previewHeader: "Quota Status for User", 
-        disabled: "Disabled" 
-    },
-    defaultBehavior: { 
-        title: "Default Model & Behavior (Lowest Priority)", 
-        modelName: "Model Name (Manual Input)", 
-        modelPlaceholders: { 
-            openai: "e.g., gpt-4o", 
-            google: "e.g., gemini-1.5-pro-latest", 
-            anthropic: "e.g., claude-3-opus-20240229" 
-        }, 
-        systemPrompt: "Default System Prompt (Foundation)", 
-        systemPromptPlaceholder: "The bot's foundational, fallback persona.", 
-        blockedResponse: "Blocked Response Template",
-        blockedResponseInfo: "Sorry, a communication issue occurred. This is an automated reply: [{reason}] (Use {reason} as a placeholder for the block code.)",
-        triggerKeywords: "Trigger Keywords (comma-separated)", 
-        triggerKeywordsPlaceholder: "e.g., jarvis, aibot", 
-        responseMode: "Response Mode", 
-        modes: { 
-            stream: "Stream", 
-            nonStream: "Non-Stream" 
-        } 
-    },
-    customParams: { 
-        title: "Custom LLM Parameters", 
-        add: "+ Add Parameter", 
-        remove: "Remove",
-        paramName: "Parameter Name", 
-        paramValue: "Value", 
-        types: { 
-            text: "Text", 
-            number: "Number", 
-            boolean: "Boolean", 
-            json: "JSON" 
-        } 
-    },
-    sessionManagement: { 
-        title: "Session Management", 
-        info: "To start a new conversation in a channel without old context, get the Channel ID from Discord and clear its memory here. This only affects the bot's current session.", 
-        channelIdPlaceholder: "Paste Channel ID here", 
-        clearButton: "Clear Channel Memory", 
-        clearing: "Clearing memory...", 
-        clearSuccess: "Memory cleared successfully for the specified channel!", 
-        clearFailed: "Failed to clear memory: ", 
-        errorNoId: "Please enter a Channel ID first." 
+    userPortrait: {
+      title: 'User Portraits',
+      info: 'Define how specific users appear to the bot. This is the highest priority context that will always be considered.',
+      userId: 'User ID',
+      customNicknamePlaceholder: 'Custom nickname (optional)',
+      personaPrompt: 'Describe this user\'s identity, characteristics, or relationship with the bot',
+      add: 'Add User Portrait'
     },
     pluginManager: {
-        title: "Plugin Manager",
-        info: "Create tools that the bot can use. Plugins trigger on specific commands or keywords to perform actions, like calling an external API. The API result can be directly displayed or summarized by the LLM.",
-        add: "+ Add Plugin", 
-        remove: "Remove",
-        name: "Plugin Name", 
-        enabled: "Enabled", 
-        triggerType: "Trigger Type",
-        triggerTypes: { 
-            command: "Command", 
-            keyword: "Keyword" 
-        }, 
-        triggers: "Triggers (comma-separated)",
-        triggersPlaceholder: "e.g., !weather, !stock", 
-        actionType: "Action Type",
-        actionTypes: { 
-            http_request: "HTTP Request (Direct Output)", 
-            llm_augmented_tool: "LLM-Augmented Tool" 
-        },
-        injectionMode: "Injection Mode",
-        injectionModes: {
-            override: "Override (Standalone Response)",
-            append: "Append (Inject into Context)"
-        },
-        injectionInfo: "'Override' creates a separate, one-off response. 'Append' injects the tool's result into the current conversation for the bot to react to with its persona.",
-        httpRequest: "HTTP Request Configuration", 
-        url: "URL", 
-        urlPlaceholder: "https://api.example.com/data?q={user_input}",
-        method: "Method", 
-        headers: "Headers (JSON format)", 
-        body: "Body Template (JSON format, for POST/PUT)",
-        llmPrompt: "LLM Prompt Template",
-        templateInfo: "You can use placeholders: {user_input}, {author_name}, {channel_id}, etc. For LLM-Augmented tools, also use {api_result} to include the data fetched.",
+      title: 'Plugin Manager',
+      info: 'Create custom tools triggered by commands or keywords. Supports calling external APIs with optional LLM processing.',
+      name: 'Plugin Name',
+      enabled: 'Enabled',
+      triggerType: 'Trigger Type',
+      triggerTypes: {
+        command: 'Command Trigger',
+        keyword: 'Keyword Trigger'
+      },
+      triggers: 'Triggers',
+      triggersPlaceholder: 'Separate multiple triggers with commas',
+      actionType: 'Action Type',
+      actionTypes: {
+        http_request: 'HTTP Request (Direct Output)',
+        llm_augmented_tool: 'LLM-Augmented Tool'
+      },
+      injectionMode: 'Injection Mode',
+      injectionModes: {
+        override: 'Override Response',
+        append: 'Append to Context'
+      },
+      injectionInfo: 'Override mode sends LLM response directly; Append mode provides API result as additional context to bot\'s main logic.',
+      httpRequest: 'HTTP Request Config',
+      url: 'URL',
+      urlPlaceholder: 'https://api.example.com/endpoint',
+      method: 'Request Method',
+      headers: 'Headers (JSON)',
+      body: 'Body Template (JSON)',
+      llmPrompt: 'LLM Prompt Template',
+      templateInfo: 'Available variables: {user_input} = user input, {api_result} = API response',
+      add: 'Add Plugin'
     },
-    contextControl: { 
-        title: "Conversation Context Control", 
-        contextMode: "Context Mode", 
-        modes: { 
-            none: "Disabled", 
-            channel: "Channel Mode", 
-            memory: "Memory Mode" 
-        }, 
-        noneModeInfo: "The bot will not read any past messages. It only responds to the current message.", 
-        channelModeInfo: "The bot reads all recent messages in the channel to understand context.", 
-        memoryModeInfo: "The bot only remembers direct conversations (mentions, replies, keywords) and their context.", 
-        historyLimit: "Message History Limit", 
-        messages: "messages", 
-        charLimit: "Character Limit for History", 
-        charLimitPlaceholder: "e.g., 4000"
+    customParams: {
+      title: 'Custom Parameters',
+      paramName: 'Parameter Name',
+      paramValue: 'Parameter Value',
+      types: {
+        text: 'Text',
+        number: 'Number',
+        boolean: 'Boolean',
+        json: 'JSON'
+      },
+      add: 'Add Parameter',
+      remove: 'Remove'
     },
-    logViewer: { 
-        title: "Backend Log Viewer", 
-        filterLevel: "Filter Level", 
-        autoscroll: "Auto-scroll" 
+    sessionManagement: {
+      title: 'Session Management',
+      info: 'Clear conversation memory for specific channels. The bot will forget all conversations before this point.',
+      channelIdPlaceholder: 'Enter channel ID',
+      clearButton: 'Clear Memory',
+      clearing: 'Clearing...',
+      clearSuccess: 'Memory cleared successfully',
+      clearFailed: 'Clear failed: ',
+      errorNoId: 'Please enter channel ID'
     },
-    buttons: { 
-        save: "Save Configuration & Restart Bot", 
-        saving: "Saving...", 
+    uiSettings: {
+      title: 'UI Settings',
+      font: {
+        loadButton: 'Load Custom Font',
+        resetButton: 'Reset to Default',
+        currentFont: 'Current font: {fontName}',
+        defaultFont: 'Using system default font',
+        loadError: 'Failed to load font file',
+        localStorageError: 'Cannot save font to local storage',
+        resetSuccess: 'Font reset to default'
+      }
     },
-    status: { 
-        loading: "Loading configuration...", 
-        loadFailed: "Failed to load config: ", 
-        saving: "Saving configuration and restarting bot...", 
-        saveSuccess: "Configuration saved successfully!", 
-        saveFailed: "Save failed: ", 
+    logViewer: {
+      title: 'Live Logs',
+      filterLevel: 'Filter Level',
+      autoscroll: 'Auto-scroll'
+    },
+    debugger: {
+      title: 'Debugger',
+      info: 'Simulate the bot\'s response generation process for testing and debugging.',
+      userId: 'User ID',
+      userIdPlaceholder: 'Simulated user ID',
+      roleId: 'Role ID',
+      channelId: 'Channel ID',
+      channelIdPlaceholder: 'Simulated channel ID',
+      guildId: 'Server ID',
+      guildIdPlaceholder: 'Simulated server ID (optional)',
+      message: 'Message Content',
+      messagePlaceholder: 'Enter test message...',
+      button: 'Simulate',
+      simulating: 'Simulating...',
+      error: 'Error: ',
+      generatedPrompt: 'Generated System Prompt',
+      llmResponse: 'LLM Response',
+      errorIncomplete: 'Please fill in all required fields'
     }
-};
+  };
+  

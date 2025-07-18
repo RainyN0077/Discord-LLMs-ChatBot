@@ -1,241 +1,248 @@
-// zh.js (Updated with error message)
+// src/locales/zh.js
 export default {
-    title: "Discord LLM 机器人控制面板",
-    nav: {
-        controlPanel: "控制面板",
-        debugger: "指令调试器",
-    },
-    errors: { // <-- 新增部分
-        duplicateId: "错误：ID '{id}' 已被占用，请选择一个唯一的ID。",
-    },
+    title: 'Discord LLM 机器人控制面板',
     tabs: {
-        core: "核心设置",
-        directives: "身份指令",
-        advanced: "高级工具",
+      core: '核心设置',
+      directives: '身份指令',
+      advanced: '高级工具'
     },
-    // ... rest of the file remains the same
-    prompts: {
-        saveConfirm: "您确定要保存并重启机器人吗？机器人将有短暂的离线时间。",
+    buttons: {
+      save: '保存配置并重启机器人',
+      saving: '保存中...'
     },
-    debugger: {
-        title: "指令和人设调试器",
-        info: "模拟一条消息，以查看最终生成的系统指令（System Prompt）并测试LLM的回应。这有助于您在不干扰Discord频道的情况下，精细调整机器人的人设配置。",
-        userId: "用户ID",
-        userIdPlaceholder: "模拟的用户ID（必需）",
-        channelId: "频道ID",
-        channelIdPlaceholder: "目标频道ID（必需）",
-        guildId: "服务器ID（可选）",
-        guildIdPlaceholder: "目标服务器ID",
-        roleId: "身份组ID（可选）",
-        roleIdPlaceholder: "模拟的身份组ID",
-        message: "消息内容",
-        messagePlaceholder: "输入要模拟的消息...（必需）",
-        button: "模拟回应",
-        simulating: "模拟中...",
-        generatedPrompt: "生成的系统指令",
-        llmResponse: "模拟的LLM回应",
-        error: "模拟失败：",
-        errorIncomplete: "用户ID、频道ID和消息内容为必填项。",
+    status: {
+      loading: '加载配置中...',
+      saving: '正在保存...',
+      saveSuccess: '配置已保存，机器人重启成功！',
+      saveFailed: '保存失败：{error}',
+      loadFailed: '加载配置失败：{error}'
     },
-    uiSettings: {
-        title: "界面设置",
-        font:{
-            loadButton: "加载字体文件",
-            resetButton: "重置为默认字体",
-            currentFont: "当前字体: {fontName}",
-            defaultFont: "正在使用系统默认字体。",
-            loadSuccess: "字体 '{fontName}' 加载成功！",
-            loadError: "读取字体文件时出错。",
-            resetSuccess: "已重置为默认字体。",
-            localStorageError: "无法保存字体。浏览器的本地存储可能已满或被禁用。",
-        }
+    errors: {
+      duplicateId: 'ID "{id}" 已存在，请使用其他ID'
     },
-    globalConfig: { 
-        title: "全局配置", 
-        token: "Discord 机器人令牌", 
-        tokenPlaceholder: "输入你的机器人令牌",
-        apiKey: "RESTful API 密钥",
-        apiKeyUnavailable: "首次保存后将自动生成API密钥。",
-        apiKeyInfo: "通过 RESTful API 触发插件时，请在 'X-API-Key' 请求头中使用此密钥。",
-        copy: "复制"
+    globalConfig: {
+      title: '全局配置',
+      token: 'Discord 机器人令牌',
+      tokenPlaceholder: '输入你的 Discord Bot Token',
+      apiKey: 'RESTful API 密钥',
+      apiKeyUnavailable: 'API密钥不可用',
+      copy: '复制',
+      apiKeyInfo: '这是你的专属API密钥，用于外部服务调用插件接口。请妥善保管，不要分享给他人。'
     },
-    llmProvider: { 
-        title: "LLM 服务商配置", 
-        select: "选择服务商", 
-        providers: { 
-            openai: "OpenAI 及兼容模型", 
-            google: "Google Gemini", 
-            anthropic: "Anthropic Claude" 
-        }, 
-        apiKey: "API 密钥", 
-        apiKeyPlaceholder: "输入所选服务商的 API 密钥", 
-        baseUrl: "API Base URL (代理选填)", 
-        baseUrlPlaceholder: "例如: https://api.openai-proxy.com/v1"
+    llmProvider: {
+      title: '大模型服务商',
+      select: '选择服务商',
+      providers: {
+        openai: 'OpenAI',
+        google: 'Google Gemini',
+        anthropic: 'Anthropic Claude'
+      },
+      apiKey: 'API 密钥',
+      apiKeyPlaceholder: '输入你的 API Key',
+      baseUrl: '基础URL (可选)',
+      baseUrlPlaceholder: '留空使用官方API，或输入自定义端点',
+      fetchModels: '获取模型列表',
+      loading: '加载中...',
+      testConnection: '测试连接',
+      testing: '测试中...',
+      selectModel: '选择模型',
+      noApiKey: '请先输入API密钥',
+      modelsLoaded: '模型列表加载成功',
+      modelsLoadFailed: '加载模型列表失败：',
+      selectModelFirst: '请先选择一个模型',
+      testSuccess: '连接测试成功！',
+      testFailed: '连接测试失败：',
+      testError: '测试出错：',
+      testResult: '测试结果',
+      modelResponded: '模型响应',
+      toggleInputMode: '切换输入模式',
+      fetchModelsTooltip: '获取或刷新可用模型列表',
+      modelListInfo: '已加载 {count} 个可用模型，点击 ✏️ 可切换到手动输入'
+    },
+    defaultBehavior: {
+      title: '默认行为',
+      modelName: '模型名称',
+      modelPlaceholders: {
+        openai: '例如: gpt-4o, gpt-3.5-turbo',
+        google: '例如: gemini-1.5-flash, gemini-1.5-pro',
+        anthropic: '例如: claude-3-opus-20240229'
+      },
+      systemPrompt: '系统提示词',
+      systemPromptPlaceholder: '定义机器人的基础人设和行为准则...',
+      blockedResponse: '屏蔽响应模板',
+      blockedResponseInfo: '当内容被过滤器拦截时发送的消息。使用 {reason} 插入拦截原因。',
+      triggerKeywords: '触发关键词',
+      triggerKeywordsPlaceholder: '输入关键词，用逗号分隔',
+      responseMode: '响应模式',
+      modes: {
+        stream: '流式响应 (逐字显示)',
+        nonStream: '完整响应 (一次性发送)'
+      }
+    },
+    contextControl: {
+      title: '上下文控制',
+      contextMode: '上下文模式',
+      modes: {
+        none: '无上下文',
+        channel: '基于频道',
+        memory: '基于记忆'
+      },
+      channelModeInfo: '机器人会读取频道内最近的聊天记录作为上下文。',
+      memoryModeInfo: '机器人只会记住与它相关的对话（被@、回复、包含关键词）。',
+      noneModeInfo: '机器人不会读取任何历史消息，每次对话都是独立的。',
+      historyLimit: '历史消息数量',
+      messages: '条消息',
+      charLimit: 'Token 限制',
+      charLimitPlaceholder: '输入最大 token 数'
     },
     scopedPrompts: {
-        enabled: "启用",
-        remove: "移除",
-        mode: {
-            title: "模式",
-            override: "覆盖Bot身份",
-            append: "追加为场景"
-        },
-        channels: {
-            title: "频道特定指令 (Bot身份最高优先级)",
-            info: "为特定频道定义Bot的核心身份(覆盖模式)或场景上下文(追加模式)。频道的“覆盖”指令是决定Bot人设的最高优先级规则。",
-            add: "+ 添加频道指令",
-            id: "频道ID",
-            idPlaceholder: "输入Discord频道ID",
-            prompt: "指令提示词",
-            overridePlaceholder: "Bot将仅在此频道扮演这个人设…",
-            appendPlaceholder: "描述此频道的用途或当前话题…"
-        },
-        guilds: {
-            title: "服务器特定指令 (Bot身份中等优先级)",
-            info: "为整个服务器定义Bot的身份(覆盖模式)或场景上下文(追加模式)。仅当没有激活的频道“覆盖”指令时，此设置才生效。",
-            add: "+ 添加服务器指令",
-            id: "服务器ID",
-            idPlaceholder: "输入Discord服务器ID",
-            prompt: "指令提示词",
-            overridePlaceholder: "Bot将在此服务器全程扮演这个人设…",
-            appendPlaceholder: "描述这个服务器的主题或背景…"
-        }
+      enabled: '启用',
+      mode: {
+        title: '模式',
+        override: '覆盖',
+        append: '追加'
+      },
+      remove: '删除',
+      channels: {
+        title: '频道特定指令',
+        info: '为特定频道设置机器人的身份或场景。覆盖模式会完全替换机器人的人设，追加模式会在原有基础上添加情境信息。',
+        id: '频道 ID',
+        idPlaceholder: '输入频道 ID',
+        prompt: '指令内容',
+        overridePlaceholder: '在这个频道中，机器人将完全扮演这个角色...',
+        appendPlaceholder: '描述这个频道的场景或氛围...',
+        add: '添加频道指令'
+      },
+      guilds: {
+        title: '服务器特定指令',
+        info: '为整个服务器设置机器人的身份或场景。优先级低于频道指令。',
+        id: '服务器 ID',
+        idPlaceholder: '输入服务器 ID',
+        prompt: '指令内容',
+        overridePlaceholder: '在这个服务器中，机器人的默认身份是...',
+        appendPlaceholder: '这个服务器的背景设定或特殊规则...',
+        add: '添加服务器指令'
+      }
     },
-    userPortrait: { 
-        title: "用户肖像 (用户上下文最高优先级)", 
-        info: "定义特定用户在Bot眼中的身份。这不是用来设置Bot自身人设的，而是告知Bot'用户是谁'。此信息将作为最重要的上下文被Bot知晓。", 
-        userId: "Discord 用户ID", 
-        customNicknamePlaceholder: "该用户的自定义称呼", 
-        personaPrompt: "描述这个用户 (例如：‘这艘船的船长’，‘我的创造者和主人’)", 
-        add: "+ 添加用户肖像"
+    roleConfig: {
+      title: '基于身份组的配置',
+      info: '为不同身份组的用户设置专属的机器人人设和使用限制。',
+      roleId: '身份组 ID',
+      roleTitle: '显示名称',
+      rolePrompt: '专属人设提示词',
+      enableMsgLimit: '启用消息限制',
+      enableTokenLimit: '启用 Token 限制',
+      totalQuota: '总额度',
+      minutes: '分钟',
+      outputBudget: '输出预算',
+      previewTitle: '额度查询预览',
+      previewHeader: '额度状态',
+      msgLimit: '消息额度',
+      tokenLimit: 'Token 额度',
+      disabled: '未启用',
+      displayColor: '显示颜色',
+      add: '添加身份组配置',
+      remove: '删除'
     },
-    roleConfig: { 
-        title: "基于身份组的配置 (Bot身份低优先级)", 
-        info: "定义Bot在与特定身份组成员互动时的自身人设。仅当没有频道或服务器的“覆盖”指令生效时，此设置才会被采用。你也可以在此处设置使用限制。", 
-        add: "+ 添加身份组配置", 
-        remove: "移除",
-        roleId: "Discord 身份组ID", 
-        roleTitle: "自定义头衔 (例如：尊贵的会员)", 
-        rolePrompt: "Bot对此身份组的人设 (例如：‘一位恭敬的管家’)", 
-        enableMsgLimit: "启用消息数限制器", 
-        enableTokenLimit: "启用Token限制器", 
-        msgLimit: "消息数", 
-        tokenLimit: "Token数", 
-        minutes: "分钟", 
-        totalQuota: "总额度", 
-        outputBudget: "输出预算", 
-        displayColor: "额度查询框颜色", 
-        previewTitle: "额度显示预览", 
-        previewHeader: "用户的额度状态", 
-        disabled: "未启用" 
-    },
-    defaultBehavior: { 
-        title: "默认模型与行为 (最低优先级)", 
-        modelName: "模型名称 (手动输入)", 
-        modelPlaceholders: { 
-            openai: "例如: gpt-4o", 
-            google: "例如: gemini-1.5-pro-latest", 
-            anthropic: "例如: claude-3-opus-20240229" 
-        }, 
-        systemPrompt: "默认系统提示词 (基础人设)", 
-        systemPromptPlaceholder: "Bot的基础、备用人设。", 
-        blockedResponse: "内容屏蔽回复模板",
-        blockedResponseInfo: "抱歉，通讯出了一些问题，这是一条自动回复：【{reason}】 (可使用 {reason} 作为屏蔽原因的占位符)",
-        triggerKeywords: "触发词 (英文逗号分隔)", 
-        triggerKeywordsPlaceholder: "例如: 贾维斯, aibot", 
-        responseMode: "回应模式", 
-        modes: { 
-            stream: "流式", 
-            nonStream: "非流式" 
-        } 
-    },
-    customParams: { 
-        title: "自定义 LLM 参数", 
-        add: "+ 添加参数", 
-        remove: "移除",
-        paramName: "参数名称", 
-        paramValue: "值", 
-        types: { 
-            text: "文本", 
-            number: "数字", 
-            boolean: "布尔值", 
-            json: "JSON" 
-        } 
-    },
-    sessionManagement: { 
-        title: "会话管理", 
-        info: "如需在某个频道开启一段全新的对话，请在此处清除其记忆。此操作仅对机器人当前会话有效。", 
-        channelIdPlaceholder: "在此处粘贴频道ID", 
-        clearButton: "清除频道记忆", 
-        clearing: "正在清除记忆...", 
-        clearSuccess: "已成功为指定频道清除记忆！", 
-        clearFailed: "清除记忆失败：", 
-        errorNoId: "请先输入一个频道ID。" 
+    userPortrait: {
+      title: '用户肖像',
+      info: '定义特定用户在机器人眼中的身份。这是最高优先级的上下文，会始终被机器人考虑。',
+      userId: '用户 ID',
+      customNicknamePlaceholder: '自定义昵称（可选）',
+      personaPrompt: '描述这个用户的身份、特征或与机器人的关系',
+      add: '添加用户肖像'
     },
     pluginManager: {
-        title: "插件管理器",
-        info: "创建可供机器人使用的工具。插件通过特定命令或关键词触发，以执行调用外部API等操作。API返回的结果可以直接显示，也可以交由LLM进行智能总结。",
-        add: "+ 添加插件", 
-        remove: "移除",
-        name: "插件名称", 
-        enabled: "启用", 
-        triggerType: "触发方式",
-        triggerTypes: { 
-            command: "命令", 
-            keyword: "关键词" 
-        }, 
-        triggers: "触发词 (英文逗号分隔)",
-        triggersPlaceholder: "例如: !天气, !股票", 
-        actionType: "动作类型",
-        actionTypes: { 
-            http_request: "HTTP请求 (直接输出)", 
-            llm_augmented_tool: "LLM增强工具" 
-        },
-        injectionMode: "注入模式",
-        injectionModes: {
-            override: "覆盖 (独立回应)",
-            append: "追加 (注入上下文)"
-        },
-        injectionInfo: "“覆盖”模式会生成一次独立、全新的回应。“追加”模式会将工具获取的结果注入到当前对话中，让机器人以其自身人设对此信息做出反应。",
-        httpRequest: "HTTP 请求配置", 
-        url: "URL", 
-        urlPlaceholder: "https://api.example.com/data?q={user_input}",
-        method: "请求方法", 
-        headers: "请求头 (JSON格式)", 
-        body: "请求体模板 (JSON格式, 用于POST/PUT)",
-        llmPrompt: "LLM 提示词模板",
-        templateInfo: "可使用占位符: {user_input}, {author_name}, {channel_id} 等。对于LLM增强工具，额外使用 {api_result} 来引用获取到的数据。",
+      title: '插件管理器',
+      info: '创建可通过命令或关键词触发的自定义工具。支持调用外部API并可选择性地通过LLM处理结果。',
+      name: '插件名称',
+      enabled: '启用',
+      triggerType: '触发类型',
+      triggerTypes: {
+        command: '命令触发',
+        keyword: '关键词触发'
+      },
+      triggers: '触发词',
+      triggersPlaceholder: '用逗号分隔多个触发词',
+      actionType: '动作类型',
+      actionTypes: {
+        http_request: 'HTTP请求 (直接输出)',
+        llm_augmented_tool: 'LLM增强工具'
+      },
+      injectionMode: '注入模式',
+      injectionModes: {
+        override: '覆盖响应',
+        append: '追加到上下文'
+      },
+      injectionInfo: '覆盖模式会直接发送LLM的响应；追加模式会将API结果作为额外信息提供给机器人的主逻辑。',
+      httpRequest: 'HTTP 请求配置',
+      url: 'URL',
+      urlPlaceholder: 'https://api.example.com/endpoint',
+      method: '请求方法',
+      headers: '请求头 (JSON)',
+      body: '请求体模板 (JSON)',
+      llmPrompt: 'LLM 提示词模板',
+      templateInfo: '可用变量: {user_input} = 用户输入, {api_result} = API返回结果',
+      add: '添加插件'
     },
-    contextControl: { 
-        title: "对话上下文控制", 
-        contextMode: "上下文模式", 
-        modes: { 
-            none: "禁用", 
-            channel: "频道模式", 
-            memory: "记忆模式" 
-        }, 
-        noneModeInfo: "机器人将不读取任何历史消息，仅对当前消息做出回应。", 
-        channelModeInfo: "机器人会读取频道内所有近期消息来理解上下文，适合公共讨论。", 
-        memoryModeInfo: "机器人只记忆与它直接相关的对话（提及、回复、关键词）及其上下文，适合个人助理场景。", 
-        historyLimit: "历史消息数量限制", 
-        messages: "条消息", 
-        charLimit: "历史消息字数限制", 
-        charLimitPlaceholder: "例如: 4000"
+    customParams: {
+      title: '自定义参数',
+      paramName: '参数名称',
+      paramValue: '参数值',
+      types: {
+        text: '文本',
+        number: '数字',
+        boolean: '布尔值',
+        json: 'JSON'
+      },
+      add: '添加参数',
+      remove: '删除'
     },
-    logViewer: { 
-        title: "后端日志查看器", 
-        filterLevel: "筛选等级", 
-        autoscroll: "自动滚动" 
+    sessionManagement: {
+      title: '会话管理',
+      info: '清除特定频道的对话记忆。机器人将忘记该频道在此时间点之前的所有对话。',
+      channelIdPlaceholder: '输入频道 ID',
+      clearButton: '清除记忆',
+      clearing: '正在清除...',
+      clearSuccess: '记忆清除成功',
+      clearFailed: '清除失败：',
+      errorNoId: '请输入频道 ID'
     },
-    buttons: { 
-        save: "保存配置并重启机器人", 
-        saving: "保存中...", 
+    uiSettings: {
+      title: '界面设置',
+      font: {
+        loadButton: '加载自定义字体',
+        resetButton: '重置为默认字体',
+        currentFont: '当前字体: {fontName}',
+        defaultFont: '使用系统默认字体',
+        loadError: '字体文件加载失败',
+        localStorageError: '无法保存字体到本地存储',
+        resetSuccess: '字体已重置为默认'
+      }
     },
-    status: { 
-        loading: "正在加载配置...", 
-        loadFailed: "加载配置失败: ", 
-        saving: "正在保存配置并重启机器人...", 
-        saveSuccess: "配置已成功保存！", 
-        saveFailed: "保存失败: ", 
+    logViewer: {
+      title: '实时日志',
+      filterLevel: '过滤级别',
+      autoscroll: '自动滚动'
+    },
+    debugger: {
+      title: '调试器',
+      info: '模拟机器人的响应生成过程，用于测试和调试配置。',
+      userId: '用户 ID',
+      userIdPlaceholder: '模拟的用户 ID',
+      roleId: '身份组 ID',
+      channelId: '频道 ID',
+      channelIdPlaceholder: '模拟的频道 ID',
+      guildId: '服务器 ID',
+      guildIdPlaceholder: '模拟的服务器 ID（可选）',
+      message: '消息内容',
+      messagePlaceholder: '输入要测试的消息...',
+      button: '模拟生成',
+      simulating: '模拟中...',
+      error: '错误：',
+      generatedPrompt: '生成的系统提示词',
+      llmResponse: 'LLM 响应',
+      errorIncomplete: '请填写所有必填字段'
     }
-};
+  };
+  

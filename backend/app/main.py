@@ -16,6 +16,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
 
+import openai
+import google.generativeai as genai
+import anthropic
+
 from .bot import run_bot, get_llm_response
 from .utils import _execute_http_request, _format_with_placeholders
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt
@@ -177,6 +181,17 @@ class DebuggerRequest(BaseModel):
     role_id: Optional[str] = None
     message_content: str
 
+class ModelTestRequest(BaseModel):
+    provider: str
+    api_key: str
+    base_url: Optional[str] = None
+    model_name: str
+
+class AvailableModelsRequest(BaseModel):
+    provider: str
+    api_key: str
+    base_url: Optional[str] = None
+
 # --- API Endpoints ---
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
@@ -202,7 +217,6 @@ async def get_config_endpoint():
         # 但添加一个警告字段
         config_data["_validation_warning"] = str(e)
         return config_data
-
 
 @app.post("/api/config")
 async def update_config_endpoint(config_data: Config):
@@ -230,7 +244,6 @@ async def update_config_endpoint(config_data: Config):
     except Exception as e:
         logger.error(f"Failed to update configuration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/api/memory/clear")
 async def clear_channel_memory(request: ClearMemoryRequest):
@@ -267,6 +280,96 @@ async def simulate_debugger_run(request: DebuggerRequest):
     # ... debugger logic ...
     return {"message": "Debugger not fully implemented in this snippet."}
 
+# 获取可用模型列表
+@app.post("/api/models/list")
+async def get_available_models(request: AvailableModelsRequest):
+    try:
+        if request.provider == "openai":
+            client = openai.OpenAI(
+                api_key=request.api_key,
+                base_url=request.base_url if request.base_url else None
+            )
+            models = client.models.list()
+            # 过滤出聊天模型
+            chat_models = [m.id for m in models if 'gpt' in m.id or 'chat' in m.id]
+            return {"models": sorted(chat_models, reverse=True)}
+            
+        elif request.provider == "google":
+            genai.configure(api_key=request.api_key)
+            models = genai.list_models()
+            # 过滤出支持聊天的模型
+            chat_models = [m.name.replace('models/', '') for m in models 
+                          if 'generateContent' in [method.name for method in m.supported_generation_methods]]
+            return {"models": sorted(chat_models)}
+            
+        elif request.provider == "anthropic":
+            # Anthropic 没有列出模型的API，返回已知模型
+            return {"models": [
+                "claude-3-opus-20240229",
+                "claude-3-sonnet-20240229", 
+                "claude-3-haiku-20240307",
+                "claude-2.1",
+                "claude-2.0"
+            ]}
+            
+    except Exception as e:
+        logger.error(f"Failed to fetch models: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+
+# 测试模型连接
+@app.post("/api/models/test")
+async def test_model_connection(request: ModelTestRequest):
+    try:
+        test_message = "Hi, this is a connection test. Please respond with 'OK'."
+        
+        if request.provider == "openai":
+            client = openai.OpenAI(
+                api_key=request.api_key,
+                base_url=request.base_url if request.base_url else None
+            )
+            response = client.chat.completions.create(
+                model=request.model_name,
+                messages=[{"role": "user", "content": test_message}],
+                max_tokens=10
+            )
+            return {
+                "success": True,
+                "response": response.choices[0].message.content,
+                "model_info": {
+                    "id": response.model,
+                    "usage": response.usage.dict() if response.usage else None
+                }
+            }
+            
+        elif request.provider == "google":
+            genai.configure(api_key=request.api_key)
+            model = genai.GenerativeModel(request.model_name)
+            response = model.generate_content(test_message)
+            return {
+                "success": True,
+                "response": response.text,
+                "model_info": {"id": request.model_name}
+            }
+            
+        elif request.provider == "anthropic":
+            client = anthropic.Anthropic(api_key=request.api_key)
+            response = client.messages.create(
+                model=request.model_name,
+                max_tokens=10,
+                messages=[{"role": "user", "content": test_message}]
+            )
+            return {
+                "success": True,
+                "response": response.content[0].text,
+                "model_info": {"id": response.model}
+            }
+            
+    except Exception as e:
+        logger.error(f"Model test failed: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 @app.get("/api/logs", response_class=Response)
 async def get_logs():
@@ -278,4 +381,3 @@ async def get_logs():
         return Response(content=f"Log file not found at '{LOG_FILE}'.", status_code=404, media_type="text/plain")
     except Exception as e:
         return Response(content=f"An error occurred while reading logs: {e}", status_code=500, media_type="text/plain")
-

@@ -1,8 +1,8 @@
-<!-- src/pages/ControlPanel.svelte (FINAL & CORRECT) -->
+<!-- src/pages/ControlPanel.svelte -->
 <script>
     import { t, get as t_get } from '../i18n.js';
     import { config, keywordsInput, setKeywords, userPersonasArray, customFontName, showStatus, updateConfigField } from '../lib/stores.js';
-    import { clearMemory } from '../lib/api.js';
+    import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
 
     import Card from '../components/Card.svelte';
     import LogViewer from '../components/LogViewer.svelte';
@@ -14,6 +14,13 @@
     let activeTab = 'directives';
     let channelIdToClear = '';
     let fontFileInput;
+    
+    // 模型选择相关变量
+    let availableModels = [];
+    let isLoadingModels = false;
+    let testResult = null;
+    let isTesting = false;
+    let useManualInput = false;
 
     function addPersona() { config.update(c => { const newKey = `new-user-${Date.now()}`; c.user_personas[newKey] = { id: '', nickname: '', prompt: '' }; return c; }); }
     function removePersona(key) { config.update(c => { delete c.user_personas[key]; return c; }); }
@@ -66,6 +73,67 @@
         customFontName.set('');
         showStatus(t_get('uiSettings.font.resetSuccess'), 'success');
     }
+    
+    // 模型选择相关函数
+    async function loadModels() {
+        if (!$config.api_key) {
+            showStatus(t_get('llmProvider.noApiKey'), 'error');
+            return;
+        }
+        
+        isLoadingModels = true;
+        try {
+            const result = await fetchAvailableModels(
+                $config.llm_provider,
+                $config.api_key,
+                $config.base_url
+            );
+            availableModels = result.models;
+            useManualInput = false;
+            showStatus(t_get('llmProvider.modelsLoaded'), 'success');
+        } catch (e) {
+            showStatus(t_get('llmProvider.modelsLoadFailed') + e.message, 'error');
+            availableModels = [];
+            useManualInput = true;
+        } finally {
+            isLoadingModels = false;
+        }
+    }
+    
+    async function handleTestModel() {
+        if (!$config.model_name) {
+            showStatus(t_get('llmProvider.selectModelFirst'), 'error');
+            return;
+        }
+        
+        isTesting = true;
+        testResult = null;
+        try {
+            const result = await testModel(
+                $config.llm_provider,
+                $config.api_key,
+                $config.base_url,
+                $config.model_name
+            );
+            testResult = result;
+            if (result.success) {
+                showStatus(t_get('llmProvider.testSuccess'), 'success');
+            } else {
+                showStatus(t_get('llmProvider.testFailed') + result.error, 'error');
+            }
+        } catch (e) {
+            showStatus(t_get('llmProvider.testError') + e.message, 'error');
+        } finally {
+            isTesting = false;
+        }
+    }
+    
+    // 当provider或API key改变时，重置状态
+    $: if ($config.llm_provider || $config.api_key) {
+        availableModels = [];
+        testResult = null;
+        useManualInput = false;
+    }
 </script>
 
 <div class="page-container">
@@ -100,6 +168,78 @@
                     {#if $config.llm_provider === 'openai'}
                         <label for="base-url">{$t('llmProvider.baseUrl')}</label>
                         <input id="base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} value={$config.base_url} on:input={e => updateConfigField('base_url', e.target.value)}>
+                    {/if}
+                    
+                    <!-- 新增的模型选择功能 -->
+                    <div class="model-selector-group">
+                        <label for="model-name">{$t('defaultBehavior.modelName')}</label>
+                        <div class="model-controls">
+                            {#if !useManualInput && availableModels.length > 0}
+                                <select id="model-name" value={$config.model_name} 
+                                        on:change={e => updateConfigField('model_name', e.target.value)}>
+                                    <option value="">-- {$t('llmProvider.selectModel')} --</option>
+                                    {#each availableModels as model}
+                                        <option value={model}>{model}</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <input id="model-name" type="text" 
+                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$config.llm_provider}`)} 
+                                       value={$config.model_name} 
+                                       on:input={e => updateConfigField('model_name', e.target.value)}>
+                            {/if}
+                            
+                            <div class="model-buttons">
+                                <button class="action-btn-secondary" 
+                                        on:click={loadModels} 
+                                        disabled={isLoadingModels}
+                                        title={$t('llmProvider.fetchModelsTooltip')}>
+                                    {#if isLoadingModels}
+                                        {$t('llmProvider.loading')}
+                                    {:else if availableModels.length > 0}
+                                        🔄
+                                    {:else}
+                                        {$t('llmProvider.fetchModels')}
+                                    {/if}
+                                </button>
+                                
+                                {#if availableModels.length > 0}
+                                    <button class="action-btn-secondary" 
+                                            on:click={() => useManualInput = !useManualInput}
+                                            title={$t('llmProvider.toggleInputMode')}>
+                                        {useManualInput ? '📋' : '✏️'}
+                                    </button>
+                                {/if}
+                                
+                                <button class="action-btn" 
+                                        on:click={handleTestModel} 
+                                        disabled={isTesting || !$config.model_name}>
+                                    {isTesting ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
+                                </button>
+                            </div>
+                        </div>
+                        
+                        {#if availableModels.length > 0 && !useManualInput}
+                            <p class="info">{$t('llmProvider.modelListInfo', { count: availableModels.length })}</p>
+                        {/if}
+                    </div>
+                    
+                    {#if testResult}
+                        <div class="test-result {testResult.success ? 'success' : 'error'}">
+                            <strong>{$t('llmProvider.testResult')}:</strong>
+                            {#if testResult.success}
+                                <p>{$t('llmProvider.modelResponded')}: "{testResult.response}"</p>
+                                {#if testResult.model_info?.usage}
+                                    <p class="usage-info">
+                                        Tokens: {testResult.model_info.usage.total_tokens} 
+                                        (Prompt: {testResult.model_info.usage.prompt_tokens}, 
+                                        Completion: {testResult.model_info.usage.completion_tokens})
+                                    </p>
+                                {/if}
+                            {:else}
+                                <p>{testResult.error}</p>
+                            {/if}
+                        </div>
                     {/if}
                 </Card>
                 <Card title={$t('contextControl.title')}>
@@ -148,8 +288,6 @@
                     <button class="add-btn" on:click={addPersona}>{$t('userPortrait.add')}</button>
                 </Card>
                 <Card title={$t('defaultBehavior.title')}>
-                    <label for="model-name">{$t('defaultBehavior.modelName')}</label>
-                    <input id="model-name" type="text" placeholder={$t(`defaultBehavior.modelPlaceholders.${$config.llm_provider}`)} value={$config.model_name} on:input={e => updateConfigField('model_name', e.target.value)}>
                     <label for="system-prompt">{$t('defaultBehavior.systemPrompt')}</label>
                     <textarea id="system-prompt" rows="4" placeholder={$t('defaultBehavior.systemPromptPlaceholder')} value={$config.system_prompt} on:input={e => updateConfigField('system_prompt', e.target.value)}></textarea>
                     <label for="blocked-response">{$t('defaultBehavior.blockedResponse')}</label>
@@ -206,4 +344,66 @@
     .tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: .5rem; box-shadow: var(--shadow); margin-top: 2rem; }
     .tabs button { flex: 1; padding: .75rem; border: none; background: transparent; font-size: 1rem; font-weight: 500; border-radius: 8px; cursor: pointer; color: var(--text-light); transition: all 0.2s ease-in-out; }
     .tabs button.active { background: var(--primary-color); color: #fff; box-shadow: 0 2px 5px rgba(52,152,219,.2); }
+    
+    /* 新增的模型选择器样式 */
+    .model-controls {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    
+    .model-controls > * {
+        width: 100%;
+    }
+    
+    .model-buttons {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .model-buttons button:first-child {
+        flex: 1;
+    }
+    
+    .test-result {
+        margin-top: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+    }
+    
+    .test-result.success {
+        background-color: var(--success-bg);
+        color: var(--success-text);
+    }
+    
+    .test-result.error {
+        background-color: var(--error-bg);
+        color: var(--error-text);
+    }
+    
+    .usage-info {
+        font-size: 0.85rem;
+        opacity: 0.8;
+        margin-top: 0.5rem;
+    }
+    
+    @media (min-width: 768px) {
+        .model-controls {
+            flex-direction: row;
+            align-items: center;
+        }
+        
+        .model-controls select,
+        .model-controls input {
+            flex: 1;
+            width: auto;
+        }
+        
+        .model-buttons {
+            flex-shrink: 0;
+            width: auto;
+        }
+    }
 </style>
+
