@@ -3,6 +3,7 @@
     import { t, get as t_get } from '../i18n.js';
     import { config, keywordsInput, setKeywords, userPersonasArray, customFontName, showStatus, updateConfigField } from '../lib/stores.js';
     import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
+    import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
     import LogViewer from '../components/LogViewer.svelte';
@@ -11,6 +12,65 @@
     import PluginEditor from '../components/PluginEditor.svelte';
 
     export let applyFont;
+
+// === 添加 IndexedDB 辅助函数 开始 ===
+const DB_NAME = 'FontStorage';
+const DB_VERSION = 1;
+const STORE_NAME = 'fonts';
+
+async function openDB() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        
+        request.onupgradeneeded = (event) => {
+            const db = event.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+                db.createObjectStore(STORE_NAME);
+            }
+        };
+    });
+}
+
+async function saveToIndexedDB(key, value) {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.put(value, key);
+    
+    return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+
+async function loadFromIndexedDB(key) {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.get(key);
+    
+    return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+async function deleteFromIndexedDB(key) {
+    const db = await openDB();
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    store.delete(key);
+    
+    return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error);
+    });
+}
+// === 添加 IndexedDB 辅助函数 结束 ===
+
     let activeTab = 'directives';
     let channelIdToClear = '';
     let fontFileInput;
@@ -48,31 +108,63 @@
     }
 
     function handleFontFileSelect(event) {
-        const file = event.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const fontDataUrl = e.target.result;
-            try {
-                localStorage.setItem('customFontDataUrl', fontDataUrl);
-                localStorage.setItem('customFontName', file.name);
-                applyFont(fontDataUrl, file.name);
-            } catch (error) {
-                showStatus(t_get('uiSettings.font.localStorageError'), 'error');
-            }
-        };
-        reader.onerror = () => { showStatus(t_get('uiSettings.font.loadError'), 'error'); };
-        reader.readAsDataURL(file);
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // 放宽文件大小限制到 50MB
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    if (file.size > maxSize) {
+        showStatus(t_get('uiSettings.font.fileTooLarge', { 
+            size: (file.size / 1024 / 1024).toFixed(2),
+            maxSize: 50 
+        }), 'error');
+        return;
     }
+    
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+        const fontDataUrl = e.target.result;
+        try {
+            // 使用 IndexedDB 存储
+            await saveToIndexedDB('customFontDataUrl', fontDataUrl);
+            await saveToIndexedDB('customFontName', file.name);
+            
+            // 同时在 localStorage 保存字体名称（作为标记）
+            localStorage.setItem('customFontName', file.name);
+            
+            applyFont(fontDataUrl, file.name);
+            showStatus(t_get('uiSettings.font.loadSuccess'), 'success');
+        } catch (error) {
+            console.error('Font storage error:', error);
+            showStatus(t_get('uiSettings.font.storageError') + ': ' + error.message, 'error');
+        }
+    };
+    reader.onerror = () => { 
+        showStatus(t_get('uiSettings.font.loadError'), 'error'); 
+    };
+    reader.readAsDataURL(file);
+}
 
-    function resetFont() {
-        const styleElement = document.getElementById('custom-font-style');
-        if (styleElement) styleElement.remove();
-        localStorage.removeItem('customFontDataUrl');
-        localStorage.removeItem('customFontName');
-        customFontName.set('');
-        showStatus(t_get('uiSettings.font.resetSuccess'), 'success');
+
+async function resetFont() {
+    const styleElement = document.getElementById('custom-font-style');
+    if (styleElement) styleElement.remove();
+    
+    // 清理 IndexedDB
+    try {
+        await deleteFromIndexedDB('customFontDataUrl');
+        await deleteFromIndexedDB('customFontName');
+    } catch (e) {
+        console.error('Failed to clear IndexedDB:', e);
     }
+    
+    // 清理 localStorage
+    localStorage.removeItem('customFontName');
+    
+    customFontName.set('');
+    showStatus(t_get('uiSettings.font.resetSuccess'), 'success');
+}
+
     
     // 模型选择相关函数
     async function loadModels() {

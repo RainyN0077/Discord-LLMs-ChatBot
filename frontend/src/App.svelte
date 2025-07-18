@@ -1,6 +1,7 @@
 <!-- src/App.svelte (FINAL & CORRECT) -->
 <script>
     import { onMount } from 'svelte';
+    import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang } from './i18n.js';
     import { fetchConfig, saveConfig, statusMessage, statusType, isLoading, customFontName } from './lib/stores.js';
     import ControlPanel from './pages/ControlPanel.svelte';
