@@ -26,14 +26,35 @@
         customFontName.set(fontName);
     }
 
-    onMount(() => {
-        fetchConfig();
-        const savedFontData = localStorage.getItem('customFontDataUrl');
-        const savedFontName = localStorage.getItem('customFontName');
-        if (savedFontData && savedFontName) {
-            applyFont(savedFontData, savedFontName);
+    onMount(async () => {
+    fetchConfig();
+    
+    // 从 localStorage 获取字体名称（作为标记）
+    const savedFontName = localStorage.getItem('customFontName');
+    if (savedFontName) {
+        console.log('Found saved font name:', savedFontName); // 调试日志
+        try {
+            // 从 IndexedDB 加载字体数据
+            const fontDataUrl = await loadFromIndexedDB('customFontDataUrl');
+            const fontName = await loadFromIndexedDB('customFontName');
+            if (fontDataUrl && fontName) {
+                console.log('Loading font from IndexedDB:', fontName); // 调试日志
+                applyFont(fontDataUrl, fontName);
+            } else {
+                console.log('Font data not found in IndexedDB'); // 调试日志
+            }
+        } catch (e) {
+            console.error('Failed to load font from IndexedDB:', e);
+            // 尝试从 localStorage 降级加载（兼容旧数据）
+            const savedFontData = localStorage.getItem('customFontDataUrl');
+            if (savedFontData && savedFontName) {
+                console.log('Loading font from localStorage (fallback)'); // 调试日志
+                applyFont(savedFontData, savedFontName);
+            }
         }
-    });
+    }
+});
+
 </script>
 
 <div class="lang-switcher">
