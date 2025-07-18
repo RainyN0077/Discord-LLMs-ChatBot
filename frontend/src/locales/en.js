@@ -1,5 +1,42 @@
+// en.js (Updated with error message)
 export default {
     title: "Discord LLM Bot Control Panel",
+    nav: {
+        controlPanel: "Control Panel",
+        debugger: "Prompt Debugger",
+    },
+    errors: { // <-- NEW SECTION
+        duplicateId: "Error: The ID '{id}' is already in use. Please choose a unique ID.",
+    },
+    tabs: {
+        core: "Core Settings",
+        directives: "Directives",
+        advanced: "Advanced Tools",
+    },
+    // ... rest of the file remains the same
+    prompts: {
+        saveConfirm: "Are you sure you want to save and restart the bot? The bot will have a brief downtime.",
+    },
+    debugger: {
+        title: "Prompt & Persona Debugger",
+        info: "Simulate a message to see the exact System Prompt that gets generated and test the LLM's response. This helps fine-tune your persona configuration without spamming Discord channels.",
+        userId: "User ID",
+        userIdPlaceholder: "Simulated User ID (required)",
+        channelId: "Channel ID",
+        channelIdPlaceholder: "Target Channel ID (required)",
+        guildId: "Server ID (Optional)",
+        guildIdPlaceholder: "Target Server ID",
+        roleId: "Role ID (Optional)",
+        roleIdPlaceholder: "Simulated Role ID",
+        message: "Message Content",
+        messagePlaceholder: "Enter the message to simulate... (required)",
+        button: "Simulate Response",
+        simulating: "Simulating...",
+        generatedPrompt: "Generated System Prompt",
+        llmResponse: "Simulated LLM Response",
+        error: "Simulation failed: ",
+        errorIncomplete: "User ID, Channel ID, and Message Content are required.",
+    },
     uiSettings: {
         title: "UI Settings",
         font: {
@@ -37,12 +74,13 @@ export default {
     },
     scopedPrompts: {
         enabled: "Enabled",
+        remove: "Remove",
         mode: {
             title: "Mode",
             override: "Override Bot's Identity",
             append: "Append as Scene Context"
         },
-        channel: {
+        channels: {
             title: "Channel-Specific Directive (Highest Priority for Bot's Identity)",
             info: "Define the bot's core identity (Override) or the scene's context (Append) for a specific channel. A channel's 'Override' directive is the highest priority rule for determining the bot's persona.",
             add: "+ Add Channel Directive",
@@ -52,7 +90,7 @@ export default {
             overridePlaceholder: "The bot will adopt this persona in THIS channel ONLY...",
             appendPlaceholder: "Describe this channel's purpose or current topic..."
         },
-        guild: {
+        guilds: {
             title: "Server-Specific Directive (Mid Priority for Bot's Identity)",
             info: "Define the bot's identity (Override) or scene context (Append) for an entire server. This is applied only if there is NO channel-specific 'Override' directive active.",
             add: "+ Add Server Directive",
@@ -75,6 +113,7 @@ export default {
         title: "Role-Based Configuration (Low Priority for Bot's Identity)", 
         info: "Define the BOT's persona when interacting with users of a certain role. This is applied only if no Channel or Server 'Override' directives are active. You can also set usage limits.", 
         add: "+ Add Role Configuration", 
+        remove: "Remove",
         roleId: "Discord Role ID", 
         roleTitle: "Custom Title (e.g., VIP Member)", 
         rolePrompt: "Bot's persona FOR THIS ROLE (e.g., 'A respectful butler')", 
@@ -113,6 +152,7 @@ export default {
     customParams: { 
         title: "Custom LLM Parameters", 
         add: "+ Add Parameter", 
+        remove: "Remove",
         paramName: "Parameter Name", 
         paramValue: "Value", 
         types: { 
@@ -136,6 +176,7 @@ export default {
         title: "Plugin Manager",
         info: "Create tools that the bot can use. Plugins trigger on specific commands or keywords to perform actions, like calling an external API. The API result can be directly displayed or summarized by the LLM.",
         add: "+ Add Plugin", 
+        remove: "Remove",
         name: "Plugin Name", 
         enabled: "Enabled", 
         triggerType: "Trigger Type",

@@ -1,16 +1,69 @@
 # backend/app/utils.py
-
 import json
+import logging
+import os
+import asyncio
 from typing import List, Dict, Any, Optional
 
 import discord
-import logging
 import aiohttp
+import tiktoken
+import anthropic
+from logging.handlers import RotatingFileHandler
 
 logger = logging.getLogger(__name__)
 
+# --- 日志系统设置 ---
+def setup_logging():
+    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter)
+    logger.addHandler(stream_handler)
+    
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+    file_handler = RotatingFileHandler('logs/bot.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+    file_handler.setFormatter(log_formatter)
+    logger.addHandler(file_handler)
+    
+# --- Token 计算器 ---
+class TokenCalculator:
+    def __init__(self):
+        self._openai_cache = {}
+        try:
+            self._anthropic_client = anthropic.Anthropic()
+        except Exception as e:
+            logger.warning(f"Could not initialize Anthropic client for token counting: {e}")
+            self._anthropic_client = None
+
+    def _get_openai_tokenizer(self, model_name: str):
+        if model_name in self._openai_cache: return self._openai_cache[model_name]
+        try:
+            encoding = tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            logger.warning(f"Model '{model_name}' not found for tokenization. Falling back to 'cl100k_base'.")
+            encoding = tiktoken.get_encoding("cl100k_base")
+        self._openai_cache[model_name] = encoding
+        return encoding
+
+    def get_token_count(self, text: str, provider: str, model: str) -> int:
+        if not text: return 0
+        try:
+            if provider == "openai": return len(self._get_openai_tokenizer(model).encode(text))
+            elif provider == "anthropic" and self._anthropic_client: return self._anthropic_client.count_tokens(text)
+            elif provider == "google": return max(1, int(len(text) / 3.5)) 
+            else: return len(text)
+        except Exception as e:
+            logger.warning(f"Token calculation failed for provider {provider}: {e}. Falling back to len().")
+            return len(text)
+
+# --- 消息工具 ---
 def split_message(text: str, max_length: int = 2000) -> List[str]:
-    """将长文本分割成符合Discord消息长度限制的多个部分。"""
     if not text:
         return []
     parts = []
@@ -18,20 +71,29 @@ def split_message(text: str, max_length: int = 2000) -> List[str]:
         if len(text) <= max_length:
             parts.append(text)
             break
-        # 优先从换行符切分
         cut_index = text.rfind('\n', 0, max_length)
-        # 其次从空格切分
         if cut_index == -1:
             cut_index = text.rfind(' ', 0, max_length)
-        # 如果都没有，就硬切
         if cut_index == -1:
             cut_index = max_length
         parts.append(text[:cut_index].strip())
         text = text[cut_index:].strip()
     return parts
 
+def escape_content(text: str) -> str:
+    return text.replace('[', '&#91;').replace(']', '&#93;')
+
+async def download_image(url: str) -> bytes | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status == 200: return await resp.read()
+    except Exception as e:
+        logger.warning(f"Error downloading image from {url}", exc_info=True)
+    return None
+
+# --- 插件 HTTP 请求工具 ---
 def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
-    """用消息上下文中的值替换模板字符串中的占位符。"""
     if not isinstance(template_str, str): return ''
     replacements = {
         "{user_input}": args,
@@ -47,7 +109,6 @@ def _format_with_placeholders(template_str: str, message: discord.Message, args:
     return template_str
 
 async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.Message, args: str) -> Optional[str]:
-    """执行HTTP请求并返回结果字符串。"""
     http_conf = plugin_config.get('http_request_config', {})
     url = _format_with_placeholders(http_conf.get('url', ''), message, args)
     method = http_conf.get('method', 'GET').upper()

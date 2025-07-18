@@ -1,5 +1,42 @@
+// zh.js (Updated with error message)
 export default {
     title: "Discord LLM 机器人控制面板",
+    nav: {
+        controlPanel: "控制面板",
+        debugger: "指令调试器",
+    },
+    errors: { // <-- 新增部分
+        duplicateId: "错误：ID '{id}' 已被占用，请选择一个唯一的ID。",
+    },
+    tabs: {
+        core: "核心设置",
+        directives: "身份指令",
+        advanced: "高级工具",
+    },
+    // ... rest of the file remains the same
+    prompts: {
+        saveConfirm: "您确定要保存并重启机器人吗？机器人将有短暂的离线时间。",
+    },
+    debugger: {
+        title: "指令和人设调试器",
+        info: "模拟一条消息，以查看最终生成的系统指令（System Prompt）并测试LLM的回应。这有助于您在不干扰Discord频道的情况下，精细调整机器人的人设配置。",
+        userId: "用户ID",
+        userIdPlaceholder: "模拟的用户ID（必需）",
+        channelId: "频道ID",
+        channelIdPlaceholder: "目标频道ID（必需）",
+        guildId: "服务器ID（可选）",
+        guildIdPlaceholder: "目标服务器ID",
+        roleId: "身份组ID（可选）",
+        roleIdPlaceholder: "模拟的身份组ID",
+        message: "消息内容",
+        messagePlaceholder: "输入要模拟的消息...（必需）",
+        button: "模拟回应",
+        simulating: "模拟中...",
+        generatedPrompt: "生成的系统指令",
+        llmResponse: "模拟的LLM回应",
+        error: "模拟失败：",
+        errorIncomplete: "用户ID、频道ID和消息内容为必填项。",
+    },
     uiSettings: {
         title: "界面设置",
         font:{
@@ -37,12 +74,13 @@ export default {
     },
     scopedPrompts: {
         enabled: "启用",
+        remove: "移除",
         mode: {
             title: "模式",
             override: "覆盖Bot身份",
             append: "追加为场景"
         },
-        channel: {
+        channels: {
             title: "频道特定指令 (Bot身份最高优先级)",
             info: "为特定频道定义Bot的核心身份(覆盖模式)或场景上下文(追加模式)。频道的“覆盖”指令是决定Bot人设的最高优先级规则。",
             add: "+ 添加频道指令",
@@ -52,7 +90,7 @@ export default {
             overridePlaceholder: "Bot将仅在此频道扮演这个人设…",
             appendPlaceholder: "描述此频道的用途或当前话题…"
         },
-        guild: {
+        guilds: {
             title: "服务器特定指令 (Bot身份中等优先级)",
             info: "为整个服务器定义Bot的身份(覆盖模式)或场景上下文(追加模式)。仅当没有激活的频道“覆盖”指令时，此设置才生效。",
             add: "+ 添加服务器指令",
@@ -75,6 +113,7 @@ export default {
         title: "基于身份组的配置 (Bot身份低优先级)", 
         info: "定义Bot在与特定身份组成员互动时的自身人设。仅当没有频道或服务器的“覆盖”指令生效时，此设置才会被采用。你也可以在此处设置使用限制。", 
         add: "+ 添加身份组配置", 
+        remove: "移除",
         roleId: "Discord 身份组ID", 
         roleTitle: "自定义头衔 (例如：尊贵的会员)", 
         rolePrompt: "Bot对此身份组的人设 (例如：‘一位恭敬的管家’)", 
@@ -113,6 +152,7 @@ export default {
     customParams: { 
         title: "自定义 LLM 参数", 
         add: "+ 添加参数", 
+        remove: "移除",
         paramName: "参数名称", 
         paramValue: "值", 
         types: { 
@@ -136,6 +176,7 @@ export default {
         title: "插件管理器",
         info: "创建可供机器人使用的工具。插件通过特定命令或关键词触发，以执行调用外部API等操作。API返回的结果可以直接显示，也可以交由LLM进行智能总结。",
         add: "+ 添加插件", 
+        remove: "移除",
         name: "插件名称", 
         enabled: "启用", 
         triggerType: "触发方式",

@@ -1,23 +1,33 @@
-<div align="center">
-  <h1>Discord LLM Chatbot 🤖</h1>
-  <p>
-    A highly customizable, multi-provider LLM chatbot for Discord with a powerful web UI and a secure, RESTful plugin system.
+<p>
+    <strong>A highly customizable, multi-provider LLM chatbot for Discord with a powerful web UI and a secure, RESTful plugin system.</strong>
     <br />
-    一个高度可定制、支持多服务商、带Web界面和安全RESTful插件系统的Discord大语言模型机器人。
+    <strong>一个高度可定制、支持多服务商、带Web界面和安全RESTful插件系统的Discord大语言模型机器人。</strong>
   </p>
+
   <table>
     <tr>
       <td align="center">
-        <b>强大的Web控制面板</b><br>
-        <img src="https://cdn.discordapp.com/attachments/1341259395396272180/1395538240307593379/image.png?ex=687acfc4&is=68797e44&hm=51fb3771ef7be409a76544a59f272840e6bd79cb84878786f36b5bc621c3c65b&" alt="Web UI Overview" width="440">
+        <b>Core Settings / 核心设置</b><br>
+        <img src="https://cdn.discordapp.com/attachments/1341259395396272180/1395754142068244491/image.png?ex=687b98d7&is=687a4757&hm=c27d1853f6433c4b7f3d005f60655ba68fd3b2e2b01762f6e03e998c64d2b1c2&" alt="Core Settings" width="440">
       </td>
-      
+    </tr>
+    <tr>
+      <td align="center">
+        <b>Identity Directives / 身份指令</b><br>
+        <img src="https://cdn.discordapp.com/attachments/1341259395396272180/1395754141665726554/image.png?ex=687b98d7&is=687a4757&hm=65fe691f560677fd9550cc7fd6fbe490f12773698e52c7d2e4cddaad4897cb5e&" alt="Identity Directives" width="440">
+      </td>
+    </tr>
+    <tr>
+      <td align="center">
+        <b>Advanced Tools / 高级工具</b><br>
+        <img src="https://cdn.discordapp.com/attachments/1341259395396272180/1395754142550458419/image.png?ex=687b98d7&is=687a4757&hm=26a0ee323e47e9fdbb673852a4fe21057d502a7e0b8a16107ce4db962a9c86f0&" alt="Advanced Tools" width="440">
+      </td>
     </tr>
   </table>
 </div>
- 
+
 ---
- 
+
 <details>
 <summary><strong>English Readme (Click to expand)</strong></summary>
 
@@ -36,6 +46,7 @@
     -   Supports two action types: direct HTTP output or **LLM-Augmented Tool** for smarter, summarized responses.
 - **✅ Quota Management**: Built-in usage tracking (message/token limits) for roles. Users can check their remaining quota with the `!myquota` command.
 - **✅ Advanced Context Awareness**: The bot reads chat history (configurable limits) to understand conversations deeply.
+- **✅ Real-time Log Viewer**: Monitor bot activities and debug issues directly from the web interface.
 - **✅ Dockerized & Easy Setup**: Get up and running in minutes with a single `docker-compose` command.
 - **✅ Multilingual UI**: Switch between English and Chinese on the fly.
 
@@ -72,7 +83,12 @@
 
 All configurations are managed through the web UI at `http://localhost:8080`.
 
--   **UI Settings**: Load a custom font file (`.ttf`, `.woff`, etc.) to personalize your control panel's appearance. The setting is saved in your browser.
+### Core Settings
+-   **Global Configuration**: Set your Discord bot token and view your auto-generated API key for external integrations.
+-   **LLM Provider**: Choose between OpenAI, Google Gemini, or Anthropic Claude, and configure API keys and models.
+-   **Context Control**: Configure how the bot reads and processes chat history (none, channel-based, or memory-based).
+
+### Identity Directives
 -   **Channel/Server Directives**:
     -   **Override Mode**: Forces the bot to adopt a specific identity in that context. A Channel Override has the highest priority for the bot's identity.
     -   **Append Mode**: Adds contextual information about the scene (e.g., "This is a casual gaming channel").
@@ -83,9 +99,14 @@ All configurations are managed through the web UI at `http://localhost:8080`.
 -   **Default Behavior**:
      -   Set the bot's foundational, fallback persona.
      -   Customize the message template for when a response is blocked by a content filter (useful for Google Gemini), using `{reason}` as a placeholder.
+
+### Advanced Tools
 -   **Plugin Manager**:
     -   Create tools that trigger on commands or keywords.
     -   **Action Type**: `HTTP Request (Direct Output)` for raw API data, or `LLM-Augmented Tool` to have the LLM summarize the API result (`{api_result}`) for a natural response.
+-   **Custom Parameters**: Add custom parameters for fine-tuning your LLM requests (temperature, max_tokens, etc.).
+-   **Session Management**: Clear conversation memory for specific channels.
+-   **UI Settings**: Load a custom font file (`.ttf`, `.woff`, etc.) to personalize your control panel's appearance. The setting is saved in your browser.
 
 ## 🔌 Using the RESTful API
 
@@ -143,6 +164,7 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
     -   支持两种动作类型：直接输出API结果，或使用 **LLM增强工具** 对结果进行智能总结，生成更自然的回应。
 - **✅ 额度管理系统**: 内建针对身份组的用量追踪。用户可通过 `!myquota` 命令查询自己剩余的额度。
 - **✅ 高级上下文感知**: 机器人能读取聊天历史（数量/字数可配置），以深入理解对话的来龙去脉。
+- **✅ 实时日志查看器**: 直接从Web界面监控机器人活动并调试问题。
 - **✅ Docker化，一键部署**: 使用 `docker-compose` 命令，数分钟内即可启动并运行。
 - **✅ 多语言界面**: 控制面板支持中/英文即时切换。
 
@@ -170,9 +192,9 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 3.  **配置机器人:**
     - 打开你的浏览器，访问 `http://localhost:8080`。
     - 填写所有必要的配置项，特别是你的**Discord机器人令牌**和**LLM的API密钥**。
-    - 你专属的**RESTful API密钥**会自动生成并显示在“全局配置”区域。
+    - 你专属的**RESTful API密钥**会自动生成并显示在"全局配置"区域。
     - 浏览不同的配置卡片，根据你的喜好定制机器人。
-    - 点击**“保存配置并重启机器人”**。
+    - 点击**"保存配置并重启机器人"**。
 
 4.  **大功成告!** 现在可以将你的机器人邀请到你的Discord服务器，开始对话了！
 
@@ -180,20 +202,30 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 所有配置均通过 `http://localhost:8080` 的Web界面进行管理。
 
--   **界面设置**: 加载自定义字体文件（如 `.ttf`, `.woff`），个性化你的控制面板外观。该设置会保存在你的浏览器中。
+### 核心设置
+-   **全局配置**: 设置你的Discord机器人令牌，并查看自动生成的API密钥用于外部集成。
+-   **大模型服务商**: 在OpenAI、Google Gemini或Anthropic Claude之间选择，并配置API密钥和模型。
+-   **上下文控制**: 配置机器人如何读取和处理聊天历史（无、基于频道或基于记忆）。
+
+### 身份指令
 -   **频道/服务器指令**:
     -   **覆盖模式**: 强制Bot在该场景下扮演一个特定身份。频道覆盖是Bot身份的最高优先级指令。
-    -   **追加模式**: 为对话添加场景背景信息（例如：“这是一个闲聊吹水频道”）。
--   **用户肖像**: 最重要的上下文设定。这部分是告诉Bot“**用户是谁**”（例如：“我的创造者和主人”）。Bot会永远将此信息纳入考量。
+    -   **追加模式**: 为对话添加场景背景信息（例如："这是一个闲聊吹水频道"）。
+-   **用户肖像**: 最重要的上下文设定。这部分是告诉Bot"**用户是谁**"（例如："我的创造者和主人"）。Bot会永远将此信息纳入考量。
 -   **基于身份组的配置**:
-    -   定义Bot**对待**特定身份组用户的态度和人设（例如：“对VIP用户要像管家一样恭敬”）。这是一个较低优先级的身份设定。
+    -   定义Bot**对待**特定身份组用户的态度和人设（例如："对VIP用户要像管家一样恭敬"）。这是一个较低优先级的身份设定。
     -   可设置消息或Token数限制，并自定义额度查询信息框的颜色。
 -   **默认行为**:
     -   设定Bot的基础、备用人设。
     -   自定义当响应被内容过滤器（主要针对Google Gemini）屏蔽时发送的回复消息模板，可使用 `{reason}` 作为原因占位符。
+
+### 高级工具
 -   **插件管理器**:
     -   创建由命令或关键词触发的工具。
     -   **动作类型**: `HTTP请求 (直接输出)`用于返回原始API数据；`LLM增强工具`则会让大模型总结API结果（用`{api_result}`引用），以生成更自然的回应。
+-   **自定义参数**: 添加自定义参数以微调你的LLM请求（temperature、max_tokens等）。
+-   **会话管理**: 清除特定频道的对话记忆。
+-   **界面设置**: 加载自定义字体文件（如 `.ttf`, `.woff`），个性化你的控制面板外观。该设置会保存在你的浏览器中。
 
 ## 🔌 使用 RESTful API
 
