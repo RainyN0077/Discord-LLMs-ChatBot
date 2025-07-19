@@ -4,7 +4,7 @@ import json
 import discord
 import os
 from io import BytesIO
-from typing import AsyncGenerator, Dict, List, Any
+from typing import AsyncGenerator, Dict, List, Any, Optional
 from datetime import datetime, timezone, timedelta
 import logging
 from PIL import Image
@@ -40,7 +40,8 @@ def process_custom_params(params_list: List[Dict[str, Any]]) -> Dict[str, Any]:
             logger.warning(f"Could not process custom parameter '{name}'. Invalid value '{value}' for type '{param_type}': {e}")
     return processed_params
 
-async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> AsyncGenerator[tuple[str, str], None]:
+async def get_llm_response(config: dict, messages: List[Dict[str, Any]], context_info: Dict[str, Any] = None) -> AsyncGenerator[tuple[str, str], None]:
+
     provider, api_key, base_url, model, stream = config.get("llm_provider", "openai"), config.get("api_key"), config.get("base_url"), config.get("model_name"), config.get("stream_response", True)
     extra_params = process_custom_params(config.get('custom_parameters', []))
     system_prompt = next((m['content'] for m in messages if m['role'] == 'system'), "")
@@ -116,7 +117,13 @@ async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> Asyn
     
     # 计算输出tokens并记录
     output_tokens = token_calc.get_token_count(full_response, provider, model)
-    await usage_tracker.record_usage(provider, model, input_tokens, output_tokens)
+    if context_info:
+        await usage_tracker.record_usage(
+        provider, model, input_tokens, output_tokens,
+        **context_info
+    )
+    else:
+        await usage_tracker.record_usage(provider, model, input_tokens, output_tokens)
     
     yield "full", full_response
 
