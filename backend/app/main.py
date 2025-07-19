@@ -10,6 +10,7 @@ from collections import deque
 import secrets
 from unittest.mock import MagicMock
 import discord
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Response, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,15 +22,18 @@ import google.generativeai as genai
 import anthropic
 
 from .bot import run_bot, get_llm_response
-from .utils import _execute_http_request, _format_with_placeholders
+from .utils import _execute_http_request, _format_with_placeholders, setup_logging
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from .core_logic.context_builder import format_user_message_for_llm
 
-# --- 日志设置 ---
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "config.json"
-LOG_FILE = "logs/bot.log"
+# 使用 pathlib.Path.cwd() 获取当前工作目录，这在Docker容器中通常是 '/app'
+# 这样可以确保路径相对于项目根目录是正确的
+CURRENT_DIR = Path.cwd()
+CONFIG_FILE = CURRENT_DIR / "config.json"
+# 日志文件的具体路径由 setup_logging 函数内部管理
+
 bot_task = None
 MEMORY_CUTOFFS: Dict[int, datetime] = {}
 USER_USAGE_TRACKER: Dict[int, Dict[str, Any]] = {}
@@ -80,6 +84,9 @@ def save_config(config_data):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global bot_task
+    # 在应用启动时，立即设置日志系统
+    setup_logging()
+    
     loop = asyncio.get_event_loop()
     bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
     yield
@@ -290,63 +297,20 @@ async def get_available_models(request: AvailableModelsRequest):
                 base_url=request.base_url if request.base_url else None
             )
             models = client.models.list()
-            # 过滤出聊天模型
             chat_models = [m.id for m in models if 'gpt' in m.id or 'chat' in m.id]
             return {"models": sorted(chat_models, reverse=True)}
             
         elif request.provider == "google":
             genai.configure(api_key=request.api_key)
             models = genai.list_models()
-            
-            # 调试：打印模型信息
-            logger.info(f"Google returned {len(list(models))} models")
-            
             chat_models = []
-            for model in genai.list_models():  # 重新获取，因为models可能是生成器
-                try:
-                    # 调试：打印模型对象的属性
-                    logger.info(f"Model type: {type(model)}")
-                    logger.info(f"Model attributes: {dir(model)}")
-                    
-                    # 尝试不同的方式获取模型名称
-                    model_name = None
-                    if hasattr(model, 'name'):
-                        model_name = model.name
-                        logger.info(f"Model name: {model_name}")
-                    elif isinstance(model, str):
-                        model_name = model
-                        logger.info(f"Model is string: {model_name}")
-                    else:
-                        logger.warning(f"Unknown model format: {model}")
-                        continue
-                    
-                    # 检查是否支持聊天
-                    supports_chat = False
-                    if hasattr(model, 'supported_generation_methods'):
-                        methods = model.supported_generation_methods
-                        logger.info(f"Supported methods: {methods}")
-                        if 'generateContent' in methods:
-                            supports_chat = True
-                    else:
-                        # 如果没有supported_generation_methods属性，假设所有gemini模型都支持聊天
-                        if model_name and ('gemini' in model_name.lower() or 'palm' in model_name.lower()):
-                            supports_chat = True
-                    
-                    if supports_chat and model_name:
-                        # 清理模型名称
-                        if model_name.startswith('models/'):
-                            model_name = model_name.replace('models/', '')
-                        chat_models.append(model_name)
-                        
-                except Exception as e:
-                    logger.error(f"Error processing individual model: {e}")
-                    continue
-            
-            logger.info(f"Final chat models: {chat_models}")
+            for model in models:
+                if 'generateContent' in model.supported_generation_methods:
+                    name = model.name.replace('models/', '')
+                    chat_models.append(name)
             return {"models": sorted(chat_models)}
             
         elif request.provider == "anthropic":
-            # Anthropic 没有列出模型的API，返回已知模型
             return {"models": [
                 "claude-3-opus-20240229",
                 "claude-3-sonnet-20240229", 
@@ -354,14 +318,10 @@ async def get_available_models(request: AvailableModelsRequest):
                 "claude-2.1",
                 "claude-2.0"
             ]}
-            
     except Exception as e:
         logger.error(f"Failed to fetch models: {e}", exc_info=True)
-        # 返回更详细的错误信息
         error_detail = f"{type(e).__name__}: {str(e)}"
         raise HTTPException(status_code=400, detail=error_detail)
-
-
 
 # 测试模型连接
 @app.post("/api/models/test")
@@ -418,17 +378,36 @@ async def test_model_connection(request: ModelTestRequest):
             "error": str(e)
         }
 
-@app.get("/api/logs", response_class=Response)
+@app.get("/api/logs")
 async def get_logs():
+    log_file_path = CURRENT_DIR / 'logs/bot.log'
+    headers = {"Access-Control-Allow-Origin": "*"}
+    if not log_file_path.exists():
+        logger.warning(f"Log file not found at '{log_file_path}'.")
+        return Response(
+            content=f"INFO: Log file at '{log_file_path}' not found. It will be created when the bot logs something.",
+            media_type="text/plain; charset=utf-8",
+            headers=headers
+        )
+    
     try:
-        with open(LOG_FILE, 'r', encoding='utf-8') as f:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
             log_content = "".join(deque(f, 200))
-        return Response(content=log_content, media_type="text/plain; charset=utf-8")
-    except FileNotFoundError:
-        return Response(content=f"Log file not found at '{LOG_FILE}'.", status_code=404, media_type="text/plain")
+        return Response(
+            content=log_content, 
+            media_type="text/plain; charset=utf-8",
+            headers=headers
+        )
     except Exception as e:
-        return Response(content=f"An error occurred while reading logs: {e}", status_code=500, media_type="text/plain")
-# 添加新的请求模型
+        error_message = f"ERROR: An unexpected error occurred while reading logs: {e}"
+        logger.error(error_message, exc_info=True)
+        return Response(
+            content=error_message, 
+            status_code=200, 
+            media_type="text/plain; charset=utf-8",
+            headers=headers
+        )
+
 class PricingConfig(BaseModel):
     model: str
     input_price_per_1k: float
@@ -442,22 +421,21 @@ async def get_usage_statistics(
     view: str = Query(default="user")
 ):
     from .usage_tracker import usage_tracker
-    print(f"API received: period={period}, view={view}")  # 调试日志
+    print(f"API received: period={period}, view={view}")
     stats = await usage_tracker.get_statistics(period, view)
     return stats
 
 
 @app.post("/api/usage/pricing")
 async def update_pricing(pricing_dict: Dict[str, Any]):
-    # 保存定价配置
-    pricing_file = "pricing_config.json"
+    pricing_file = CURRENT_DIR / "pricing_config.json"
     with open(pricing_file, 'w') as f:
         json.dump(pricing_dict, f, indent=2)
     return {"message": "Pricing updated"}
 
 @app.get("/api/usage/pricing")
 async def get_pricing():
-    pricing_file = "pricing_config.json"
+    pricing_file = CURRENT_DIR / "pricing_config.json"
     
     if os.path.exists(pricing_file):
         try:
@@ -468,4 +446,3 @@ async def get_pricing():
             pass
     
     return {"pricing": {}}
-

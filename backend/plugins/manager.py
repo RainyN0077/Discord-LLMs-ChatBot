@@ -4,13 +4,13 @@ import re
 from typing import List, Dict, Any, Optional, Tuple
 
 import discord
-# 修复：将相对导入 '..app.utils' 改为绝对导入 'app.utils'
+# --- [最终修复] ---
+# 直接从根目录导入 app 包
 from app.utils import _execute_http_request, _format_with_placeholders
 
 logger = logging.getLogger(__name__)
 
 class PluginManager:
-    # --- 修改点: 更新类型提示和初始化逻辑 ---
     def __init__(self, plugins_config: Dict[str, Any], llm_caller):
         self.plugins = [p for p in plugins_config.values() if p.get('enabled')]
         self.llm_caller = llm_caller
@@ -101,3 +101,4 @@ class PluginManager:
                 return 'append', formatted_result
 
         return True
+

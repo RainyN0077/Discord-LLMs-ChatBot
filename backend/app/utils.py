@@ -10,27 +10,60 @@ import aiohttp
 import tiktoken
 import anthropic
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# --- 日志系统设置 ---
+# --- 日志系统设置 (最终优化版) ---
 def setup_logging():
-    log_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
-    if logger.hasHandlers():
-        logger.handlers.clear()
+    # 移除所有现有的处理器，确保从干净的状态开始
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+        
+    # --- [核心修改点] ---
+    # 定义新的日志格式，使其既美观又能被前端正确解析
+    # 格式: YYYY-MM-DD HH:MM:SS [模块名] - 等级 - 消息
+    # 关键在于 ` - %(levelname)s - ` 模式，确保前端的正则能匹配上
+    log_formatter = logging.Formatter(
+        fmt='%(asctime)s [%(name)-18s] - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    # --- [修改结束] ---
+
+    root_logger.setLevel(logging.INFO)
     
+    # 1. 设置流处理器 (输出到控制台)
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(log_formatter)
-    logger.addHandler(stream_handler)
+    root_logger.addHandler(stream_handler)
     
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-    file_handler = RotatingFileHandler('logs/bot.log', maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
-    file_handler.setFormatter(log_formatter)
-    logger.addHandler(file_handler)
-    
+    # 2. 设置文件处理器 (输出到文件)
+    try:
+        # 在Docker中，工作目录通常是/app，以此为基础创建logs目录
+        log_dir = Path.cwd() / 'logs'
+        log_dir.mkdir(exist_ok=True, parents=True)
+        log_file = log_dir / 'bot.log'
+
+        # 使用RotatingFileHandler
+        file_handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=5*1024*1024, # 5MB
+            backupCount=5, 
+            encoding='utf-8'
+        )
+        file_handler.setFormatter(log_formatter)
+        root_logger.addHandler(file_handler)
+        
+        # 记录一条消息来确认文件处理器已设置
+        root_logger.info(f"File logging configured successfully to: {log_file}")
+        
+    except (PermissionError, IOError) as e:
+        root_logger.error(f"FATAL: Could not configure file logging due to a permission or I/O error: {e}", exc_info=True)
+    except Exception as e:
+        root_logger.error(f"FATAL: An unexpected error occurred during file logging setup: {e}", exc_info=True)
+
+
 # --- Token 计算器 ---
 class TokenCalculator:
     def __init__(self):
