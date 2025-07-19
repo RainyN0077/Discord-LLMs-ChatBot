@@ -96,6 +96,7 @@
     .usage-section {
         flex: 0 0 400px;
         min-height: 0;
+        overflow: hidden;
     }
     
     h2 {

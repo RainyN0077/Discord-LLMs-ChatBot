@@ -17,18 +17,18 @@ class UsageTracker:
             try:
                 with open(self.data_file, 'r') as f:
                     data = json.load(f)
-                    # 转换字符串键回 defaultdict
                     return {
                         "daily": defaultdict(lambda: {
                             "requests": 0, 
                             "input_tokens": 0, 
                             "output_tokens": 0, 
                             "total_tokens": 0,
-                            "by_model": {},
-                            "by_user": {},
-                            "by_role": {},
-                            "by_channel": {},
-                            "by_guild": {}
+                            "detailed": {
+                                "by_user": {},
+                                "by_role": {},
+                                "by_channel": {},
+                                "by_guild": {}
+                            }
                         }, data.get("daily", {})),
                         "metadata": data.get("metadata", {
                             "users": {},
@@ -45,11 +45,12 @@ class UsageTracker:
                 "input_tokens": 0, 
                 "output_tokens": 0, 
                 "total_tokens": 0,
-                "by_model": {},
-                "by_user": {},
-                "by_role": {},
-                "by_channel": {},
-                "by_guild": {}
+                "detailed": {
+                    "by_user": {},
+                    "by_role": {},
+                    "by_channel": {},
+                    "by_guild": {}
+                }
             }),
             "metadata": {
                 "users": {},
@@ -61,7 +62,6 @@ class UsageTracker:
     
     async def save_data(self):
         async with self.lock:
-            # 转换 defaultdict 为普通 dict 以便序列化
             data_to_save = {
                 "daily": dict(self.usage_data["daily"]),
                 "metadata": self.usage_data["metadata"]
@@ -87,6 +87,7 @@ class UsageTracker:
     ):
         async with self.lock:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            model_key = f"{provider}:{model}"
             
             # 更新元数据
             if user_id:
@@ -107,18 +108,19 @@ class UsageTracker:
                     "name": guild_name
                 }
             
-            # 记录每日统计
+            # 初始化当天数据
             if today not in self.usage_data["daily"]:
                 self.usage_data["daily"][today] = {
                     "requests": 0,
                     "input_tokens": 0,
                     "output_tokens": 0,
                     "total_tokens": 0,
-                    "by_model": {},
-                    "by_user": {},
-                    "by_role": {},
-                    "by_channel": {},
-                    "by_guild": {}
+                    "detailed": {
+                        "by_user": {},
+                        "by_role": {},
+                        "by_channel": {},
+                        "by_guild": {}
+                    }
                 }
             
             daily = self.usage_data["daily"][today]
@@ -127,71 +129,90 @@ class UsageTracker:
             daily["output_tokens"] += output_tokens
             daily["total_tokens"] += input_tokens + output_tokens
             
-            # 按模型统计
-            model_key = f"{provider}:{model}"
-            if model_key not in daily["by_model"]:
-                daily["by_model"][model_key] = {
-                    "requests": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0
-                }
-            
-            daily["by_model"][model_key]["requests"] += 1
-            daily["by_model"][model_key]["input_tokens"] += input_tokens
-            daily["by_model"][model_key]["output_tokens"] += output_tokens
-            
-            # 按用户统计
+            # 记录用户-模型详细数据
             if user_id:
-                if user_id not in daily["by_user"]:
-                    daily["by_user"][user_id] = {
-                        "requests": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0
+                if user_id not in daily["detailed"]["by_user"]:
+                    daily["detailed"]["by_user"][user_id] = {
+                        "total": {"requests": 0, "input_tokens": 0, "output_tokens": 0},
+                        "models": {}
                     }
-                daily["by_user"][user_id]["requests"] += 1
-                daily["by_user"][user_id]["input_tokens"] += input_tokens
-                daily["by_user"][user_id]["output_tokens"] += output_tokens
+                
+                user_data = daily["detailed"]["by_user"][user_id]
+                user_data["total"]["requests"] += 1
+                user_data["total"]["input_tokens"] += input_tokens
+                user_data["total"]["output_tokens"] += output_tokens
+                
+                if model_key not in user_data["models"]:
+                    user_data["models"][model_key] = {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                
+                user_data["models"][model_key]["requests"] += 1
+                user_data["models"][model_key]["input_tokens"] += input_tokens
+                user_data["models"][model_key]["output_tokens"] += output_tokens
             
-            # 按身份组统计
+            # 记录身份组-模型详细数据
             if role_id:
-                if role_id not in daily["by_role"]:
-                    daily["by_role"][role_id] = {
-                        "requests": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0
+                if role_id not in daily["detailed"]["by_role"]:
+                    daily["detailed"]["by_role"][role_id] = {
+                        "total": {"requests": 0, "input_tokens": 0, "output_tokens": 0},
+                        "models": {}
                     }
-                daily["by_role"][role_id]["requests"] += 1
-                daily["by_role"][role_id]["input_tokens"] += input_tokens
-                daily["by_role"][role_id]["output_tokens"] += output_tokens
+                
+                role_data = daily["detailed"]["by_role"][role_id]
+                role_data["total"]["requests"] += 1
+                role_data["total"]["input_tokens"] += input_tokens
+                role_data["total"]["output_tokens"] += output_tokens
+                
+                if model_key not in role_data["models"]:
+                    role_data["models"][model_key] = {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                
+                role_data["models"][model_key]["requests"] += 1
+                role_data["models"][model_key]["input_tokens"] += input_tokens
+                role_data["models"][model_key]["output_tokens"] += output_tokens
             
-            # 按频道统计
+            # 记录频道-模型详细数据
             if channel_id:
-                if channel_id not in daily["by_channel"]:
-                    daily["by_channel"][channel_id] = {
-                        "requests": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0
+                if channel_id not in daily["detailed"]["by_channel"]:
+                    daily["detailed"]["by_channel"][channel_id] = {
+                        "total": {"requests": 0, "input_tokens": 0, "output_tokens": 0},
+                        "models": {}
                     }
-                daily["by_channel"][channel_id]["requests"] += 1
-                daily["by_channel"][channel_id]["input_tokens"] += input_tokens
-                daily["by_channel"][channel_id]["output_tokens"] += output_tokens
+                
+                channel_data = daily["detailed"]["by_channel"][channel_id]
+                channel_data["total"]["requests"] += 1
+                channel_data["total"]["input_tokens"] += input_tokens
+                channel_data["total"]["output_tokens"] += output_tokens
+                
+                if model_key not in channel_data["models"]:
+                    channel_data["models"][model_key] = {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                
+                channel_data["models"][model_key]["requests"] += 1
+                channel_data["models"][model_key]["input_tokens"] += input_tokens
+                channel_data["models"][model_key]["output_tokens"] += output_tokens
             
-            # 按服务器统计
+            # 记录服务器-模型详细数据
             if guild_id:
-                if guild_id not in daily["by_guild"]:
-                    daily["by_guild"][guild_id] = {
-                        "requests": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0
+                if guild_id not in daily["detailed"]["by_guild"]:
+                    daily["detailed"]["by_guild"][guild_id] = {
+                        "total": {"requests": 0, "input_tokens": 0, "output_tokens": 0},
+                        "models": {}
                     }
-                daily["by_guild"][guild_id]["requests"] += 1
-                daily["by_guild"][guild_id]["input_tokens"] += input_tokens
-                daily["by_guild"][guild_id]["output_tokens"] += output_tokens
+                
+                guild_data = daily["detailed"]["by_guild"][guild_id]
+                guild_data["total"]["requests"] += 1
+                guild_data["total"]["input_tokens"] += input_tokens
+                guild_data["total"]["output_tokens"] += output_tokens
+                
+                if model_key not in guild_data["models"]:
+                    guild_data["models"][model_key] = {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                
+                guild_data["models"][model_key]["requests"] += 1
+                guild_data["models"][model_key]["input_tokens"] += input_tokens
+                guild_data["models"][model_key]["output_tokens"] += output_tokens
             
         # 异步保存
         asyncio.create_task(self.save_data())
     
-    async def get_statistics(self, period: str = "today", view: str = "model") -> Dict[str, Any]:
+    async def get_statistics(self, period: str = "today", view: str = "user") -> Dict[str, Any]:
         async with self.lock:
             now = datetime.now(timezone.utc)
             
@@ -215,11 +236,7 @@ class UsageTracker:
                 "input_tokens": 0,
                 "output_tokens": 0,
                 "total_tokens": 0,
-                f"by_{view}": defaultdict(lambda: {
-                    "requests": 0,
-                    "input_tokens": 0,
-                    "output_tokens": 0
-                })
+                "detailed_by_" + view: {}
             }
             
             for date_str, data in self.usage_data["daily"].items():
@@ -229,22 +246,34 @@ class UsageTracker:
                     total_stats["output_tokens"] += data["output_tokens"]
                     total_stats["total_tokens"] += data["total_tokens"]
                     
-                    # 根据视图类型聚合数据
-                    view_data = data.get(f"by_{view}", {})
-                    for key, stats in view_data.items():
-                        total_stats[f"by_{view}"][key]["requests"] += stats["requests"]
-                        total_stats[f"by_{view}"][key]["input_tokens"] += stats["input_tokens"]
-                        total_stats[f"by_{view}"][key]["output_tokens"] += stats["output_tokens"]
+                    # 聚合详细数据
+                    view_data = data.get("detailed", {}).get("by_" + view, {})
+                    for key, item_data in view_data.items():
+                        if key not in total_stats["detailed_by_" + view]:
+                            total_stats["detailed_by_" + view][key] = {
+                                "total": {"requests": 0, "input_tokens": 0, "output_tokens": 0},
+                                "models": {}
+                            }
+                        
+                        dest = total_stats["detailed_by_" + view][key]
+                        dest["total"]["requests"] += item_data["total"]["requests"]
+                        dest["total"]["input_tokens"] += item_data["total"]["input_tokens"]
+                        dest["total"]["output_tokens"] += item_data["total"]["output_tokens"]
+                        
+                        for model_key, model_stats in item_data.get("models", {}).items():
+                            if model_key not in dest["models"]:
+                                dest["models"][model_key] = {"requests": 0, "input_tokens": 0, "output_tokens": 0}
+                            
+                            dest["models"][model_key]["requests"] += model_stats["requests"]
+                            dest["models"][model_key]["input_tokens"] += model_stats["input_tokens"]
+                            dest["models"][model_key]["output_tokens"] += model_stats["output_tokens"]
             
             return {
                 "period": period,
                 "view": view,
                 "start_date": start_date,
                 "end_date": end_date,
-                "stats": {
-                    **total_stats,
-                    f"by_{view}": dict(total_stats[f"by_{view}"])
-                },
+                "stats": total_stats,
                 "metadata": self.usage_data["metadata"]
             }
 
