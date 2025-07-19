@@ -434,11 +434,18 @@ class PricingConfig(BaseModel):
     input_price_per_1k: float
     output_price_per_1k: float
 
+from fastapi import Query
+
 @app.get("/api/usage/stats")
-async def get_usage_statistics(period: str = "today"):
+async def get_usage_statistics(
+    period: str = Query(default="today"),
+    view: str = Query(default="user")
+):
     from .usage_tracker import usage_tracker
-    stats = await usage_tracker.get_statistics(period)
+    print(f"API received: period={period}, view={view}")  # 调试日志
+    stats = await usage_tracker.get_statistics(period, view)
     return stats
+
 
 @app.post("/api/usage/pricing")
 async def update_pricing(pricing_dict: Dict[str, Any]):
