@@ -257,24 +257,37 @@ export default {
         month: 'This Month',
         all: 'All Time'
     },
+    views: {
+        user: 'User',
+        role: 'Role',
+        channel: 'Channel',
+        guild: 'Server'
+    },
     loading: 'Loading...',
     totalRequests: 'Total Requests',
     totalTokens: 'Total Tokens',
     estimatedCost: 'Estimated Cost',
-    breakdown: 'Model Breakdown',
-    requests: 'reqs',
+    breakdown: 'Breakdown',
+    userInfo: 'User Info',
+    roleInfo: 'Role Info',
+    channelInfo: 'Channel Info',
+    guildInfo: 'Server Info',
+    totalUsage: 'Total Usage',
+    totalCost: 'Total Cost',
+    requestsShort: 'reqs',
     refresh: 'Refresh',
     configurePricing: 'Configure Pricing',
     pricingConfig: 'Pricing Configuration',
     pricingInfo: 'Configure pricing for each model (per million tokens)',
     provider: 'Provider',
     modelName: 'Model Name',
+    modelPlaceholder: 'e.g., gpt-4o',
     inputPrice: 'Input Price',
     outputPrice: 'Output Price',
-    modelPlaceholder: 'e.g., gpt-4o',
     addModel: 'Add Model',
     save: 'Save',
     cancel: 'Cancel'
 }
+
 
 };

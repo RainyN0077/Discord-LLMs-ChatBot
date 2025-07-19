@@ -257,24 +257,37 @@ export default {
         month: '本月',
         all: '全部'
     },
+    views: {
+        user: '用户',
+        role: '身份组',
+        channel: '频道',
+        guild: '服务器'
+    },
     loading: '加载中...',
     totalRequests: '总请求数',
     totalTokens: '总Token数',
     estimatedCost: '预估费用',
-    breakdown: '模型细分',
-    requests: '次',
+    breakdown: '详细分析',
+    userInfo: '用户信息',
+    roleInfo: '身份组信息',
+    channelInfo: '频道信息',
+    guildInfo: '服务器信息',
+    totalUsage: '总使用量',
+    totalCost: '总费用',
+    requestsShort: '次',
     refresh: '刷新',
     configurePricing: '配置价格',
     pricingConfig: '价格配置',
     pricingInfo: '配置各模型的价格（每百万Token）',
     provider: '供应商',
     modelName: '模型名称',
+    modelPlaceholder: '例如: gpt-4o',
     inputPrice: '输入价格',
     outputPrice: '输出价格',
-    modelPlaceholder: '例如: gpt-4o',
     addModel: '添加模型',
     save: '保存',
     cancel: '取消'
 }
+
 
 };

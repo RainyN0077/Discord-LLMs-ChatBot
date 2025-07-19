@@ -302,7 +302,21 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                 response_obj, full_response, last_edit_time = None, "", 0.0
                 is_direct_reply = client.user in message.mentions or (message.reference and message.reference.resolved and message.reference.resolved.author == client.user)
                 
-                async for r_type, content in get_llm_response(BOT_CONFIG, final_messages):
+                # 收集上下文信息用于统计
+                context_info = {
+                    "user_id": str(message.author.id),
+                    "user_name": message.author.name,
+                    "user_display_name": message.author.display_name,
+                    "channel_id": str(message.channel.id),
+                    "channel_name": message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id),
+                    "guild_id": str(message.guild.id) if message.guild else None,
+                    "guild_name": message.guild.name if message.guild else None,
+                    "role_id": str(message.author.top_role.id) if isinstance(message.author, discord.Member) else None,
+                    "role_name": message.author.top_role.name if isinstance(message.author, discord.Member) else None
+                    }
+          
+                async for r_type, content in get_llm_response(BOT_CONFIG, final_messages, context_info):
+
                     full_response = content
                     if not BOT_CONFIG.get("stream_response", True): break
                     if r_type == "partial" and full_response:
