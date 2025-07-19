@@ -1,6 +1,6 @@
 <!-- frontend/src/components/UsageDashboard.svelte -->
 <script>
-    import { onMount, onDestroy } from 'svelte';
+    import { onMount, onDestroy, tick } from 'svelte';
     import { t } from '../i18n.js';
     
     let period = 'today';
@@ -52,12 +52,30 @@
             const response = await fetch('/api/usage/pricing');
             const data = await response.json();
             pricing = data.pricing || {};
-            editingPricing = Object.entries(pricing).map(([key, value]) => ({
-                ...value,
-                id: key
-            }));
+            
+            editingPricing = Object.entries(pricing).map(([key, value]) => {
+                if (typeof value === 'object' && value !== null) {
+                    return {
+                        id: key,
+                        provider: value.provider || '',
+                        model: value.model || '',
+                        input_price_per_1m: value.input_price_per_1m || 0,
+                        output_price_per_1m: value.output_price_per_1m || 0
+                    };
+                } else {
+                    return {
+                        id: key,
+                        provider: 'openai',
+                        model: '',
+                        input_price_per_1m: 0,
+                        output_price_per_1m: 0
+                    };
+                }
+            });
         } catch (e) {
             console.error('Failed to fetch pricing:', e);
+            pricing = {};
+            editingPricing = [];
         }
     }
     
@@ -76,16 +94,29 @@
         });
         
         try {
-            await fetch('/api/usage/pricing', {
+            const response = await fetch('/api/usage/pricing', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(pricingObj)
             });
-            pricing = pricingObj;
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // 强制更新 pricing 对象
+            pricing = { ...pricingObj };
             showPricingModal = false;
-            fetchPricing();
+            
+            // 等待 DOM 更新
+            await tick();
+            
+            // 重新获取统计数据以触发重新计算
+            await fetchStats();
+            
         } catch (e) {
             console.error('Failed to save pricing:', e);
+            alert('保存价格配置失败：' + e.message);
         }
     }
     
@@ -109,23 +140,38 @@
         } else {
             expandedItems.add(key);
         }
-        expandedItems = expandedItems; // 触发响应式更新
+        expandedItems = expandedItems;
     }
     
     function calculateCost(modelKey, inputTokens, outputTokens) {
         const price = pricing[modelKey];
-        if (!price) return null;
+        if (!price || typeof price !== 'object') {
+            return null;
+        }
         
-        const inputCost = (inputTokens / 1000000) * price.input_price_per_1m;
-        const outputCost = (outputTokens / 1000000) * price.output_price_per_1m;
+        const inputPrice = parseFloat(price.input_price_per_1m) || 0;
+        const outputPrice = parseFloat(price.output_price_per_1m) || 0;
+        
+        if (inputPrice === 0 && outputPrice === 0) {
+            return null;
+        }
+        
+        const inputCost = (inputTokens / 1000000) * inputPrice;
+        const outputCost = (outputTokens / 1000000) * outputPrice;
         return inputCost + outputCost;
     }
     
     function calculateTotalCost(models) {
+        if (!models || typeof models !== 'object') {
+            return 0;
+        }
+        
         let total = 0;
         Object.entries(models).forEach(([modelKey, data]) => {
             const cost = calculateCost(modelKey, data.input_tokens, data.output_tokens);
-            if (cost !== null) total += cost;
+            if (cost !== null && !isNaN(cost)) {
+                total += cost;
+            }
         });
         return total;
     }
@@ -162,9 +208,19 @@
     }
     
     function getDetailedData() {
-        if (!stats || !stats.stats) return [];
+        if (!stats || !stats.stats) {
+            return [];
+        }
         const detailKey = `detailed_by_${view}`;
-        return Object.entries(stats.stats[detailKey] || {});
+        const result = Object.entries(stats.stats[detailKey] || {});
+        return result;
+    }
+    
+    // 计算总费用的函数，确保响应式
+    function calculateOverallCost() {
+        return getDetailedData().reduce((total, [_, data]) => {
+            return total + calculateTotalCost(data.models);
+        }, 0);
     }
     
     onMount(() => {
@@ -222,19 +278,14 @@
                 <div class="stat-label">{$t('usage.totalTokens')}</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">
-                    {formatCost(
-                        getDetailedData().reduce((total, [_, data]) => {
-                            return total + calculateTotalCost(data.models);
-                        }, 0)
-                    )}
-                </div>
+                <div class="stat-value">{formatCost(calculateOverallCost())}</div>
                 <div class="stat-label">{$t('usage.estimatedCost')}</div>
             </div>
         </div>
         
         <div class="breakdown-section">
             <h4>{$t('usage.breakdown')}</h4>
+            
             <div class="breakdown-table">
                 <div class="breakdown-header">
                     <div class="expand-col"></div>
@@ -243,44 +294,54 @@
                     <div>{$t('usage.totalCost')}</div>
                 </div>
                 
-                {#each getDetailedData() as [key, data]}
-                    <div class="main-row">
-                        <button class="expand-btn" on:click={() => toggleExpand(key)}>
-                            {expandedItems.has(key) ? '▼' : '▶'}
-                        </button>
-                        <div class="item-name">{getDisplayName(key, view)}</div>
-                        <div class="usage-stats">
-                            <span>{formatNumber(data.total.requests)} {$t('usage.requestsShort')}</span>
-                            <span>↓{formatNumber(data.total.input_tokens)}</span>
-                            <span>↑{formatNumber(data.total.output_tokens)}</span>
-                        </div>
-                        <div class="cost">{formatCost(calculateTotalCost(data.models))}</div>
-                    </div>
-                    
-                    {#if expandedItems.has(key)}
-                        <div class="detail-rows">
-                            {#each Object.entries(data.models) as [modelKey, modelData]}
-                                <div class="detail-row">
-                                    <div></div>
-                                    <div class="model-name">└─ {modelKey}</div>
-                                    <div class="usage-stats">
-                                        <span>{formatNumber(modelData.requests)} {$t('usage.requestsShort')}</span>
-                                        <span>↓{formatNumber(modelData.input_tokens)}</span>
-                                        <span>↑{formatNumber(modelData.output_tokens)}</span>
-                                    </div>
-                                    <div class="cost">{formatCost(calculateCost(modelKey, modelData.input_tokens, modelData.output_tokens))}</div>
+                {#if stats && stats.stats}
+                    {@const detailKey = `detailed_by_${view}`}
+                    {@const detailData = stats.stats[detailKey] || {}}
+                    {#if Object.keys(detailData).length > 0}
+                        {#each Object.entries(detailData) as [key, data] (key)}
+                            <div class="main-row">
+                                <button class="expand-btn" on:click={() => toggleExpand(key)}>
+                                    {expandedItems.has(key) ? '▼' : '▶'}
+                                </button>
+                                <div class="item-name">{getDisplayName(key, view)}</div>
+                                <div class="usage-stats">
+                                    <span>{formatNumber(data.total.requests)} {$t('usage.requestsShort')}</span>
+                                    <span>↓{formatNumber(data.total.input_tokens)}</span>
+                                    <span>↑{formatNumber(data.total.output_tokens)}</span>
                                 </div>
-                            {/each}
-                        </div>
+                                <div class="cost">{formatCost(calculateTotalCost(data.models))}</div>
+                            </div>
+                            
+                            {#if expandedItems.has(key)}
+                                <div class="detail-rows">
+                                    {#each Object.entries(data.models || {}) as [modelKey, modelData] (modelKey)}
+                                        <div class="detail-row">
+                                            <div></div>
+                                            <div class="model-name">└─ {modelKey}</div>
+                                            <div class="usage-stats">
+                                                <span>{formatNumber(modelData.requests)} {$t('usage.requestsShort')}</span>
+                                                <span>↓{formatNumber(modelData.input_tokens)}</span>
+                                                <span>↑{formatNumber(modelData.output_tokens)}</span>
+                                            </div>
+                                            <div class="cost">{formatCost(calculateCost(modelKey, modelData.input_tokens, modelData.output_tokens))}</div>
+                                        </div>
+                                    {/each}
+                                </div>
+                            {/if}
+                        {/each}
+                    {:else}
+                        <div class="no-data">没有找到详细数据</div>
                     {/if}
-                {/each}
+                {:else}
+                    <div class="no-data">正在加载数据...</div>
+                {/if}
             </div>
         </div>
     {/if}
 </div>
 
 {#if showPricingModal}
-<!-- 价格配置模态框保持不变 -->
+<!-- 价格配置模态框 -->
 <div class="modal-overlay" on:click={() => showPricingModal = false}>
     <div class="modal" on:click|stopPropagation>
         <h3>{$t('usage.pricingConfig')}</h3>
@@ -486,6 +547,7 @@
     .expand-col {
         width: 30px;
     }
+    
     .item-name {
         font-weight: 500;
         overflow: hidden;
@@ -519,6 +581,14 @@
         text-align: center;
         padding: 2rem;
         color: var(--text-light);
+    }
+    
+    .no-data {
+        padding: 2rem;
+        text-align: center;
+        color: var(--text-light);
+        font-style: italic;
+        grid-column: 1 / -1;
     }
     
     /* Modal styles */
@@ -621,4 +691,3 @@
         margin-top: 1.5rem;
     }
 </style>
-   
