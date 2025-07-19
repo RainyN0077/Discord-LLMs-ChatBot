@@ -80,6 +80,7 @@
         flex-direction: column;
         height: 100%;
         gap: 1rem;
+        padding-bottom: 80px;
     }
     
     .log-section {
