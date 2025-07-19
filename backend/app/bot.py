@@ -318,9 +318,24 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
                     "channel_name": message.channel.name if hasattr(message.channel, 'name') else str(message.channel.id),
                     "guild_id": str(message.guild.id) if message.guild else None,
                     "guild_name": message.guild.name if message.guild else None,
-                    "role_id": str(message.author.top_role.id) if isinstance(message.author, discord.Member) else None,
-                    "role_name": message.author.top_role.name if isinstance(message.author, discord.Member) else None
-                    }
+                }
+
+                # 获取最高角色（排除@everyone）
+                if isinstance(message.author, discord.Member) and message.author.roles:
+                    # 过滤掉@everyone角色
+                    non_everyone_roles = [r for r in message.author.roles if r.name != "@everyone"]
+                    if non_everyone_roles:
+                        highest_role = max(non_everyone_roles, key=lambda r: r.position)
+                        context_info["role_id"] = str(highest_role.id)
+                        context_info["role_name"] = highest_role.name
+                    else:
+                        # 如果只有@everyone角色
+                        context_info["role_id"] = str(message.author.roles[0].id)
+                        context_info["role_name"] = message.author.roles[0].name
+                else:
+                    context_info["role_id"] = None
+                    context_info["role_name"] = None
+
           
                 async for r_type, content in get_llm_response(BOT_CONFIG, final_messages, context_info):
 
