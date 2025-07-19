@@ -8,6 +8,7 @@ from typing import AsyncGenerator, Dict, List, Any
 from datetime import datetime, timezone, timedelta
 import logging
 from PIL import Image
+from .usage_tracker import usage_tracker
 
 import openai
 import google.generativeai as genai
@@ -40,6 +41,85 @@ def process_custom_params(params_list: List[Dict[str, Any]]) -> Dict[str, Any]:
     return processed_params
 
 async def get_llm_response(config: dict, messages: List[Dict[str, Any]]) -> AsyncGenerator[tuple[str, str], None]:
+    provider, api_key, base_url, model, stream = config.get("llm_provider", "openai"), config.get("api_key"), config.get("base_url"), config.get("model_name"), config.get("stream_response", True)
+    extra_params = process_custom_params(config.get('custom_parameters', []))
+    system_prompt = next((m['content'] for m in messages if m['role'] == 'system'), "")
+    user_messages = [m for m in messages if m['role'] != 'system']
+    
+    # 计算输入tokens
+    input_text = json.dumps(messages)
+    token_calc = TokenCalculator()
+    input_tokens = token_calc.get_token_count(input_text, provider, model)
+
+    async def response_generator():
+        if provider == "openai":
+            client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url if base_url else None)
+            response_stream = await client.chat.completions.create(model=model, messages=messages, stream=stream, **extra_params)
+            if stream:
+                async for chunk in response_stream:
+                    if content := chunk.choices[0].delta.content: yield content
+            else: yield response_stream.choices[0].message.content or ""
+        elif provider == "google":
+            genai.configure(api_key=api_key)
+            generation_config = {k: v for k, v in extra_params.items() if k in {'temperature', 'top_p', 'top_k', 'candidate_count', 'max_output_tokens', 'stop_sequences'}}
+            model_instance = genai.GenerativeModel(model, system_instruction=system_prompt, generation_config=generation_config)
+            google_formatted_messages = []
+            for msg in user_messages:
+                role = 'model' if msg['role'] == 'assistant' else 'user'
+                content_parts = []
+                if isinstance(msg['content'], list):
+                    for part in msg['content']:
+                        if part['type'] == 'text': content_parts.append(part['text'])
+                        elif part['type'] == 'image_url' and 'url' in part.get('image_url', {}):
+                            if image_data := await download_image(part['image_url']['url']):
+                                img = Image.open(BytesIO(image_data)); content_parts.append(img)
+                elif isinstance(msg['content'], str): content_parts.append(msg['content'])
+                if content_parts: google_formatted_messages.append({'role': role, 'parts': content_parts})
+            
+            if stream:
+                response_stream = await model_instance.generate_content_async(google_formatted_messages, stream=True)
+                async for chunk in response_stream:
+                    if chunk.parts: 
+                        yield chunk.text
+                    else:
+                        logger.warning(f"Google Gemini stream returned an empty chunk. Prompt might be blocked.")
+            else:
+                response = await model_instance.generate_content_async(google_formatted_messages)
+                
+                if not response.candidates:
+                    block_reason = "Unknown"
+                    try:
+                        block_reason = response.prompt_feedback.block_reason.name
+                    except Exception:
+                        pass
+                    logger.warning(f"Google Gemini API returned no candidates. Prompt likely blocked. Reason: {block_reason}. Full feedback: {response.prompt_feedback}")
+                    
+                    response_template = config.get("blocked_prompt_response", "*(Response was blocked by content filter. Reason: {reason})*")
+                    yield response_template.format(reason=block_reason)
+                else:
+                    yield response.text
+
+        elif provider == "anthropic":
+            client = anthropic.AsyncAnthropic(api_key=api_key)
+            if stream:
+                async with client.messages.stream(max_tokens=4096, model=model, system=system_prompt, messages=user_messages, **extra_params) as s:
+                    async for text in s.text_stream: yield text
+            else:
+                response = await client.messages.create(max_tokens=4096, model=model, system=system_prompt, messages=user_messages, **extra_params)
+                yield response.content[0].text
+        else: yield f"Error: Unsupported provider '{provider}'"
+
+    full_response = ""
+    async for chunk in response_generator():
+        full_response += chunk
+        if stream and chunk: yield "partial", full_response
+    
+    # 计算输出tokens并记录
+    output_tokens = token_calc.get_token_count(full_response, provider, model)
+    await usage_tracker.record_usage(provider, model, input_tokens, output_tokens)
+    
+    yield "full", full_response
+
     provider, api_key, base_url, model, stream = config.get("llm_provider", "openai"), config.get("api_key"), config.get("base_url"), config.get("model_name"), config.get("stream_response", True)
     extra_params = process_custom_params(config.get('custom_parameters', []))
     system_prompt = next((m['content'] for m in messages if m['role'] == 'system'), "")

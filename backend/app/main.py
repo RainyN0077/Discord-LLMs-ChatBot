@@ -428,3 +428,37 @@ async def get_logs():
         return Response(content=f"Log file not found at '{LOG_FILE}'.", status_code=404, media_type="text/plain")
     except Exception as e:
         return Response(content=f"An error occurred while reading logs: {e}", status_code=500, media_type="text/plain")
+# 添加新的请求模型
+class PricingConfig(BaseModel):
+    model: str
+    input_price_per_1k: float
+    output_price_per_1k: float
+
+@app.get("/api/usage/stats")
+async def get_usage_statistics(period: str = "today"):
+    from .usage_tracker import usage_tracker
+    stats = await usage_tracker.get_statistics(period)
+    return stats
+
+@app.post("/api/usage/pricing")
+async def update_pricing(pricing_dict: Dict[str, Any]):
+    # 保存定价配置
+    pricing_file = "pricing_config.json"
+    with open(pricing_file, 'w') as f:
+        json.dump(pricing_dict, f, indent=2)
+    return {"message": "Pricing updated"}
+
+@app.get("/api/usage/pricing")
+async def get_pricing():
+    pricing_file = "pricing_config.json"
+    
+    if os.path.exists(pricing_file):
+        try:
+            with open(pricing_file, 'r') as f:
+                pricing_data = json.load(f)
+                return {"pricing": pricing_data}
+        except:
+            pass
+    
+    return {"pricing": {}}
+
