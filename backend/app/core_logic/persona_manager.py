@@ -6,10 +6,25 @@ def get_highest_configured_role(member: discord.Member, role_configs: Dict[str, 
     """获取成员身上配置过的最高优先级身份组及其配置。"""
     if not isinstance(member, discord.Member) or not role_configs:
         return None
-    for role in reversed(member.roles): # discord.py 的 roles 列表是按层级排序的
-        if (role_id_str := str(role.id)) in role_configs:
-            return role.name, role_configs[role_id_str]
+    
+    # --- [核心修复点] ---
+    # 旧逻辑错误地拿 role.id 和 role_configs 的 key 比较。
+    # 新逻辑正确地拿 role.id 和 role_configs 里每个 value 的 'id' 字段比较。
+
+    # 遍历用户的所有身份组，discord.py 保证这个列表是按层级从低到高排序的，
+    # 所以我们反向遍历，就能先找到最高的角色。
+    for role in reversed(member.roles):
+        # 遍历你在 config.json 中配置的所有身份组规则
+        for config_value in role_configs.values():
+            # 检查配置规则中的 'id' 是否和用户当前拥有的角色ID匹配
+            if config_value.get('id') == str(role.id):
+                # 找到了！因为我们是从高到低遍历用户的角色，所以第一个找到的就是最高的。
+                # 返回角色的真实名称和它的完整配置。
+                return role.name, config_value
+                
+    # 如果用户的角色都遍历完了，还没找到任何一个在 config.json 中配置过的，就返回 None。
     return None
+    # --- [修复结束] ---
 
 def get_rich_identity(author: Union[discord.User, discord.Member], personas: Dict[str, Any], role_config: Optional[Dict[str, Any]]) -> str:
     """根据用户肖像和身份组配置，生成一个富信息的用户身份字符串。"""
