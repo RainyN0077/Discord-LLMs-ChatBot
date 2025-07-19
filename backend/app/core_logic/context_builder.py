@@ -100,7 +100,7 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
 
     request_block_parts = []
     
-    # 处理回复上下文
+    # 处理回复上下文 - 修改后的版本，包含图片信息
     if message.reference and isinstance(message.reference.resolved, discord.Message):
         replied_msg = message.reference.resolved
         replied_member = replied_msg.author
@@ -112,10 +112,27 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
             _, replied_role_config = get_highest_configured_role(replied_member, role_based_configs) or (None, None)
             
         replied_author_info = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
-        request_block_parts.append(f"[CONTEXT: The user is replying to a message from {replied_author_info}]\nReplied Message Content: {escape_content(replied_msg.clean_content)}")
+        
+        # 添加图片信息
+        image_info = ""
+        if replied_msg.attachments:
+            image_count = len([att for att in replied_msg.attachments 
+                              if att.content_type and att.content_type.startswith('image/')])
+            if image_count > 0:
+                image_info = f" [包含{image_count}张图片]"
+        
+        request_block_parts.append(f"[CONTEXT: The user is replying to a message from {replied_author_info}]\nReplied Message Content: {escape_content(replied_msg.clean_content)}{image_info}")
+
+    # 添加当前消息的图片信息
+    current_image_info = ""
+    if message.attachments:
+        current_image_count = len([att for att in message.attachments 
+                                  if att.content_type and att.content_type.startswith('image/')])
+        if current_image_count > 0:
+            current_image_info = f" [用户在当前消息中发送了{current_image_count}张图片]"
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
-    current_user_message_str = f"Sender: {author_rich_id}\nMessage:\n---\n{escape_content(final_text_content)}\n---"
+    current_user_message_str = f"Sender: {author_rich_id}\nMessage:\n---\n{escape_content(final_text_content)}\n---{current_image_info}"
     request_block_parts.append(f"[The user's direct message follows]\n{current_user_message_str}")
     
     # 处理插件注入的数据
