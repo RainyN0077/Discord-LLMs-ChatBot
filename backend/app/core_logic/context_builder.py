@@ -100,7 +100,7 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
 
     request_block_parts = []
     
-    # 处理回复上下文 - 修改后的版本，包含图片信息
+    # 处理回复上下文 - 增强了对纯图片消息的描述
     if message.reference and isinstance(message.reference.resolved, discord.Message):
         replied_msg = message.reference.resolved
         replied_member = replied_msg.author
@@ -113,15 +113,27 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
             
         replied_author_info = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
         
-        # 添加图片信息
-        image_info = ""
+        # --- [核心修改点开始] ---
+        
+        replied_text_content = escape_content(replied_msg.clean_content)
+        final_replied_description = replied_text_content
+        
+        # 检查是否有图片附件
         if replied_msg.attachments:
             image_count = len([att for att in replied_msg.attachments 
                               if att.content_type and att.content_type.startswith('image/')])
+            
             if image_count > 0:
-                image_info = f" [包含{image_count}张图片]"
+                # 如果有文本，则追加图片信息
+                if replied_text_content:
+                    final_replied_description += f" (此消息还包含{image_count}张图片，详见附图)"
+                # 如果没有文本，消息内容本身就是图片
+                else:
+                    final_replied_description = f"[消息内容是{image_count}张图片，详见附图]"
         
-        request_block_parts.append(f"[CONTEXT: The user is replying to a message from {replied_author_info}]\nReplied Message Content: {escape_content(replied_msg.clean_content)}{image_info}")
+        # --- [核心修改点结束] ---
+        
+        request_block_parts.append(f"[CONTEXT: The user is replying to a message from {replied_author_info}]\nReplied Message Content: {final_replied_description}")
 
     # 添加当前消息的图片信息
     current_image_info = ""
