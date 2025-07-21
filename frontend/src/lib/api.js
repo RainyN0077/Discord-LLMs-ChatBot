@@ -224,3 +224,19 @@ export async function savePluginConfig(pluginName, configData) {
     console.log(`Config for ${pluginName} saved successfully:`, result);
     return result;
 }
+
+// --- Usage & Pricing API ---
+export async function fetchUsageStats(period, view) {
+    return apiFetch(`${BASE_URL}/usage/stats?period=${period}&view=${view}`);
+}
+
+export async function fetchPricingConfig() {
+    return apiFetch(`${BASE_URL}/usage/pricing`);
+}
+
+export async function savePricingConfig(pricingData) {
+    return apiFetch(`${BASE_URL}/usage/pricing`, {
+        method: 'POST',
+        body: JSON.stringify(pricingData),
+    });
+}

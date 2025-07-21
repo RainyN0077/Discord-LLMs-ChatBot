@@ -2,6 +2,7 @@
 <script>
     import { onMount, onDestroy } from 'svelte';
     import { t } from '../i18n.js';
+    import { fetchUsageStats, fetchPricingConfig, savePricingConfig } from '../lib/api.js';
     
     let period = 'today';
     let view = 'user';
@@ -41,9 +42,7 @@
     async function fetchStats() {
         isLoading = true;
         try {
-            const response = await fetch(`/api/usage/stats?period=${period}&view=${view}`);
-            if (!response.ok) throw new Error('Failed to fetch stats');
-            stats = await response.json();
+            stats = await fetchUsageStats(period, view);
             // 每次获取新数据时，不清空展开项，以保持用户状态
             // expandedItems.clear(); 
         } catch (e) {
@@ -56,9 +55,7 @@
     
     async function fetchPricing() {
         try {
-            const response = await fetch('/api/usage/pricing');
-            if (!response.ok) throw new Error('Failed to fetch pricing');
-            const data = await response.json();
+            const data = await fetchPricingConfig();
             pricing = data.pricing || {};
         } catch (e) {
             console.error('Failed to fetch pricing:', e);
@@ -96,15 +93,7 @@
         });
         
         try {
-            const response = await fetch('/api/usage/pricing', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(pricingObj)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            await savePricingConfig(pricingObj);
             
             showPricingModal = false;
             // 核心修复：保存成功后，先获取最新的价格，再获取最新的统计数据

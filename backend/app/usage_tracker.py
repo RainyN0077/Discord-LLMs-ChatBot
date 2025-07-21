@@ -7,8 +7,13 @@ import asyncio
 from collections import defaultdict
 
 class UsageTracker:
-    def __init__(self, data_file="usage_data.json"):
+    def __init__(self, data_file="data/usage_data.json"):
         self.data_file = data_file
+        # 确保数据目录存在
+        data_dir = os.path.dirname(data_file)
+        if data_dir:
+            os.makedirs(data_dir, exist_ok=True)
+            
         self.usage_data = self._load_data()
         self.lock = asyncio.Lock()
         
