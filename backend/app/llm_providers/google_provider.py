@@ -159,9 +159,14 @@ class GoogleProvider(LLMProvider):
                 
                 # If no tool calls, process as regular text stream
                 for chunk in collected_chunks:
-                    if chunk.text:
-                        full_response += chunk.text
-                        yield "partial", full_response
+                    try:
+                        if chunk.text:
+                            full_response += chunk.text
+                            yield "partial", full_response
+                    except ValueError:
+                        # This can happen if the chunk is empty (e.g. safety stop)
+                        logger.warning("Encountered an empty chunk from Google API, possibly due to safety settings.")
+                        pass
                 yield "final", full_response
 
             else: # Non-streaming mode
