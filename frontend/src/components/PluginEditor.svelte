@@ -36,6 +36,33 @@
         });
     }
 </script>
+<style>
+    .radio-group.small label {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem; /* 调整标签内元素间距 */
+    }
+    .plugin-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 1rem;
+    }
+    .wide-cell {
+        grid-column: span 2;
+    }
+    .http-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: .5rem;
+        align-items: center;
+    }
+    .http-grid label {
+        text-align: right;
+    }
+    .http-internal-toggle {
+        grid-column: span 2;
+    }
+</style>
 
 <Card title={$t('pluginManager.title')} theme="dark-theme">
     <p class="info">{$t('pluginManager.info')}</p>

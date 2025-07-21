@@ -33,7 +33,19 @@ function getApiSecretKey() {
 
 // [SECURITY] Centralized fetch function to handle API key authentication
 async function apiFetch(url, options = {}) {
-    const key = getApiSecretKey();
+    let key = getApiSecretKey();
+
+    // If no key and this is not a config fetch, try to fetch config first.
+    if (!key && !url.endsWith('/api/config')) {
+        try {
+            console.log("No API key found, attempting to fetch config first...");
+            await fetchConfig();
+            key = getApiSecretKey(); // Try getting the key again
+        } catch (e) {
+            console.error("Failed to fetch config automatically:", e);
+            // We still proceed, letting the original request fail, which provides a clear error to the user.
+        }
+    }
     
     const headers = {
         ...options.headers,
@@ -41,7 +53,6 @@ async function apiFetch(url, options = {}) {
     };
 
     // Only add the API key if it exists.
-    // The initial config fetch won't have it.
     if (key) {
         headers['X-API-Key'] = key;
     }

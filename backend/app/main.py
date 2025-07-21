@@ -228,7 +228,7 @@ async def get_api_key(api_key_received: str = Security(api_key_header)):
         return api_key_received
     raise HTTPException(status_code=403, detail="Could not validate credentials")
 
-@app.get("/api/config", dependencies=[Depends(get_api_key)])
+@app.get("/api/config")
 async def get_config_endpoint():
     config_data = load_config()
     try:
