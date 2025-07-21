@@ -183,6 +183,8 @@ export default {
     body: 'Body Template (JSON)',
     llmPrompt: 'LLM Prompt Template',
     templateInfo: 'Available variables: {user_input} = user input, {api_result} = API response',
+    allowInternalRequests: 'Allow Internal Network Requests',
+    allowInternalWarning: 'Warning: Enabling this may cause security risks (SSRF). Only enable for trusted APIs.',
     add: 'Add Plugin'
   },
   customParams: {

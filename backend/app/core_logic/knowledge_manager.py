@@ -16,7 +16,10 @@ class KnowledgeManager:
         self.init_db()
 
     def get_conn(self):
-        conn = sqlite3.connect(self.db_path)
+        # 增加超时参数（单位：秒）。当数据库被锁定时，
+        # 连接会等待指定的时间，而不是立即失败。
+        # 15秒对于web请求来说是一个比较长的等待时间，但可以显著减少锁冲突。
+        conn = sqlite3.connect(self.db_path, timeout=15)
         conn.row_factory = sqlite3.Row
         return conn
 

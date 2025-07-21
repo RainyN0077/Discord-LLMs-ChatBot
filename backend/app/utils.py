@@ -3,6 +3,9 @@ import json
 import logging
 import os
 import asyncio
+import ipaddress
+import socket
+from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
 
 import discord
@@ -157,16 +160,70 @@ def split_message(text: str, max_length: int = 2000) -> List[str]:
 def escape_content(text: str) -> str:
     return text.replace('[', '&#91;').replace(']', '&#93;')
 
-async def download_image(url: str) -> bytes | None:
+async def download_image(url: str, max_size_mb: int = 100) -> bytes | None:
+    """
+    安全地下载一张图片，增加了超时和大小限制。
+    :param url: 图片的URL
+    :param max_size_mb: 允许下载的最大文件大小（单位：MB）
+    :return: 图片的字节数据，如果失败则返回None
+    """
+    max_size_bytes = max_size_mb * 1024 * 1024
+    # 设置一个合理的超时，防止请求永久挂起
+    timeout = aiohttp.ClientTimeout(total=20) # 总超时20秒
+
     try:
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url) as resp:
-                if resp.status == 200: return await resp.read()
+                if resp.status != 200:
+                    logger.warning(f"Failed to download image from {url}, status code: {resp.status}")
+                    return None
+
+                content_length = resp.headers.get('Content-Length')
+                if content_length and int(content_length) > max_size_bytes:
+                    logger.warning(f"Image from {url} exceeds size limit of {max_size_mb}MB. "
+                                   f"Reported size: {int(content_length) / 1024 / 1024:.2f}MB.")
+                    return None
+
+                downloaded_size = 0
+                image_data = bytearray()
+                # 逐块读取响应，而不是一次性加载到内存
+                async for chunk in resp.content.iter_chunked(8192): # 8KB per chunk
+                    downloaded_size += len(chunk)
+                    if downloaded_size > max_size_bytes:
+                        logger.warning(f"Image download from {url} aborted, exceeded size limit of {max_size_mb}MB.")
+                        return None
+                    image_data.extend(chunk)
+                
+                logger.info(f"Successfully downloaded image from {url}, size: {downloaded_size / 1024:.2f}KB")
+                return bytes(image_data)
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout when downloading image from {url}")
+        return None
     except Exception as e:
-        logger.warning(f"Error downloading image from {url}", exc_info=True)
-    return None
+        logger.error(f"An unexpected error occurred while downloading image from {url}", exc_info=True)
+        return None
 
 # --- 插件 HTTP 请求工具 ---
+
+# [SECURITY] Add utility to check for internal/private IPs to prevent SSRF
+def _is_internal_url(url: str) -> bool:
+    """Checks if a URL resolves to a private, local, or reserved IP address."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return True # Cannot resolve hostname, block by default
+
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip.is_loopback or ip.is_reserved
+    except (socket.gaierror, ValueError) as e:
+        logger.warning(f"Could not resolve or parse IP for URL '{url}': {e}")
+        return True # Block if resolution fails
+    except Exception as e:
+        logger.error(f"Unexpected error during URL validation for '{url}': {e}", exc_info=True)
+        return True # Block on any other error
+
 def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
     if not isinstance(template_str, str): return ''
     replacements = {
@@ -186,9 +243,18 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
     http_conf = plugin_config.get('http_request_config', {})
     url = _format_with_placeholders(http_conf.get('url', ''), message, args)
     method = http_conf.get('method', 'GET').upper()
+    plugin_name = plugin_config.get('name', 'Unknown Plugin')
+
     if not url:
-        logger.warning(f"Plugin '{plugin_config.get('name')}' has no URL configured.")
+        logger.warning(f"Plugin '{plugin_name}' has no URL configured.")
         return None
+
+    # [SECURITY] SSRF Protection
+    allow_internal = http_conf.get('allow_internal_requests', False)
+    if not allow_internal and _is_internal_url(url):
+        error_msg = f"Error: Request to internal or private IP address is blocked for security reasons. URL: {url}"
+        logger.error(f"Plugin '{plugin_name}' attempted to access a blocked internal URL. {error_msg}")
+        return error_msg
     headers_str = _format_with_placeholders(http_conf.get('headers', '{}'), message, args)
     body_str = _format_with_placeholders(http_conf.get('body_template', '{}'), message, args)
     try:
@@ -205,17 +271,17 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
             async with session.request(method, url, **request_kwargs) as response:
                 response_text = await response.text()
                 if 200 <= response.status < 300:
-                    logger.info(f"Plugin '{plugin_config.get('name')}' HTTP request to {url} successful.")
+                    logger.info(f"Plugin '{plugin_name}' HTTP request to {url} successful.")
                     return response_text
                 else:
-                    logger.error(f"Plugin '{plugin_config.get('name')}' HTTP request failed with status {response.status}: {response_text}")
+                    logger.error(f"Plugin '{plugin_name}' HTTP request failed with status {response.status}: {response_text}")
                     return f"Error: API call failed with status {response.status}."
     except aiohttp.ClientError as e:
-        logger.error(f"Plugin '{plugin_config.get('name')}' HTTP request network error: {e}", exc_info=True)
+        logger.error(f"Plugin '{plugin_name}' HTTP request network error: {e}", exc_info=True)
         return f"Error: Network error during API call: {e}"
     except (json.JSONDecodeError, TypeError) as e:
-         logger.error(f"Plugin '{plugin_config.get('name')}' failed to parse Headers or Body JSON: {e}", exc_info=True)
+         logger.error(f"Plugin '{plugin_name}' failed to parse Headers or Body JSON: {e}", exc_info=True)
          return f"Error: Invalid JSON in plugin configuration (Headers/Body): {e}"
     except Exception as e:
-        logger.error(f"An unexpected error occurred in plugin '{plugin_config.get('name')}': {e}", exc_info=True)
+        logger.error(f"An unexpected error occurred in plugin '{plugin_name}': {e}", exc_info=True)
         return f"Error: An unexpected error occurred while running the plugin."

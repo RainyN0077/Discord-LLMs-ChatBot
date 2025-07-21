@@ -183,6 +183,8 @@ export default {
     body: '请求体模板 (JSON)',
     llmPrompt: 'LLM 提示词模板',
     templateInfo: '可用变量: {user_input} = 用户输入, {api_result} = API返回结果',
+    allowInternalRequests: '允许访问内网',
+    allowInternalWarning: '警告：启用此项可能导致安全风险(SSRF)，仅用于信任的API。',
     add: '添加插件'
   },
   customParams: {

@@ -109,18 +109,16 @@ export function showStatus(message, type = 'info', duration = 5000) {
     }
 }
 
+// This function is now centralized in api.js. This file will import and use it.
+// We keep a wrapper here to handle local store state updates (isLoading, statusMessage).
 export async function fetchConfig() {
     isLoading.set(true);
     showStatus(t_get('status.loading'), 'info');
     try {
-        console.log('Starting config fetch...');
         const loadedConfig = await apiFetchConfig();
-        console.log('Raw config from backend:', loadedConfig);
         
-        // 合并配置，确保所有必需的字段都存在
+        // Merge with defaults to ensure all keys are present
         const mergedConfig = { ...defaultConfig };
-        
-        // 递归合并函数
         const deepMerge = (target, source) => {
             for (const key in source) {
                 if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
@@ -131,19 +129,17 @@ export async function fetchConfig() {
                 }
             }
         };
-        
         deepMerge(mergedConfig, loadedConfig);
-        
-        // 确保嵌套对象存在
-        mergedConfig.scoped_prompts = mergedConfig.scoped_prompts || {};
+
+        // Ensure nested objects exist
+        mergedConfig.scoped_prompts = mergedConfig.scoped_prompts || { guilds: {}, channels: {} };
         mergedConfig.scoped_prompts.guilds = mergedConfig.scoped_prompts.guilds || {};
         mergedConfig.scoped_prompts.channels = mergedConfig.scoped_prompts.channels || {};
-        
-        console.log('Merged config:', mergedConfig);
+
         config.set(mergedConfig);
-        showStatus('', 'info');
+        showStatus('', 'info'); // Clear loading message
     } catch (e) {
-        console.error('Config fetch error:', e);
+        console.error('Config fetch error in store:', e);
         showStatus(t_get('status.loadFailed', { error: e.message }), 'error');
     } finally {
         isLoading.set(false);

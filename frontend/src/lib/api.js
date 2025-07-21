@@ -31,190 +31,185 @@ function getApiSecretKey() {
 }
 
 
-async function handleResponse(response) {
-  // 对 fetchLogs 的特殊处理
-  if (response.url.endsWith('/api/logs')) {
-      if (!response.ok) {
-          throw new Error('Failed to fetch logs');
-      }
-      return response.text();
-  }
+// [SECURITY] Centralized fetch function to handle API key authentication
+async function apiFetch(url, options = {}) {
+    const key = getApiSecretKey();
+    
+    const headers = {
+        ...options.headers,
+        'Content-Type': 'application/json',
+    };
 
-  // 对所有其他API请求的处理
-  if (!response.ok) {
-    let errorDetail = 'An unknown error occurred.';
-    const errorText = await response.text();
-    try {
-      const errorJson = JSON.parse(errorText);
-      errorDetail = errorJson.detail || JSON.stringify(errorJson);
-    } catch (e) {
-      errorDetail = errorText || `Request failed with status ${response.status}`;
+    // Only add the API key if it exists.
+    // The initial config fetch won't have it.
+    if (key) {
+        headers['X-API-Key'] = key;
     }
-    console.error('API Error:', response.status, errorDetail);
-    throw new Error(errorDetail);
-  }
-  
-  return response.json();
+
+    const response = await fetch(url, { ...options, headers });
+    return handleResponse(response);
+}
+
+async function handleResponse(response) {
+    // Special handling for fetching logs, which returns plain text
+    if (response.url.endsWith('/api/logs')) {
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(JSON.parse(errorText).detail || 'Failed to fetch logs');
+        }
+        return response.text();
+    }
+
+    // Standard JSON response handling for all other API requests
+    if (!response.ok) {
+        let errorDetail = 'An unknown error occurred.';
+        try {
+            const errorJson = await response.json();
+            errorDetail = errorJson.detail || JSON.stringify(errorJson);
+        } catch (e) {
+            errorDetail = `Request failed with status ${response.status}: ${await response.text()}`;
+        }
+        console.error('API Error:', response.status, errorDetail);
+        throw new Error(errorDetail);
+    }
+    
+    // For 204 No Content responses, return a success indicator
+    if (response.status === 204) {
+        return { success: true };
+    }
+
+    return response.json();
 }
 
 export async function fetchConfig() {
-  console.log('Fetching config from backend...');
-  const response = await fetch(`${BASE_URL}/config`);
-  const result = await handleResponse(response);
-  if (result.api_secret_key) {
-      setApiSecretKey(result.api_secret_key);
-  }
-  console.log('Config fetched successfully:', result);
-  return result;
+    console.log('Fetching config from backend...');
+    // Initial fetch might not have the key, so we handle it specially
+    const tempKey = getApiSecretKey();
+    const headers = {};
+    if (tempKey) {
+        headers['X-API-Key'] = tempKey;
+    }
+
+    const response = await fetch(`${BASE_URL}/config`, { headers });
+    const result = await handleResponse(response);
+
+    // After a successful fetch, we MUST set the key for subsequent requests.
+    if (result.api_secret_key) {
+        setApiSecretKey(result.api_secret_key);
+    }
+    console.log('Config fetched successfully.');
+    return result;
 }
 
 export async function saveConfig(configData) {
-  console.log('Saving config to backend:', configData);
-  const response = await fetch(`${BASE_URL}/config`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(configData),
-  });
-  const result = await handleResponse(response);
-  console.log('Config saved successfully:', result);
-  return result;
+    console.log('Saving config to backend...');
+    const result = await apiFetch(`${BASE_URL}/config`, {
+        method: 'POST',
+        body: JSON.stringify(configData),
+    });
+    console.log('Config saved successfully:', result);
+    return result;
 }
 
 export async function clearMemory(channelId) {
-  const response = await fetch(`${BASE_URL}/memory/clear`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ channel_id: channelId }),
-  });
-  return handleResponse(response);
+    return apiFetch(`${BASE_URL}/memory/clear`, {
+        method: 'POST',
+        body: JSON.stringify({ channel_id: channelId }),
+    });
 }
 
 export async function fetchLogs() {
-  const response = await fetch(`${BASE_URL}/logs`);
-  return handleResponse(response);
+    // apiFetch handles the headers, handleResponse handles the text response
+    return apiFetch(`${BASE_URL}/logs`);
 }
 
 export async function simulateDebug(payload) {
-  const response = await fetch(`${BASE_URL}/debug/simulate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  return handleResponse(response);
+    return apiFetch(`${BASE_URL}/debug/simulate`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
 }
 
 export async function fetchAvailableModels(provider, apiKey, baseUrl) {
-  const response = await fetch(`${BASE_URL}/models/list`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, api_key: apiKey, base_url: baseUrl }),
-  });
-  return handleResponse(response);
+    return apiFetch(`${BASE_URL}/models/list`, {
+        method: 'POST',
+        body: JSON.stringify({ provider, api_key: apiKey, base_url: baseUrl }),
+    });
 }
 
 export async function testModel(provider, apiKey, baseUrl, modelName) {
-  const response = await fetch(`${BASE_URL}/models/test`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ 
-      provider, 
-      api_key: apiKey, 
-      base_url: baseUrl,
-      model_name: modelName 
-    }),
-  });
-  return handleResponse(response);
+    return apiFetch(`${BASE_URL}/models/test`, {
+        method: 'POST',
+        body: JSON.stringify({
+            provider,
+            api_key: apiKey,
+            base_url: baseUrl,
+            model_name: modelName
+        }),
+    });
 }
 
 export async function fetchPluginConfig(pluginName) {
     console.log(`Fetching config for plugin: ${pluginName}`);
-    const apiKey = getApiSecretKey();
-    if (!apiKey) return Promise.reject("API Secret Key not found.");
-
-    const response = await fetch(`${BASE_URL}/plugins/${pluginName}/config`, {
-        headers: { 'X-API-Key': apiKey }
-    });
-    const result = await handleResponse(response);
+    const result = await apiFetch(`${BASE_URL}/plugins/${pluginName}/config`);
     console.log(`Config for ${pluginName} fetched successfully:`, result);
     return result;
 }
 
 // --- Knowledge Base API ---
 
-async function authenticatedFetch(url, options = {}) {
-    const key = getApiSecretKey();
-    if (!key) {
-        return Promise.reject(new Error("API Secret Key not found. Please refresh the page or re-login."));
-    }
-
-    const headers = {
-        ...options.headers,
-        'Content-Type': 'application/json',
-        'X-API-Key': key,
-    };
-
-    const response = await fetch(url, { ...options, headers });
-    return handleResponse(response);
-}
+// The new apiFetch function replaces the need for a separate authenticatedFetch
 
 // Memory Functions
 export async function fetchMemoryItems() {
-    return authenticatedFetch(`${BASE_URL}/memory`);
+    return apiFetch(`${BASE_URL}/memory`);
 }
 
 export async function addMemoryItem(content) {
     const timestamp = new Date().toISOString();
-    return authenticatedFetch(`${BASE_URL}/memory`, {
+    return apiFetch(`${BASE_URL}/memory`, {
         method: 'POST',
         body: JSON.stringify({ content, timestamp }),
     });
 }
 
 export async function deleteMemoryItem(itemId) {
-    return authenticatedFetch(`${BASE_URL}/memory/${itemId}`, {
+    return apiFetch(`${BASE_URL}/memory/${itemId}`, {
         method: 'DELETE',
     });
 }
 
 // World Book Functions
 export async function fetchWorldBookItems() {
-    return authenticatedFetch(`${BASE_URL}/worldbook`);
+    return apiFetch(`${BASE_URL}/worldbook`);
 }
 
 export async function addWorldBookItem(item) {
-    return authenticatedFetch(`${BASE_URL}/worldbook`, {
+    return apiFetch(`${BASE_URL}/worldbook`, {
         method: 'POST',
         body: JSON.stringify(item),
     });
 }
 
 export async function updateWorldBookItem(itemId, item) {
-    return authenticatedFetch(`${BASE_URL}/worldbook/${itemId}`, {
+    return apiFetch(`${BASE_URL}/worldbook/${itemId}`, {
         method: 'PUT',
         body: JSON.stringify(item),
     });
 }
 
 export async function deleteWorldBookItem(itemId) {
-    return authenticatedFetch(`${BASE_URL}/worldbook/${itemId}`, {
+    return apiFetch(`${BASE_URL}/worldbook/${itemId}`, {
         method: 'DELETE',
     });
 }
 
 export async function savePluginConfig(pluginName, configData) {
     console.log(`Saving config for plugin: ${pluginName}`, configData);
-    const apiKey = getApiSecretKey();
-    if (!apiKey) return Promise.reject("API Secret Key not found.");
-
-    const response = await fetch(`${BASE_URL}/plugins/${pluginName}/config`, {
+    const result = await apiFetch(`${BASE_URL}/plugins/${pluginName}/config`, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-API-Key': apiKey
-        },
         body: JSON.stringify(configData),
     });
-    const result = await handleResponse(response);
     console.log(`Config for ${pluginName} saved successfully:`, result);
     return result;
 }

@@ -114,7 +114,7 @@ button:disabled {
 }
 
 .dark-theme label {
-    color: #a1a1aa; /* 提高 label 对比度 */
+    color: #d4d4d8; /* Further increase label contrast */
 }
 
 .dark-theme input,
@@ -148,6 +148,21 @@ button:disabled {
 .dark-theme .add-btn:hover {
     background-color: #4d4e5a;
 }
+.dark-theme .toggle-switch {
+    color: #d4d4d8;
+}
+
+.warning-text {
+    font-size: .8rem;
+    color: var(--text-light);
+    opacity: .8;
+}
+
+.dark-theme .warning-text {
+    color: #f59e0b; /* Amber color for warning */
+    opacity: 1;
+}
+
 /* Toggle Switch Component */
 .toggle-switch {
     position: relative;

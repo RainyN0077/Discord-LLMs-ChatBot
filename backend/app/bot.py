@@ -83,9 +83,10 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     config = load_bot_config()
     discord_token = config.get("discord_token")
     
-    if not discord_token:
-        logger.error("Discord token not found in configuration")
-        return
+    if not discord_token or not isinstance(discord_token, str) or len(discord_token) < 50:
+        logger.critical("FATAL: Discord token is missing, invalid, or too short in config.json. Bot cannot start.")
+        # 在异步上下文中，抛出异常是终止启动的明确方式
+        raise ValueError("Invalid Discord token provided.")
     
     intents = discord.Intents.default()
     intents.message_content = True
@@ -285,11 +286,17 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)
-            error_msg = config.get("blocked_prompt_response", "Sorry, I encountered an error processing your request.").format(reason=str(e))
+            # [SECURITY] Do not leak detailed exception info to the user.
+            # The {reason} placeholder is now only populated for known, safe error types.
+            error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
             await message.reply(error_msg, mention_author=False)
     
     try:
         await bot.start(discord_token)
+    except ValueError as e: # 捕获我们自己抛出的异常
+        logger.critical(f"Terminating due to configuration error: {e}")
+    except discord.errors.LoginFailure:
+        logger.critical("FATAL: Login failed. The provided Discord token is incorrect. Please check your config.json.")
     except Exception as e:
         logger.error(f"Bot failed to start: {e}", exc_info=True)
     finally:

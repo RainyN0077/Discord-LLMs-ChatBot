@@ -22,8 +22,8 @@
             const newKey = `new-plugin-${Date.now()}`;
             if (!c.plugins) c.plugins = {};
             c.plugins[newKey] = { 
-                name: 'New Plugin', enabled: true, trigger_type: 'command', triggers: [], action_type: 'http_request', injection_mode: 'override', 
-                http_request_config: { url: '', method: 'GET', headers: '{}', body_template: '{}' }, 
+                name: 'New Plugin', enabled: true, trigger_type: 'command', triggers: [], action_type: 'http_request', injection_mode: 'override',
+                http_request_config: { url: '', method: 'GET', headers: '{}', body_template: '{}', allow_internal_requests: false },
                 llm_prompt_template: 'Based on the user query "{user_input}", summarize the following API data:\n\n{api_result}'
             };
             return c;
@@ -64,6 +64,14 @@
                        <label for="http-method-{plugin._key}">{$t('pluginManager.method')}</label><select id="http-method-{plugin._key}" value={plugin.http_request_config.method} on:change={e => updateHttpConfig(plugin._key, 'method', e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
                        <label for="http-headers-{plugin._key}">{$t('pluginManager.headers')}</label><textarea id="http-headers-{plugin._key}" rows=2 placeholder={'{ "Authorization": "Bearer YOUR_TOKEN" }'} value={plugin.http_request_config.headers} on:input={e => updateHttpConfig(plugin._key, 'headers', e.target.value)}></textarea>
                        <label for="http-body-{plugin._key}">{$t('pluginManager.body')}</label><textarea id="http-body-{plugin._key}" rows=2 placeholder={'{ "query": "{user_input}" }'} value={plugin.http_request_config.body_template} on:input={e => updateHttpConfig(plugin._key, 'body_template', e.target.value)}></textarea>
+                       <div class="http-internal-toggle">
+                           <label class="toggle-switch small-switch">
+                               <input type="checkbox" checked={plugin.http_request_config.allow_internal_requests || false} on:change={e => updateHttpConfig(plugin._key, 'allow_internal_requests', e.target.checked)}>
+                               <span class="slider"></span>
+                               {$t('pluginManager.allowInternalRequests')}
+                           </label>
+                           <span class="warning-text">{$t('pluginManager.allowInternalWarning')}</span>
+                       </div>
                     </div>
                 </div>
                 {#if plugin.action_type === 'llm_augmented_tool'}

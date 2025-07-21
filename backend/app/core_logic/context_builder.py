@@ -15,9 +15,10 @@ IMAGE_NOTE_TPL = " [该消息还包含{count}张图片]"
 REPLY_CONTEXT_TPL = "[上下文：用户正在回复来自{author_info}的消息]\n回复的消息内容：{replied_content}"
 DELETED_REPLY_CONTEXT_TPL = "[上下文：用户正在回复一条已被删除的消息。]"
 DIRECT_MESSAGE_TPL = "{user_message}"
-TOOL_CONTEXT_TPL = "[来自工具的额外上下文]\n---\n{data}\n---"
-MEMORY_CONTEXT_TPL = "[长期记忆]\n{data}"
-WORLDBOOK_CONTEXT_TPL = "[相关世界设定]\n{data}"
+# [SECURITY] Use XML-like tags to wrap externally injected content to mitigate prompt injection.
+TOOL_CONTEXT_TPL = "[来自工具的额外上下文]\n<tool_output>\n{data}\n</tool_output>"
+MEMORY_CONTEXT_TPL = "[长期记忆]\n<knowledge>\n{data}\n</knowledge>"
+WORLDBOOK_CONTEXT_TPL = "[相关世界设定]\n<knowledge>\n{data}\n</knowledge>"
 USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
 
 
