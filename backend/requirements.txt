@@ -9,3 +9,4 @@ google-generativeai
 anthropic
 tiktoken
 Pillow
+tavily-python

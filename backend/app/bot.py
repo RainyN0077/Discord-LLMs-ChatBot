@@ -10,20 +10,22 @@ from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 import discord
 from discord.ext import commands
 
-import openai
-import google.generativeai as genai
-import anthropic
-
 from .utils import TokenCalculator, download_image, split_message
 from .usage_tracker import usage_tracker
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt, get_highest_configured_role
 from .core_logic.context_builder import build_context_history, format_user_message_for_llm
-from .core_logic.quota_manager import check_and_reset_quota, check_pre_request_quota, update_post_request_usage
+from .core_logic.usage_manager import UsageManager
+from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
+from .llm_providers.factory import get_llm_provider
 from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
 
-CONFIG_FILE = "config.json"
+from pathlib import Path
+
+# --- [核心修改] 和 main.py 保持一致, 指向新的 data 目录 ---
+DATA_DIR = Path.cwd() / "data"
+CONFIG_FILE = DATA_DIR / "config.json"
 bot_instance = None
 current_config = {}
 token_calculator = TokenCalculator()
@@ -37,8 +39,7 @@ def load_bot_config():
 
 def collect_image_urls(msg: discord.Message) -> List[str]:
     """
-    收集消息中的所有图片URL，包括附件(attachments)和嵌入内容(embeds)。
-    这可以正确处理上传的图片、粘贴的图片链接、GIF等。
+    收集消息中的所有视觉内容URL，包括附件、嵌入图片、贴纸和自定义表情。
     """
     urls = []
     # 1. 从附件中收集 (适用于用户直接上传的文件)
@@ -54,148 +55,29 @@ def collect_image_urls(msg: discord.Message) -> List[str]:
         # 检查 embed 的缩略图 (有些链接只显示缩略图)
         if embed.thumbnail and embed.thumbnail.url:
             urls.append(embed.thumbnail.url)
+    
+    # 3. 从贴纸中收集
+    for sticker in msg.stickers:
+        urls.append(sticker.url)
+
+    # 4. 从自定义表情中收集
+    # 使用正则表达式从消息内容中查找表情，并使用 discord.py 工具类进行解析
+    emoji_matches = re.finditer(r'<a?:\w+:\d+>', msg.content)
+    for match in emoji_matches:
+        try:
+            # PartialEmoji.from_str 是从 <a:name:id> 格式安全解析表情的正确方法
+            emoji = discord.PartialEmoji.from_str(match.group(0))
+            if emoji.url:
+                urls.append(str(emoji.url))
+        except Exception as e:
+            logger.warning(f"Could not parse emoji from string '{match.group(0)}': {e}")
             
     # 使用 dict.fromkeys 来去重，同时保持原始顺序
     return list(dict.fromkeys(urls))
 
 
-async def get_llm_response(config: Dict[str, Any], messages: List[Dict[str, str]], images: List[bytes] = None) -> AsyncGenerator[Tuple[str, str], None]:
-    """统一的LLM调用接口，支持流式和非流式响应"""
-    provider = config.get("llm_provider", "openai")
-    model = config.get("model_name", "gpt-4o")
-    api_key = config.get("api_key")
-    base_url = config.get("base_url")
-    stream = config.get("stream_response", True)
-    custom_params = {param["name"]: param["value"] for param in config.get("custom_parameters", [])}
-    
-    try:
-        if provider == "openai":
-            client = openai.OpenAI(api_key=api_key, base_url=base_url)
-            
-            if images:
-                last_message = messages[-1]
-                content = [{"type": "text", "text": last_message["content"]}]
-                for img_bytes in images:
-                    import base64
-                    img_b64 = base64.b64encode(img_bytes).decode('utf-8')
-                    content.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}
-                    })
-                messages[-1] = {"role": last_message["role"], "content": content}
-            
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                stream=stream,
-                **custom_params
-            )
-            
-            if stream:
-                full_response = ""
-                for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        content = chunk.choices[0].delta.content
-                        full_response += content
-                        yield "partial", full_response
-                yield "final", full_response
-            else:
-                content = response.choices[0].message.content
-                yield "final", content
-                
-        elif provider == "google":
-            genai.configure(api_key=api_key)
-            model_instance = genai.GenerativeModel(model)
 
-            generation_config_params = {}
-            if "max_tokens" in custom_params:
-                generation_config_params["max_output_tokens"] = custom_params.pop("max_tokens")
-            if "temperature" in custom_params:
-                generation_config_params["temperature"] = custom_params.pop("temperature")
-            if "top_p" in custom_params:
-                generation_config_params["top_p"] = custom_params.pop("top_p")
-            if "top_k" in custom_params:
-                generation_config_params["top_k"] = custom_params.pop("top_k")
-
-            final_generation_config = genai.types.GenerationConfig(**generation_config_params) if generation_config_params else None
-
-            prompt_parts = []
-            for msg in messages:
-                role_prefix = "Human: " if msg["role"] == "user" else "Assistant: "
-                prompt_parts.append(f"{role_prefix}{msg['content']}")
-            
-            prompt = "\n\n".join(prompt_parts)
-            
-            generation_input = [prompt]
-            if images:
-                import PIL.Image
-                import io
-                for img_bytes in images:
-                    img = PIL.Image.open(io.BytesIO(img_bytes))
-                    generation_input.append(img)
-            
-            api_kwargs = {}
-            if final_generation_config:
-                api_kwargs['generation_config'] = final_generation_config
-            
-            if stream:
-                response = model_instance.generate_content(generation_input, stream=True, **api_kwargs)
-                full_response = ""
-                for chunk in response:
-                    if chunk.text:
-                        full_response += chunk.text
-                        yield "partial", full_response
-                yield "final", full_response
-            else:
-                response = model_instance.generate_content(generation_input, **api_kwargs)
-                yield "final", response.text
-                
-        elif provider == "anthropic":
-            client = anthropic.Anthropic(api_key=api_key)
-            
-            if images:
-                last_message = messages[-1]
-                content = [{"type": "text", "text": last_message["content"]}]
-                for img_bytes in images:
-                    import base64
-                    img_b64 = base64.b64encode(img_bytes).decode('utf-8')
-                    content.append({
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/jpeg",
-                            "data": img_b64
-                        }
-                    })
-                messages[-1] = {"role": last_message["role"], "content": content}
-            
-            if "max_tokens" not in custom_params:
-                 custom_params["max_tokens"] = 4096
-            
-            if stream:
-                with client.messages.stream(
-                    model=model,
-                    messages=messages,
-                    **custom_params
-                ) as stream:
-                    full_response = ""
-                    for text in stream.text_stream:
-                        full_response += text
-                        yield "partial", full_response
-                yield "final", full_response
-            else:
-                response = client.messages.create(
-                    model=model,
-                    messages=messages,
-                    **custom_params
-                )
-                yield "final", response.content[0].text
-                
-    except Exception as e:
-        logger.error(f"LLM API error: {e}", exc_info=True)
-        yield "final", f"Sorry, I encountered an error: {str(e)}"
-
-async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[int, Dict[str, Any]]):
+async def run_bot(memory_cutoffs: Dict[int, datetime]):
     global bot_instance
     
     config = load_bot_config()
@@ -210,8 +92,36 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
     bot = commands.Bot(command_prefix='!', intents=intents)
     bot_instance = bot
     
+    # Initialize managers
+    # This function needs to be defined within the bot's execution scope
+    # so it can access the correct LLM provider instance.
+    async def get_llm_response(messages: List[Dict[str, Any]], images: Optional[List[Dict[str, bytes]]] = None) -> str:
+        """
+        An inner helper function to get a non-streaming LLM response for plugins.
+        """
+        logger.info(f"Plugin triggered LLM call with {len(messages)} messages.")
+        # Use the existing llm_provider instance from the current bot session
+        llm_provider = get_llm_provider(config)
+        
+        full_response = ""
+        try:
+            # Use get_response_stream and iterate to get the final result
+            response_generator = llm_provider.get_response_stream(messages, images, tools=[], tool_functions={})
+            async for response_type, data in response_generator:
+                if response_type == "final":
+                    full_response = data
+                    break
+        except Exception as e:
+            logger.error(f"Error getting LLM response for plugin: {e}", exc_info=True)
+            return f"LLM_PROVIDER_ERROR: {e}"
+
+        logger.info(f"LLM response for plugin: {full_response[:100]}...")
+        return full_response
+
     plugin_manager = PluginManager(config.get("plugins", {}), get_llm_response)
-    
+    knowledge_manager.init_db() # Ensure DB is ready
+    usage_manager = UsageManager(token_calculator)
+
     @bot.event
     async def on_ready():
         logger.info(f'{bot.user} has connected to Discord!')
@@ -221,7 +131,6 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
         if message.author == bot.user:
             return
         
-        config = load_bot_config()
         
         # 插件处理
         plugin_result = await plugin_manager.process_message(message, config)
@@ -269,76 +178,110 @@ async def run_bot(memory_cutoffs: Dict[int, datetime], user_usage_tracker: Dict[
         final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
         
         if role_config:
-            user_usage = check_and_reset_quota(message.author.id, role_config, user_usage_tracker)
-            quota_error = await check_pre_request_quota(message, role_config, user_usage, token_calculator, config, system_prompt, history_for_llm, final_formatted_content)
+            user_usage = await usage_manager.check_quota_and_get_usage(message.author.id, role_config)
+            
+            # Estimate input tokens for pre-check
+            estimated_input_tokens = token_calculator.get_token_count_for_messages(
+                [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}],
+                config.get("llm_provider"),
+                config.get("model_name")
+            )
+
+            quota_error = await usage_manager.check_pre_request_quota(message.author.id, role_config, user_usage, estimated_input_tokens)
             if quota_error:
                 await message.reply(quota_error, mention_author=False)
                 return
 
         llm_messages = [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}]
         provider, model = config.get("llm_provider"), config.get("model_name")
-        input_text = system_prompt + json.dumps(history_for_llm) + final_formatted_content
-        input_tokens = token_calculator.get_token_count(input_text, provider, model)
-        await usage_tracker.record_usage(
-            provider=provider, model=model, input_tokens=input_tokens, output_tokens=0, user_id=str(message.author.id),
-            user_name=message.author.name, user_display_name=message.author.display_name, role_id=str(role_config.get('id')) if role_config else None,
-            role_name=role_name, channel_id=str(message.channel.id), channel_name=message.channel.name,
-            guild_id=str(message.guild.id) if message.guild else None, guild_name=message.guild.name if message.guild else None
-        )
+        # Placeholder for usage data. Will be updated by the generator if available.
+        usage_data = None
         
-        # 发送响应
         try:
-            # 统一添加 typing() 上下文管理器，改善用户体验
             async with message.channel.typing():
                 full_response = ""
-                if config.get("stream_response", True):
-                    response_message = None
-                    async for response_type, content in get_llm_response(config, llm_messages, images):
-                        if response_type == "partial":
-                            content_chunks = split_message(content, 2000)
-                            current_chunk = content_chunks[0] if content_chunks else ""
-                            if response_message is None:
-                                if current_chunk.strip():
-                                    response_message = await message.reply(current_chunk, mention_author=False)
-                            else:
-                                if current_chunk != response_message.content:
-                                    try:
-                                        await response_message.edit(content=current_chunk)
-                                    except discord.errors.HTTPException:
-                                        pass
-                        elif response_type == "final":
-                            full_response = content
-                            if response_message:
-                                content_chunks = split_message(content, 2000)
-                                await response_message.edit(content=content_chunks[0])
-                                for chunk in content_chunks[1:]:
-                                    await message.channel.send(chunk)
-                            else:
-                                content_chunks = split_message(content, 2000)
-                                for chunk in content_chunks:
-                                    await message.channel.send(chunk)
-                else:  # 非流式
-                    async for response_type, content in get_llm_response(config, llm_messages, images):
-                        if response_type == "final":
-                            full_response = content
-                            break
-                    content_chunks = split_message(full_response, 2000)
-                    for i, chunk in enumerate(content_chunks):
-                        if i == 0:
+                response_message = None
+                llm_provider = get_llm_provider(config)
+                tools = plugin_manager.get_all_tools()
+                tool_functions = plugin_manager.get_all_tool_functions()
+
+                response_generator = llm_provider.get_response_stream(
+                    llm_messages, images, tools=tools, tool_functions=tool_functions
+                )
+
+                async for response_type, data in response_generator:
+                    if response_type == "partial":
+                        content_chunks = split_message(data, 2000)
+                        current_chunk = content_chunks[0] if content_chunks else ""
+                        if response_message is None and current_chunk.strip():
+                            response_message = await message.reply(current_chunk, mention_author=False)
+                        elif response_message and current_chunk and current_chunk != response_message.content:
+                            try:
+                                await response_message.edit(content=current_chunk)
+                            except discord.errors.HTTPException: pass
+                    elif response_type == "final":
+                        full_response = data
+                    elif response_type == "usage":
+                        usage_data = data
+                
+                error_reason = None
+                if not full_response or not full_response.strip():
+                    error_reason = "LLM returned an empty response."
+                elif full_response.startswith("LLM_PROVIDER_ERROR:"):
+                    error_reason = full_response
+                
+                if error_reason:
+                    logger.error(f"Response error for user '{message.author.name}': {error_reason}")
+                    error_msg_template = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
+                    final_error_msg = error_msg_template.format(reason=error_reason)
+                    if response_message:
+                        await response_message.edit(content=final_error_msg)
+                    else:
+                        await message.reply(final_error_msg, mention_author=False)
+                    return
+
+                if response_message:
+                    final_chunks = split_message(full_response, 2000)
+                    await response_message.edit(content=final_chunks[0] if final_chunks else "")
+                    for chunk in final_chunks[1:]:
+                        await message.channel.send(chunk)
+                else:
+                    final_chunks = split_message(full_response, 2000)
+                    for i, chunk in enumerate(final_chunks):
+                        if i == 0 and chunk.strip():
                             await message.reply(chunk, mention_author=False)
-                        else:
+                        elif i > 0:
                             await message.channel.send(chunk)
 
-            # 更新用量统计 (在 typing() 块之外)
-            output_tokens = token_calculator.get_token_count(full_response, provider, model)
+            # --- [NEW] Token Calculation Logic ---
+            if usage_data:
+                input_tokens = usage_data.get("input_tokens", 0)
+                output_tokens = usage_data.get("output_tokens", 0)
+                logger.info(f"Using official usage data: Input={input_tokens}, Output={output_tokens}")
+            else:
+                # Fallback to estimation
+                provider, model = config.get("llm_provider"), config.get("model_name")
+                input_tokens = token_calculator.get_token_count_for_messages(llm_messages, provider, model)
+                output_tokens = token_calculator.get_token_count(full_response, provider, model)
+                logger.warning(f"No usage data from provider. Using estimated tokens: Input={input_tokens}, Output={output_tokens}")
+
             await usage_tracker.record_usage(
-                provider=provider, model=model, input_tokens=0, output_tokens=output_tokens, user_id=str(message.author.id),
-                user_name=message.author.name, user_display_name=message.author.display_name, role_id=str(role_config.get('id')) if role_config else None,
-                role_name=role_name, channel_id=str(message.channel.id), channel_name=message.channel.name,
-                guild_id=str(message.guild.id) if message.guild else None, guild_name=message.guild.name if message.guild else None
+                provider=config.get("llm_provider"), model=config.get("model_name"),
+                input_tokens=input_tokens, output_tokens=output_tokens,
+                user_id=str(message.author.id), user_name=message.author.name,
+                user_display_name=message.author.display_name,
+                role_id=role_config.get('id') if role_config else None, role_name=role_name,
+                channel_id=str(message.channel.id), channel_name=message.channel.name,
+                guild_id=str(message.guild.id) if message.guild else None,
+                guild_name=message.guild.name if message.guild else None
             )
+            
             if role_config:
-                update_post_request_usage(message.author.id, user_usage_tracker, token_calculator, config, system_prompt, history_for_llm, final_formatted_content, full_response)
+                await usage_manager.update_post_request_usage(
+                    user_id=message.author.id,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens
+                )
                 
         except Exception as e:
             logger.error(f"Error processing message: {e}", exc_info=True)

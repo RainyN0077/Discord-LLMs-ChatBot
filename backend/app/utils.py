@@ -15,6 +15,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # --- 日志系统设置 (最终优化版) ---
+import time
 def setup_logging():
     # 移除所有现有的处理器，确保从干净的状态开始
     root_logger = logging.getLogger()
@@ -22,13 +23,13 @@ def setup_logging():
         root_logger.handlers.clear()
         
     # --- [核心修改点] ---
-    # 定义新的日志格式，使其既美观又能被前端正确解析
-    # 格式: YYYY-MM-DD HH:MM:SS [模块名] - 等级 - 消息
-    # 关键在于 ` - %(levelname)s - ` 模式，确保前端的正则能匹配上
+    # 1. 使用 UTC 时间：通过设置 converter=time.gmtime
+    # 2. 输出 ISO 8601 格式并包含毫秒和'Z'，确保前端能明确解析
     log_formatter = logging.Formatter(
-        fmt='%(asctime)s [%(name)-18s] - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%dT%H:%M:%S'
     )
+    log_formatter.converter = time.gmtime
     # --- [修改结束] ---
 
     root_logger.setLevel(logging.INFO)
@@ -40,8 +41,10 @@ def setup_logging():
     
     # 2. 设置文件处理器 (输出到文件)
     try:
-        # 在Docker中，工作目录通常是/app，以此为基础创建logs目录
-        log_dir = Path.cwd() / 'logs'
+        # --- [核心修改] 使用在 main.py 中定义的 DATA_DIR 概念 ---
+        # 我们假设所有数据文件都应在 /app/data 目录中
+        data_dir = Path.cwd() / 'data'
+        log_dir = data_dir / 'logs'
         log_dir.mkdir(exist_ok=True, parents=True)
         log_file = log_dir / 'bot.log'
 
@@ -84,12 +87,50 @@ class TokenCalculator:
         self._openai_cache[model_name] = encoding
         return encoding
 
+    def get_token_count_for_messages(self, messages: List[Dict[str, Any]], provider: str, model: str) -> int:
+        """
+        Calculates token count for a list of messages, providing a more accurate estimate.
+        """
+        if not messages:
+            return 0
+            
+        total_tokens = 0
+        try:
+            if provider == "openai":
+                tokenizer = self._get_openai_tokenizer(model)
+                for message in messages:
+                    # Based on OpenAI's cookbook for token counting
+                    total_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+                    for key, value in message.items():
+                        if value:
+                           total_tokens += len(tokenizer.encode(str(value)))
+                        if key == "name":  # if there's a name, the role is omitted
+                            total_tokens -= 1  # role is always required and always 1 token
+                total_tokens += 2 # every reply is primed with <im_start>assistant
+                return total_tokens
+            
+            # For other providers, we'll concatenate content and count. This is less accurate but better than json.dumps.
+            full_text = "".join([str(m.get("content", "")) for m in messages])
+            
+            if provider == "anthropic" and self._anthropic_client:
+                return self._anthropic_client.count_tokens(full_text)
+            elif provider == "google":
+                return max(1, int(len(full_text) / 3.5))
+            else:
+                return len(full_text)
+                
+        except Exception as e:
+            logger.warning(f"Token calculation for messages failed for provider {provider}: {e}. Falling back to len().")
+            fallback_text = "".join([str(m.get("content", "")) for m in messages])
+            return len(fallback_text)
+            
     def get_token_count(self, text: str, provider: str, model: str) -> int:
+        # This function remains for simple text, like counting the final response.
         if not text: return 0
         try:
             if provider == "openai": return len(self._get_openai_tokenizer(model).encode(text))
             elif provider == "anthropic" and self._anthropic_client: return self._anthropic_client.count_tokens(text)
-            elif provider == "google": return max(1, int(len(text) / 3.5)) 
+            elif provider == "google": return max(1, int(len(text) / 3.5))
             else: return len(text)
         except Exception as e:
             logger.warning(f"Token calculation failed for provider {provider}: {e}. Falling back to len().")

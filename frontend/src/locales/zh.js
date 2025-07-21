@@ -223,6 +223,9 @@ export default {
       storageError: '存储错误',
       localStorageUnavailable: 'localStorage 不可用，请检查浏览器设置',
       quotaExceeded: 'localStorage 空间不足，请清理浏览器数据'
+    },
+    timezone: {
+      title: '时区'
     }
   },
   logViewer: {
@@ -287,7 +290,68 @@ export default {
     addModel: '添加模型',
     save: '保存',
     cancel: '取消'
-}
-
-
+},
+"searchSettings": {
+    "title": "搜索设置",
+    "enable": "启用搜索",
+    "apiKey": "API 密钥",
+    "apiUrl": "API 地址",
+    "includeDate": "搜索包含日期",
+    "maxResults": "搜索结果个数",
+    "compression": "压缩方法",
+    "compressionNone": "不压缩",
+    "compressionTruncate": "截断",
+    "compressionRAG": "RAG",
+    "config": {
+        "title": "常规设置"
+    },
+    "blacklist": {
+        "title": "黑名单",
+        "add": "添加订阅",
+        "addPlaceholder": "输入要屏蔽的域名，例如 example.com",
+        "name": "名称",
+        "empty": "暂无数据",
+        "updateNow": "立即更新",
+        "deleteSource": "删除订阅源"
+    }
+ },
+ knowledge: {
+   title: '知识库',
+   tabs: {
+     worldBook: '世界书',
+     memory: '记忆库'
+   },
+   confirmDeleteMemory: '确定要删除这条记忆吗？',
+   confirmDeleteWorldBook: '确定要删除这个词条吗？',
+   error: {
+     loadMemory: '加载记忆库失败',
+     addMemory: '添加记忆失败',
+     deleteMemory: '删除记忆失败',
+     loadWorldBook: '加载世界书失败',
+     emptyFields: '关键词和内容不能为空',
+     saveWorldBook: '保存世界书失败',
+     deleteWorldBook: '删除世界书失败'
+   },
+   memory: {
+     title: '记忆库',
+     addPlaceholder: '添加一条新的记忆...',
+     add: '添加记忆',
+     delete: '删除'
+   },
+   worldBook: {
+     title: '世界书',
+     keywordsLabel: '关键词',
+     keywordsHint: '用逗号分隔',
+     keywordsPlaceholder: '例如：世界观, 主要角色...',
+     contentLabel: '内容',
+     contentPlaceholder: '详细描述这个设定...',
+     addTitle: '添加新词条',
+     editTitle: '编辑词条',
+     add: '添加词条',
+     save: '保存更改',
+     edit: '编辑',
+     delete: '删除',
+     cancelEdit: '取消编辑'
+   }
+ }
 };

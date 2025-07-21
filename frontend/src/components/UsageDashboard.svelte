@@ -181,13 +181,27 @@
         return meta.display_name || meta.name || key;
     }
 
+    function handleOverlayClick(event) {
+        if (event.target === event.currentTarget) {
+            showPricingModal = false;
+        }
+    }
+
+    function handleKeydown(event) {
+        if (showPricingModal && event.key === 'Escape') {
+            showPricingModal = false;
+        }
+    }
+
     onMount(() => {
         fetchData();
         refreshInterval = setInterval(fetchData, 30000);
+        window.addEventListener('keydown', handleKeydown);
     });
     
     onDestroy(() => {
         if (refreshInterval) clearInterval(refreshInterval);
+        window.removeEventListener('keydown', handleKeydown);
     });
 </script>
 
@@ -292,9 +306,9 @@
 </div>
 
 {#if showPricingModal}
-<div class="modal-overlay" on:click={() => showPricingModal = false}>
-    <div class="modal" on:click|stopPropagation>
-        <h3>{$t('usage.pricingConfig')}</h3>
+<div class="modal-overlay" on:click={handleOverlayClick} on:keydown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { showPricingModal = false; } }} role="button" tabindex="0">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pricing-modal-title">
+        <h3 id="pricing-modal-title">{$t('usage.pricingConfig')}</h3>
         <p class="modal-info">{$t('usage.pricingInfo')}</p>
         <div class="pricing-table">
             <div class="pricing-header">

@@ -33,7 +33,29 @@ export const isLoading = writable(false);
 export const customFontName = writable('');
 export const rawLogs = writable('');
 
-// --- Derived Stores ---
+// --- Timezone Store ---
+const getInitialTimezone = () => {
+    if (typeof window !== 'undefined') {
+        const savedTimezone = localStorage.getItem('timezone');
+        if (savedTimezone) {
+            return savedTimezone;
+        }
+        // Fallback to browser's timezone
+        return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+    // Default for SSR or other environments
+    return 'UTC';
+};
+
+export const timezoneStore = writable(getInitialTimezone());
+
+if (typeof window !== 'undefined') {
+    timezoneStore.subscribe(value => {
+        localStorage.setItem('timezone', value);
+    });
+}
+ 
+ // --- Derived Stores ---
 export const roleBasedConfigArray = derived(config, $config => 
     Object.entries($config.role_based_config || {}).map(([key, value]) => ({ ...value, _key: key }))
 );
@@ -57,15 +79,20 @@ export function setKeywords(value) {
 export function updateConfigField(path, value) {
     config.update(c => {
         const keys = path.split('.');
-        let current = c;
+        // 浅拷贝根对象以实现不可变更新
+        const newConfig = { ...c };
+
+        let current = newConfig;
         for (let i = 0; i < keys.length - 1; i++) {
-            if (current[keys[i]] === undefined || current[keys[i]] === null) {
-                current[keys[i]] = {};
-            }
-            current = current[keys[i]];
+            const key = keys[i];
+            // 确保路径存在，然后对路径中的每个对象进行浅拷贝
+            const next = (current[key] === undefined || current[key] === null) ? {} : { ...current[key] };
+            current[key] = next;
+            current = next;
         }
+
         current[keys[keys.length - 1]] = value;
-        return c;
+        return newConfig;
     });
 }
 

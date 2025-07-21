@@ -21,22 +21,26 @@ import openai
 import google.generativeai as genai
 import anthropic
 
-from .bot import run_bot, get_llm_response
+from .bot import run_bot
 from .utils import _execute_http_request, _format_with_placeholders, setup_logging
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from .core_logic.context_builder import format_user_message_for_llm
+from .core_logic.knowledge_manager import knowledge_manager
 
 logger = logging.getLogger(__name__)
 
 # 使用 pathlib.Path.cwd() 获取当前工作目录，这在Docker容器中通常是 '/app'
 # 这样可以确保路径相对于项目根目录是正确的
-CURRENT_DIR = Path.cwd()
-CONFIG_FILE = CURRENT_DIR / "config.json"
-# 日志文件的具体路径由 setup_logging 函数内部管理
+# --- [核心修改] 将所有动态数据（配置、日志等）指向 /app/data 目录 ---
+# 这个目录在 docker-compose.yml 中被映射到主机上的 ./data 目录
+DATA_DIR = Path.cwd() / "data"
+DATA_DIR.mkdir(exist_ok=True) # 确保目录存在
+
+CONFIG_FILE = DATA_DIR / "config.json"
+# 日志文件的具体路径由 setup_logging 函数内部管理，但也会使用 DATA_DIR
 
 bot_task = None
 MEMORY_CUTOFFS: Dict[int, datetime] = {}
-USER_USAGE_TRACKER: Dict[int, Dict[str, Any]] = {}
 
 def load_config():
     """加载配置，并为新字段设置默认值，增加错误日志。"""
@@ -88,7 +92,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     
     loop = asyncio.get_event_loop()
-    bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
+    bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS))
     yield
     if bot_task and not bot_task.done():
         bot_task.cancel()
@@ -199,6 +203,19 @@ class AvailableModelsRequest(BaseModel):
     api_key: str
     base_url: Optional[str] = None
 
+# --- Knowledge Base Models ---
+class MemoryItem(BaseModel):
+    id: Optional[int] = None
+    content: str
+    timestamp: str
+
+class WorldBookItem(BaseModel):
+    id: Optional[int] = None
+    keywords: str
+    content: str
+    enabled: bool = True
+
+
 # --- API Endpoints ---
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
@@ -244,7 +261,7 @@ async def update_config_endpoint(config_data: Config):
                 pass
         
         loop = asyncio.get_event_loop()
-        bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS, USER_USAGE_TRACKER))
+        bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS))
         
         logger.info("Configuration updated and bot restarted successfully")
         return {"message": "Configuration updated and bot restarted."}
@@ -286,6 +303,40 @@ async def simulate_debugger_run(request: DebuggerRequest):
     config = load_config()
     # ... debugger logic ...
     return {"message": "Debugger not fully implemented in this snippet."}
+
+# --- Plugin-specific Endpoints ---
+
+@app.get("/api/plugins/{plugin_name}/config", dependencies=[Depends(get_api_key)])
+async def get_plugin_config_endpoint(plugin_name: str):
+    config = load_config()
+    plugin_config = config.get("plugins", {}).get(plugin_name)
+    if not plugin_config:
+        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found.")
+    return plugin_config
+
+@app.post("/api/plugins/{plugin_name}/config", dependencies=[Depends(get_api_key)])
+async def update_plugin_config_endpoint(plugin_name: str, plugin_data: Dict[str, Any]):
+    global bot_task
+    config = load_config()
+    if plugin_name not in config.get("plugins", {}):
+        raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found.")
+    
+    config["plugins"][plugin_name] = plugin_data
+    save_config(config)
+    
+    # Restart bot
+    if bot_task and not bot_task.done():
+        bot_task.cancel()
+        try:
+            await bot_task
+        except asyncio.CancelledError:
+            pass
+            
+    loop = asyncio.get_event_loop()
+    bot_task = loop.create_task(run_bot(MEMORY_CUTOFFS))
+    
+    logger.info(f"Plugin '{plugin_name}' configuration updated and bot restarted.")
+    return {"message": f"Plugin '{plugin_name}' configuration updated and bot restarted."}
 
 # 获取可用模型列表
 @app.post("/api/models/list")
@@ -380,7 +431,7 @@ async def test_model_connection(request: ModelTestRequest):
 
 @app.get("/api/logs")
 async def get_logs():
-    log_file_path = CURRENT_DIR / 'logs/bot.log'
+    log_file_path = DATA_DIR / 'logs/bot.log'
     headers = {"Access-Control-Allow-Origin": "*"}
     if not log_file_path.exists():
         logger.warning(f"Log file not found at '{log_file_path}'.")
@@ -428,21 +479,87 @@ async def get_usage_statistics(
 
 @app.post("/api/usage/pricing")
 async def update_pricing(pricing_dict: Dict[str, Any]):
-    pricing_file = CURRENT_DIR / "pricing_config.json"
+    pricing_file = DATA_DIR / "pricing_config.json"
     with open(pricing_file, 'w') as f:
         json.dump(pricing_dict, f, indent=2)
     return {"message": "Pricing updated"}
 
 @app.get("/api/usage/pricing")
 async def get_pricing():
-    pricing_file = CURRENT_DIR / "pricing_config.json"
+    pricing_file = DATA_DIR / "pricing_config.json"
     
     if os.path.exists(pricing_file):
         try:
-            with open(pricing_file, 'r') as f:
+            with open(pricing_file, 'r', encoding='utf-8') as f:
                 pricing_data = json.load(f)
                 return {"pricing": pricing_data}
-        except:
-            pass
-    
+        except FileNotFoundError:
+            logger.info(f"Pricing config file not found at {pricing_file}. Returning empty config.")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error decoding pricing_config.json: {e}")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred while reading pricing config: {e}", exc_info=True)
+
     return {"pricing": {}}
+
+# --- Knowledge Base API Endpoints ---
+
+# Memory Endpoints
+@app.get("/api/memory", response_model=List[MemoryItem], dependencies=[Depends(get_api_key)])
+async def get_all_memory_items():
+    return knowledge_manager.get_all_memories()
+
+@app.post("/api/memory", response_model=MemoryItem, dependencies=[Depends(get_api_key)])
+async def add_memory_item(item: MemoryItem):
+    try:
+        # The timestamp is part of the request model now.
+        item_id = knowledge_manager.add_memory(content=item.content, timestamp=item.timestamp)
+        return {**item.dict(), "id": item_id}
+    except Exception as e:
+        logger.error(f"Failed to add memory item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/memory/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
+async def delete_memory_item(item_id: int):
+    success = knowledge_manager.delete_memory(item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Memory item not found")
+    return Response(status_code=204)
+
+# World Book Endpoints
+@app.get("/api/worldbook", response_model=List[WorldBookItem], dependencies=[Depends(get_api_key)])
+async def get_all_worldbook_items():
+    return knowledge_manager.get_all_world_book_entries()
+
+@app.post("/api/worldbook", response_model=WorldBookItem, dependencies=[Depends(get_api_key)])
+async def add_worldbook_item(item: WorldBookItem):
+    try:
+        item_id = knowledge_manager.add_world_book_entry(keywords=item.keywords, content=item.content)
+        new_item = knowledge_manager.get_all_world_book_entries() # Inefficient, but gets the full object
+        return next((i for i in new_item if i['id'] == item_id), None)
+    except Exception as e:
+        logger.error(f"Failed to add world book item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/worldbook/{item_id}", response_model=WorldBookItem, dependencies=[Depends(get_api_key)])
+async def update_worldbook_item(item_id: int, item: WorldBookItem):
+    try:
+        success = knowledge_manager.update_world_book_entry(
+            entry_id=item_id,
+            keywords=item.keywords,
+            content=item.content,
+            enabled=item.enabled
+        )
+        if not success:
+            raise HTTPException(status_code=404, detail="World book item not found")
+        return {**item.dict(), "id": item_id}
+    except Exception as e:
+        logger.error(f"Failed to update world book item: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/worldbook/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
+async def delete_worldbook_item(item_id: int):
+    success = knowledge_manager.delete_world_book_entry(item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="World book item not found")
+    return Response(status_code=204)

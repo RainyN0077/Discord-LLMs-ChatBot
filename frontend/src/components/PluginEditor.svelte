@@ -1,5 +1,6 @@
 <!-- src/components/PluginEditor.svelte (FINAL & CORRECT) -->
 <script>
+    import '../styles/lists.css';
     import { t } from '../i18n.js';
     import { pluginsArray, config, updateConfigField } from '../lib/stores.js';
     import Card from './Card.svelte';
@@ -42,14 +43,14 @@
         {#each $pluginsArray as plugin (plugin._key)}
         <div class="list-item complex-item plugin-item">
             <div class="list-item-main very-wide-grid plugin-grid">
-                <div class="plugin-cell cell-name"><label>{$t('pluginManager.name')}</label><input type="text" value={plugin.name} on:input={e => updatePluginField(plugin._key, 'name', e.target.value)}></div>
+                <div class="plugin-cell cell-name"><label for="plugin-name-{plugin._key}">{$t('pluginManager.name')}</label><input id="plugin-name-{plugin._key}" type="text" value={plugin.name} on:input={e => updatePluginField(plugin._key, 'name', e.target.value)}></div>
                 <div class="plugin-cell cell-toggle"><label class="toggle-switch"><input type="checkbox" checked={plugin.enabled} on:change={e => updatePluginField(plugin._key, 'enabled', e.target.checked)}><span class="slider"></span>{$t('pluginManager.enabled')}</label></div>
-                <div class="plugin-cell cell-trigger-type"><label>{$t('pluginManager.triggerType')}</label><select value={plugin.trigger_type} on:change={e => updatePluginField(plugin._key, 'trigger_type', e.target.value)}><option value="command">{$t('pluginManager.triggerTypes.command')}</option><option value="keyword">{$t('pluginManager.triggerTypes.keyword')}</option></select></div>
-                <div class="plugin-cell cell-triggers"><label>{$t('pluginManager.triggers')}</label><input type="text" placeholder={$t('pluginManager.triggersPlaceholder')} value={Array.isArray(plugin.triggers) ? plugin.triggers.join(', ') : ''} on:input={e => updatePluginField(plugin._key, 'triggers', e.target.value)}></div>
-                <div class="plugin-cell cell-action-type"><label>{$t('pluginManager.actionType')}</label><select value={plugin.action_type} on:change={e => updatePluginField(plugin._key, 'action_type', e.target.value)}><option value="http_request">{$t('pluginManager.actionTypes.http_request')}</option><option value="llm_augmented_tool">{$t('pluginManager.actionTypes.llm_augmented_tool')}</option></select></div>
+                <div class="plugin-cell cell-trigger-type"><label for="trigger-type-{plugin._key}">{$t('pluginManager.triggerType')}</label><select id="trigger-type-{plugin._key}" value={plugin.trigger_type} on:change={e => updatePluginField(plugin._key, 'trigger_type', e.target.value)}><option value="command">{$t('pluginManager.triggerTypes.command')}</option><option value="keyword">{$t('pluginManager.triggerTypes.keyword')}</option></select></div>
+                <div class="plugin-cell cell-triggers"><label for="triggers-{plugin._key}">{$t('pluginManager.triggers')}</label><input id="triggers-{plugin._key}" type="text" placeholder={$t('pluginManager.triggersPlaceholder')} value={Array.isArray(plugin.triggers) ? plugin.triggers.join(', ') : ''} on:input={e => updatePluginField(plugin._key, 'triggers', e.target.value)}></div>
+                <div class="plugin-cell cell-action-type"><label for="action-type-{plugin._key}">{$t('pluginManager.actionType')}</label><select id="action-type-{plugin._key}" value={plugin.action_type} on:change={e => updatePluginField(plugin._key, 'action_type', e.target.value)}><option value="http_request">{$t('pluginManager.actionTypes.http_request')}</option><option value="llm_augmented_tool">{$t('pluginManager.actionTypes.llm_augmented_tool')}</option></select></div>
                 {#if plugin.action_type === 'llm_augmented_tool'}
                 <div class="plugin-cell cell-injection-mode">
-                    <label>{$t('pluginManager.injectionMode')}</label>
+                    <div class="group-label">{$t('pluginManager.injectionMode')}</div>
                     <div class="radio-group small">
                         <label><input type="radio" name="injection-mode-{plugin._key}" value={'override'} checked={plugin.injection_mode === 'override'} on:change={e => updatePluginField(plugin._key, 'injection_mode', e.target.value)}> {$t('pluginManager.injectionModes.override')}</label>
                         <label><input type="radio" name="injection-mode-{plugin._key}" value={'append'} checked={plugin.injection_mode === 'append'} on:change={e => updatePluginField(plugin._key, 'injection_mode', e.target.value)}> {$t('pluginManager.injectionModes.append')}</label>
@@ -57,17 +58,17 @@
                 </div>
                 {/if}
                 <div class="plugin-cell cell-http-config wide-cell">
-                    <label>{$t('pluginManager.httpRequest')}</label>
+                    <div class="group-label">{$t('pluginManager.httpRequest')}</div>
                     <div class="http-grid">
-                       <label>{$t('pluginManager.url')}</label><input type="text" placeholder={$t('pluginManager.urlPlaceholder')} value={plugin.http_request_config.url} on:input={e => updateHttpConfig(plugin._key, 'url', e.target.value)}>
-                       <label>{$t('pluginManager.method')}</label><select value={plugin.http_request_config.method} on:change={e => updateHttpConfig(plugin._key, 'method', e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
-                       <label>{$t('pluginManager.headers')}</label><textarea rows=2 placeholder={'{ "Authorization": "Bearer YOUR_TOKEN" }'} value={plugin.http_request_config.headers} on:input={e => updateHttpConfig(plugin._key, 'headers', e.target.value)}></textarea>
-                       <label>{$t('pluginManager.body')}</label><textarea rows=2 placeholder={'{ "query": "{user_input}" }'} value={plugin.http_request_config.body_template} on:input={e => updateHttpConfig(plugin._key, 'body_template', e.target.value)}></textarea>
+                       <label for="http-url-{plugin._key}">{$t('pluginManager.url')}</label><input id="http-url-{plugin._key}" type="text" placeholder={$t('pluginManager.urlPlaceholder')} value={plugin.http_request_config.url} on:input={e => updateHttpConfig(plugin._key, 'url', e.target.value)}>
+                       <label for="http-method-{plugin._key}">{$t('pluginManager.method')}</label><select id="http-method-{plugin._key}" value={plugin.http_request_config.method} on:change={e => updateHttpConfig(plugin._key, 'method', e.target.value)}><option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option></select>
+                       <label for="http-headers-{plugin._key}">{$t('pluginManager.headers')}</label><textarea id="http-headers-{plugin._key}" rows=2 placeholder={'{ "Authorization": "Bearer YOUR_TOKEN" }'} value={plugin.http_request_config.headers} on:input={e => updateHttpConfig(plugin._key, 'headers', e.target.value)}></textarea>
+                       <label for="http-body-{plugin._key}">{$t('pluginManager.body')}</label><textarea id="http-body-{plugin._key}" rows=2 placeholder={'{ "query": "{user_input}" }'} value={plugin.http_request_config.body_template} on:input={e => updateHttpConfig(plugin._key, 'body_template', e.target.value)}></textarea>
                     </div>
                 </div>
                 {#if plugin.action_type === 'llm_augmented_tool'}
                 <div class="plugin-cell cell-llm-prompt wide-cell">
-                    <label>{$t('pluginManager.llmPrompt')}</label>
+                    <label for="llm-prompt-{plugin._key}">{$t('pluginManager.llmPrompt')}</label>
                     <textarea rows="4" value={plugin.llm_prompt_template} on:input={e => updatePluginField(plugin._key, 'llm_prompt_template', e.target.value)}></textarea>
                     <p class="info template-info">{$t('pluginManager.templateInfo')}<br><strong>{$t('pluginManager.injectionMode')}:</strong> {$t('pluginManager.injectionInfo')}</p>
                 </div>

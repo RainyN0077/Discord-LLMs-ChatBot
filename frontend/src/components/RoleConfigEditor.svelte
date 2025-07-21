@@ -1,5 +1,6 @@
 <!-- src/components/RoleConfigEditor.svelte (FINAL & CORRECT) -->
 <script>
+    import '../styles/lists.css';
     import { t } from '../i18n.js';
     import { roleBasedConfigArray, config, updateConfigField } from '../lib/stores.js';
     import Card from './Card.svelte';
@@ -65,7 +66,7 @@
                 <div class="limit-control-group">
                     <label class="toggle-switch"><input type="checkbox" checked={role.enable_message_limit} on:change={(e) => updateRoleField(role._key, 'enable_message_limit', e.target.checked)}><span class="slider"></span>{$t('roleConfig.enableMsgLimit')}</label>
                     <div class="limit-group" class:disabled={!role.enable_message_limit}>
-                        <label>{$t('roleConfig.totalQuota')}:</label>
+                        <div class="group-label">{$t('roleConfig.totalQuota')}:</div>
                         <input type="number" min="0" placeholder="0" disabled={!role.enable_message_limit} value={role.message_limit} on:input={(e) => updateRoleField(role._key, 'message_limit', e.target.value)}>
                         <span>/</span>
                         <input type="number" min="1" placeholder="60" disabled={!role.enable_message_limit} value={role.message_refresh_minutes} on:input={(e) => updateRoleField(role._key, 'message_refresh_minutes', e.target.value)}>
@@ -76,20 +77,20 @@
                 <div class="limit-control-group">
                     <label class="toggle-switch"><input type="checkbox" checked={role.enable_char_limit} on:change={(e) => updateRoleField(role._key, 'enable_char_limit', e.target.checked)}><span class="slider"></span>{$t('roleConfig.enableTokenLimit')}</label>
                     <div class="limit-group" class:disabled={!role.enable_char_limit}>
-                        <label>{$t('roleConfig.totalQuota')}:</label>
+                        <div class="group-label">{$t('roleConfig.totalQuota')}:</div>
                         <input type="number" min="0" placeholder="0" disabled={!role.enable_char_limit} value={role.char_limit} on:input={(e) => updateRoleField(role._key, 'char_limit', e.target.value)}>
                         <span>/</span>
                         <input type="number" min="1" placeholder="60" disabled={!role.enable_char_limit} value={role.char_refresh_minutes} on:input={(e) => updateRoleField(role._key, 'char_refresh_minutes', e.target.value)}>
                         <span class="unit">{$t('roleConfig.minutes')}</span>
                     </div>
                     <div class="limit-group budget-group" class:disabled={!role.enable_char_limit}>
-                        <label>{$t('roleConfig.outputBudget')}:</label>
+                        <div class="group-label">{$t('roleConfig.outputBudget')}:</div>
                         <input type="number" min="0" placeholder="300" disabled={!role.enable_char_limit} value={role.char_output_budget} on:input={(e) => updateRoleField(role._key, 'char_output_budget', e.target.value)}>
                     </div>
                 </div>
                 
-                <div class="preview-section"><label>{$t('roleConfig.previewTitle')}</label><div class="quota-preview"><div class="preview-header" style="color: {role.display_color};">{$t('roleConfig.previewHeader')}</div><div class="preview-field"><span class="field-name">{$t('roleConfig.msgLimit')}</span><span class="field-value" style="color: {role.display_color};">{#if role.enable_message_limit}{role.message_limit - Math.floor(role.message_limit / 3)}/{role.message_limit > 0 ? role.message_limit : '∞'}{:else}{$t('roleConfig.disabled')}{/if}</span></div><div class="preview-field"><span class="field-name">{$t('roleConfig.tokenLimit')}</span><span class="field-value" style="color: {role.display_color};">{#if role.enable_char_limit}{role.char_limit - Math.floor(role.char_limit / 4)}/{role.char_limit > 0 ? role.char_limit : '∞'}{:else}{$t('roleConfig.disabled')}{/if}</span></div></div></div>
-                <div class="color-picker-section"><label>{$t('roleConfig.displayColor')}</label><input type="color" value={role.display_color} on:input={(e) => updateRoleField(role._key, 'display_color', e.target.value)}></div>
+                <div class="preview-section"><div class="group-label">{$t('roleConfig.previewTitle')}</div><div class="quota-preview"><div class="preview-header" style="color: {role.display_color};">{$t('roleConfig.previewHeader')}</div><div class="preview-field"><span class="field-name">{$t('roleConfig.msgLimit')}</span><span class="field-value" style="color: {role.display_color};">{#if role.enable_message_limit}{role.message_limit - Math.floor(role.message_limit / 3)}/{role.message_limit > 0 ? role.message_limit : '∞'}{:else}{$t('roleConfig.disabled')}{/if}</span></div><div class="preview-field"><span class="field-name">{$t('roleConfig.tokenLimit')}</span><span class="field-value" style="color: {role.display_color};">{#if role.enable_char_limit}{role.char_limit - Math.floor(role.char_limit / 4)}/{role.char_limit > 0 ? role.char_limit : '∞'}{:else}{$t('roleConfig.disabled')}{/if}</span></div></div></div>
+                <div class="color-picker-section"><label for="color-picker-{role._key}">{$t('roleConfig.displayColor')}</label><input id="color-picker-{role._key}" type="color" value={role.display_color} on:input={(e) => updateRoleField(role._key, 'display_color', e.target.value)}></div>
             </div>
             <button class="remove-btn" on:click={() => removeRoleConfig(role._key)} title="Remove">×</button>
         </div>

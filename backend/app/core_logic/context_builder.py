@@ -1,10 +1,25 @@
 # backend/app/core_logic/context_builder.py
 import json
+import re
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity
 from ..utils import escape_content
+from .knowledge_manager import knowledge_manager
+
+# --- Constants for structured prompts ---
+# Using constants makes the code cleaner, easier to read, and simplifies future modifications.
+MESSAGE_FORMAT_TPL = "{author_id}: {content}{image_note}"
+IMAGE_NOTE_TPL = " [该消息还包含{count}张图片]"
+REPLY_CONTEXT_TPL = "[上下文：用户正在回复来自{author_info}的消息]\n回复的消息内容：{replied_content}"
+DELETED_REPLY_CONTEXT_TPL = "[上下文：用户正在回复一条已被删除的消息。]"
+DIRECT_MESSAGE_TPL = "{user_message}"
+TOOL_CONTEXT_TPL = "[来自工具的额外上下文]\n---\n{data}\n---"
+MEMORY_CONTEXT_TPL = "[长期记忆]\n{data}"
+WORLDBOOK_CONTEXT_TPL = "[相关世界设定]\n{data}"
+USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
+
 
 async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[int]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
     """根据配置的上下文模式，构建历史消息列表和用于LLM的格式化历史。"""
@@ -71,34 +86,43 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     total_chars = 0
 
     for hist_msg in reversed(fetched_history):
-        content, role = "", ""
-        if hist_msg.author == client.user:
-            role, content = "assistant", hist_msg.clean_content
-        elif hist_msg.content or hist_msg.attachments: # 考虑仅包含图片的消息
+        # 忽略没有内容的消息
+        if not hist_msg.clean_content and not hist_msg.attachments:
+            continue
+
+        is_bot = hist_msg.author == client.user
+        role = "assistant" if is_bot else "user"
+        
+        hist_role_config = None
+        if not is_bot:
             hist_member = hist_msg.author
             if isinstance(hist_member, discord.User) and message.guild:
                 hist_member = message.guild.get_member(hist_member.id) or hist_member
             
-            hist_role_config = None
             if isinstance(hist_member, discord.Member):
                 _, hist_role_config = get_highest_configured_role(hist_member, role_based_configs) or (None, None)
-            
-            role, rich_id = "user", get_rich_identity(hist_msg.author, user_personas, hist_role_config)
-            
-            # 如果消息包含图片添加注释
-            image_note = ""
-            if hist_msg.attachments:
-                image_count = len([att for att in hist_msg.attachments if att.content_type and att.content_type.startswith('image/')])
-                if image_count > 0:
-                    image_note = f" [该消息还包含{image_count}张图片]"
-            
-            content = f"[来自{rich_id}的历史消息]\n{escape_content(hist_msg.clean_content)}{image_note}"
+        
+        # 对用户和机器人统一调用 get_rich_identity, role_config 对于机器人为 None
+        rich_id = get_rich_identity(hist_msg.author, user_personas, hist_role_config)
+        
+        image_note = ""
+        if hist_msg.attachments:
+            image_count = len([att for att in hist_msg.attachments if att.content_type and att.content_type.startswith('image/')])
+            if image_count > 0:
+                image_note = IMAGE_NOTE_TPL.format(count=image_count)
 
-        if content and role:
-            if total_chars + len(content) > char_limit:
-                break
-            total_chars += len(content)
-            temp_history.append({"role": role, "content": content})
+        clean_content = escape_content(hist_msg.clean_content)
+        
+        content = MESSAGE_FORMAT_TPL.format(
+            author_id=rich_id,
+            content=clean_content,
+            image_note=image_note
+        )
+
+        if total_chars + len(content) > char_limit:
+            break
+        total_chars += len(content)
+        temp_history.append({"role": role, "content": content})
     
     history_for_llm = list(reversed(temp_history))
     return fetched_history, history_for_llm
@@ -116,6 +140,9 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
             rich_id_str = get_rich_identity(member, user_personas, m_role_config)
             processed_content = processed_content.replace(f'<@{mentioned_user.id}>', rich_id_str).replace(f'<@!{mentioned_user.id}>', rich_id_str)
     final_text_content = processed_content.replace(f'<@{client.user.id}>', '').replace(f'<@!{client.user.id}>', '').strip()
+
+    # [NEW] Remove custom emoji text, as they are now sent as images.
+    final_text_content = re.sub(r'<a?:\w+:\d+>', '', final_text_content).strip()
 
     request_block_parts = []
     
@@ -145,26 +172,45 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
                 else:
                     final_replied_description = f"[消息内容是{image_count}张图片，请查看附件]"
         
-        request_block_parts.append(f"[上下文：用户正在回复来自{replied_author_info}的消息]\n回复的消息内容：{final_replied_description}")
+        request_block_parts.append(REPLY_CONTEXT_TPL.format(author_info=replied_author_info, replied_content=final_replied_description))
     elif message.reference: # 如果引用存在但不是有效消息（即已被删除）
-        request_block_parts.append(f"[上下文：用户正在回复一条已被删除的消息。]")
-
+        request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
 
     # 添加当前消息中图片的信息
     current_image_info = ""
     if message.attachments:
-        current_image_count = len([att for att in message.attachments 
+        current_image_count = len([att for att in message.attachments
                                   if att.content_type and att.content_type.startswith('image/')])
         if current_image_count > 0:
-            current_image_info = f" [用户随此消息发送了{current_image_count}张图片]"
+            current_image_info = IMAGE_NOTE_TPL.format(count=current_image_count)
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
-    current_user_message_str = f"发送者：{author_rich_id}\n消息：\n---\n{escape_content(final_text_content)}\n---{current_image_info}"
-    request_block_parts.append(f"[以下是用户的直接消息]\n{current_user_message_str}")
+    
+    current_user_message_str = MESSAGE_FORMAT_TPL.format(
+        author_id=author_rich_id,
+        content=escape_content(final_text_content),
+        image_note=current_image_info
+    )
+    request_block_parts.append(current_user_message_str)
     
     # 处理插件注入的数据
     if injected_data:
-        request_block_parts.append(f"[来自工具的额外上下文]\n---\n{injected_data}\n---")
+        request_block_parts.append(TOOL_CONTEXT_TPL.format(data=injected_data))
 
-    return "[用户请求块]\n\n" + "\n\n".join(request_block_parts) + "\n[/用户请求块]"
+    # --- New: Inject knowledge base content ---
+    # 1. Inject World Book entries
+    triggered_wb_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+    if triggered_wb_entries:
+        wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in triggered_wb_entries])
+        request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
+
+    # 2. Inject long-term memory
+    all_memories = knowledge_manager.get_all_memories()
+    if all_memories:
+        # For now, we inject all memories. This could be optimized later.
+        memory_content = "\n".join([f"- {mem['content']}" for mem in all_memories])
+        request_block_parts.append(MEMORY_CONTEXT_TPL.format(data=memory_content))
+    # --- End of new section ---
+
+    return USER_REQUEST_BLOCK_TPL.format(parts="\n\n".join(request_block_parts))
 

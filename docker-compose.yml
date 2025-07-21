@@ -1,13 +1,13 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
     restart: always
     volumes:
-      - ./backend/app/config.json:/app/config.json
+      # 将单个文件映射替换为目录映射
+      # ./data 目录将在主机上自动创建，用于持久化存储所有动态数据
+      - ./data:/app/data
     ports:
-      - "8000:8000"
+      - "8093:8000"
     # --- 新增部分开始 ---
     # 为此容器设置环境变量，使其通过你的Windows主机代理访问网络
     environment:
@@ -22,6 +22,6 @@ services:
     build: ./frontend
     restart: always
     ports:
-      - "8080:80"
+      - "8094:80"
     depends_on:
       - backend

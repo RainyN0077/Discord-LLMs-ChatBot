@@ -1,21 +1,24 @@
 <!-- src/pages/ControlPanel.svelte -->
 <script>
+    import '../styles/lists.css';
     import { t, get as t_get } from '../i18n.js';
-    import { config, keywordsInput, setKeywords, userPersonasArray, customFontName, showStatus, updateConfigField } from '../lib/stores.js';
+    import { config, keywordsInput, setKeywords, userPersonasArray, customFontName, showStatus, updateConfigField, timezoneStore } from '../lib/stores.js';
     import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
-    import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
+import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
     import LogViewer from '../components/LogViewer.svelte';
     import ScopedPromptEditor from '../components/ScopedPromptEditor.svelte';
     import RoleConfigEditor from '../components/RoleConfigEditor.svelte';
     import PluginEditor from '../components/PluginEditor.svelte';
+    import SearchSettings from '../components/SearchSettings.svelte';
+    import KnowledgeEditor from '../components/KnowledgeEditor.svelte';
 
     export let applyFont;
 
 
 
-    let activeTab = 'directives';
+    let activeTab = 'advanced';
     let channelIdToClear = '';
     let fontFileInput;
     
@@ -25,6 +28,17 @@
     let testResult = null;
     let isTesting = false;
     let useManualInput = false;
+    
+    // A curated list of common timezones for the dropdown
+    const commonTimezones = [
+      'UTC',
+      'Asia/Shanghai',
+      'America/New_York',
+      'America/Los_Angeles',
+      'Europe/London',
+      'Europe/Berlin',
+      'Asia/Tokyo'
+    ];
 
     function addPersona() { config.update(c => { const newKey = `new-user-${Date.now()}`; c.user_personas[newKey] = { id: '', nickname: '', prompt: '' }; return c; }); }
     function removePersona(key) { config.update(c => { delete c.user_personas[key]; return c; }); }
@@ -73,8 +87,6 @@
             await saveToIndexedDB('customFontDataUrl', fontDataUrl);
             await saveToIndexedDB('customFontName', file.name);
             
-            // 同时在 localStorage 保存字体名称（作为标记）
-            localStorage.setItem('customFontName', file.name);
             
             applyFont(fontDataUrl, file.name);
             showStatus(t_get('uiSettings.font.loadSuccess'), 'success');
@@ -102,8 +114,6 @@ async function resetFont() {
         console.error('Failed to clear IndexedDB:', e);
     }
     
-    // 清理 localStorage
-    localStorage.removeItem('customFontName');
     
     customFontName.set('');
     showStatus(t_get('uiSettings.font.resetSuccess'), 'success');
@@ -183,7 +193,7 @@ async function resetFont() {
         </div>
 
         {#if $config}
-            {#if activeTab === 'core'}
+            <div class="tab-content" class:hidden={activeTab !== 'core'}>
                 <Card title={$t('globalConfig.title')}>
                     <label for="discord-token">{$t('globalConfig.token')}</label>
                     <input id="discord-token" type="password" placeholder={$t('globalConfig.tokenPlaceholder')} value={$config.discord_token} on:input={e => updateConfigField('discord_token', e.target.value)}>
@@ -211,7 +221,7 @@ async function resetFont() {
                         <label for="model-name">{$t('defaultBehavior.modelName')}</label>
                         <div class="model-controls">
                             {#if !useManualInput && availableModels.length > 0}
-                                <select id="model-name" value={$config.model_name} 
+                                <select id="model-name" value={$config.model_name}
                                         on:change={e => updateConfigField('model_name', e.target.value)}>
                                     <option value="">-- {$t('llmProvider.selectModel')} --</option>
                                     {#each availableModels as model}
@@ -219,15 +229,15 @@ async function resetFont() {
                                     {/each}
                                 </select>
                             {:else}
-                                <input id="model-name" type="text" 
-                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$config.llm_provider}`)} 
-                                       value={$config.model_name} 
+                                <input id="model-name" type="text"
+                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$config.llm_provider}`)}
+                                       value={$config.model_name}
                                        on:input={e => updateConfigField('model_name', e.target.value)}>
                             {/if}
                             
                             <div class="model-buttons">
-                                <button class="action-btn-secondary" 
-                                        on:click={loadModels} 
+                                <button class="action-btn-secondary"
+                                        on:click={loadModels}
                                         disabled={isLoadingModels}
                                         title={$t('llmProvider.fetchModelsTooltip')}>
                                     {#if isLoadingModels}
@@ -240,15 +250,15 @@ async function resetFont() {
                                 </button>
                                 
                                 {#if availableModels.length > 0}
-                                    <button class="action-btn-secondary" 
+                                    <button class="action-btn-secondary"
                                             on:click={() => useManualInput = !useManualInput}
                                             title={$t('llmProvider.toggleInputMode')}>
                                         {useManualInput ? '📋' : '✏️'}
                                     </button>
                                 {/if}
                                 
-                                <button class="action-btn" 
-                                        on:click={handleTestModel} 
+                                <button class="action-btn"
+                                        on:click={handleTestModel}
                                         disabled={isTesting || !$config.model_name}>
                                     {isTesting ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
                                 </button>
@@ -267,8 +277,8 @@ async function resetFont() {
                                 <p>{$t('llmProvider.modelResponded')}: "{testResult.response}"</p>
                                 {#if testResult.model_info?.usage}
                                     <p class="usage-info">
-                                        Tokens: {testResult.model_info.usage.total_tokens} 
-                                        (Prompt: {testResult.model_info.usage.prompt_tokens}, 
+                                        Tokens: {testResult.model_info.usage.total_tokens}
+                                        (Prompt: {testResult.model_info.usage.prompt_tokens},
                                         Completion: {testResult.model_info.usage.completion_tokens})
                                     </p>
                                 {/if}
@@ -279,7 +289,7 @@ async function resetFont() {
                     {/if}
                 </Card>
                 <Card title={$t('contextControl.title')}>
-                    <label>{$t('contextControl.contextMode')}</label>
+                    <div class="group-label">{$t('contextControl.contextMode')}</div>
                     <div class="radio-group">
                         <label><input type="radio" name="context-mode" value='none' checked={$config.context_mode === 'none'} on:change={e => updateConfigField('context_mode', e.target.value)}> {$t('contextControl.modes.none')}</label>
                         <label><input type="radio" name="context-mode" value='channel' checked={$config.context_mode === 'channel'} on:change={e => updateConfigField('context_mode', e.target.value)}> {$t('contextControl.modes.channel')}</label>
@@ -303,7 +313,10 @@ async function resetFont() {
                         {/if}
                     {:else}<div class="context-settings"><p class="info">{$t('contextControl.noneModeInfo')}</p></div>{/if}
                 </Card>
-            {:else if activeTab === 'directives'}
+            </div>
+
+            <div class="tab-content" class:hidden={activeTab !== 'directives'}>
+                <KnowledgeEditor />
                 <Card title={$t('scopedPrompts.channels.title')}><ScopedPromptEditor type="channels" /></Card>
                 <Card title={$t('scopedPrompts.guilds.title')}><ScopedPromptEditor type="guilds" /></Card>
                 <RoleConfigEditor />
@@ -331,14 +344,17 @@ async function resetFont() {
                     <p class="info">{$t('defaultBehavior.blockedResponseInfo')}</p>
                     <label for="trigger-keywords">{$t('defaultBehavior.triggerKeywords')}</label>
                     <input id="trigger-keywords" type="text" placeholder={$t('defaultBehavior.triggerKeywordsPlaceholder')} value={$keywordsInput} on:input={e => setKeywords(e.target.value)}>
-                    <label>{$t('defaultBehavior.responseMode')}</label>
+                    <div class="group-label">{$t('defaultBehavior.responseMode')}</div>
                     <div class="radio-group">
                         <label><input type="radio" name="stream-mode" value={true} checked={$config.stream_response === true} on:change={() => updateConfigField('stream_response', true)}> {$t('defaultBehavior.modes.stream')}</label>
                         <label><input type="radio" name="stream-mode" value={false} checked={$config.stream_response === false} on:change={() => updateConfigField('stream_response', false)}> {$t('defaultBehavior.modes.nonStream')}</label>
                     </div>
                 </Card>
-            {:else if activeTab === 'advanced'}
+            </div>
+
+            <div class="tab-content" class:hidden={activeTab !== 'advanced'}>
                 <PluginEditor />
+                <SearchSettings />
                 <Card title={$t('customParams.title')} theme="dark-theme">
                     <div class="list-container">
                         {#if $config.custom_parameters}
@@ -367,8 +383,16 @@ async function resetFont() {
                         <button class="action-btn-secondary" on:click={resetFont}>{$t('uiSettings.font.resetButton')}</button>
                     </div>
                     {#if $customFontName}<p class="info">{$t('uiSettings.font.currentFont', { fontName: $customFontName })}</p>{:else}<p class="info">{$t('uiSettings.font.defaultFont')}</p>{/if}
+                    <div class="setting-item">
+                        <label for="timezone-select">{$t('uiSettings.timezone.title')}</label>
+                        <select id="timezone-select" bind:value={$timezoneStore}>
+                            {#each commonTimezones as tz}
+                                <option value={tz}>{tz}</option>
+                            {/each}
+                        </select>
+                    </div>
                 </Card>
-            {/if}
+            </div>
         {/if}
     </main>
     <aside class="log-viewer">
@@ -377,6 +401,36 @@ async function resetFont() {
 </div>
 
 <style>
+.tab-content {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+    .tab-content.hidden {
+        display: none;
+    }
+    .group-label {
+        font-weight: 500;
+        margin-bottom: 0.5rem;
+        color: var(--text-light);
+    }
+    .setting-item {
+        margin-top: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .setting-item label {
+        flex-shrink: 0;
+    }
+    .setting-item select {
+        width: 100%;
+        padding: 0.5rem;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background-color: var(--input-bg);
+        color: var(--text-color);
+    }
     .tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: .5rem; box-shadow: var(--shadow); margin-top: 2rem; }
     .tabs button { flex: 1; padding: .75rem; border: none; background: transparent; font-size: 1rem; font-weight: 500; border-radius: 8px; cursor: pointer; color: var(--text-light); transition: all 0.2s ease-in-out; }
     .tabs button.active { background: var(--primary-color); color: #fff; box-shadow: 0 2px 5px rgba(52,152,219,.2); }
@@ -441,5 +495,113 @@ async function resetFont() {
             width: auto;
         }
     }
-</style>
+    
+    .page-container {
+        display: flex;
+        align-items: flex-start;
+        gap: 2rem;
+        max-width: 1600px;
+        margin: 0 auto;
+    }
 
+    main {
+        flex: 1;
+        min-width: 600px;
+        display: flex;
+        flex-direction: column;
+        gap: 3.5rem;
+    }
+    
+    .radio-group {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.5rem;
+    }
+    
+    .radio-group label {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        font-weight: 400;
+        color: var(--text-color);
+        cursor: pointer;
+    }
+
+    .control-grid {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .slider-container {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .slider-container input[type=range] {
+        flex-grow: 1;
+        accent-color: var(--primary-color);
+    }
+    
+    .slider-container span {
+        min-width: 110px;
+        font-weight: 500;
+        text-align: right;
+    }
+    
+    .context-settings {
+        border-top: 1px solid var(--border-color);
+        margin-top: 1rem;
+        padding-top: 1.5rem;
+    }
+    
+    .param-item {
+        display: grid;
+        grid-template-columns: 1.5fr 1fr 2fr auto;
+        gap: 1rem;
+        align-items: center;
+    }
+    
+    .param-select.wide, .param-textarea {
+        grid-column: 3/4;
+        resize: vertical;
+        min-height: 44px;
+        font-family: monospace;
+    }
+    
+    .param-item > .remove-btn {
+        justify-self: center;
+    }
+
+    .action-container {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+
+    .log-viewer {
+        width: 600px;
+        flex-shrink: 0;
+        position: sticky;
+        top: 2rem;
+    }
+
+    @media (max-width:1400px){
+      .page-container {
+          flex-direction: column;
+          align-items: stretch;
+      }
+      main {
+          min-width: unset;
+      }
+      .log-viewer {
+          width: auto;
+          position: relative;
+          top: 0;
+          height: 70vh;
+          margin-top: 2rem;
+      }
+    }
+</style>

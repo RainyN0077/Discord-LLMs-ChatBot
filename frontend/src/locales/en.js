@@ -223,6 +223,9 @@ export default {
       storageError: 'Storage error',
       localStorageUnavailable: 'localStorage is unavailable, please check browser settings',
       quotaExceeded: 'localStorage quota exceeded, please clear browser data'
+    },
+    timezone: {
+      title: 'Timezone'
     }
   },
   logViewer: {
@@ -287,7 +290,68 @@ export default {
     addModel: 'Add Model',
     save: 'Save',
     cancel: 'Cancel'
-}
-
-
+},
+"searchSettings": {
+    "title": "Search Settings",
+    "enable": "Enable Search",
+    "apiKey": "API Key",
+    "apiUrl": "API URL",
+    "includeDate": "Include Date in Search",
+    "maxResults": "Max Search Results",
+    "compression": "Compression Method",
+    "compressionNone": "None",
+    "compressionTruncate": "Truncate",
+    "compressionRAG": "RAG",
+    "config": {
+        "title": "Configuration"
+    },
+    "blacklist": {
+        "title": "Blacklist",
+        "add": "Add Subscription",
+        "addPlaceholder": "Enter a domain to block, e.g., example.com",
+        "name": "Name",
+        "empty": "No data",
+        "updateNow": "Update Now",
+        "deleteSource": "Delete Source"
+    }
+ },
+ knowledge: {
+   title: 'Knowledge Base',
+   tabs: {
+     worldBook: 'World Book',
+     memory: 'Memory'
+   },
+   confirmDeleteMemory: 'Are you sure you want to delete this memory item?',
+   confirmDeleteWorldBook: 'Are you sure you want to delete this entry?',
+   error: {
+     loadMemory: 'Failed to load memory',
+     addMemory: 'Failed to add memory item',
+     deleteMemory: 'Failed to delete memory item',
+     loadWorldBook: 'Failed to load World Book',
+     emptyFields: 'Keywords and content cannot be empty',
+     saveWorldBook: 'Failed to save World Book entry',
+     deleteWorldBook: 'Failed to delete World Book entry'
+   },
+   memory: {
+     title: 'Memory',
+     addPlaceholder: 'Add a new memory item...',
+     add: 'Add Memory',
+     delete: 'Delete'
+   },
+   worldBook: {
+     title: 'World Book',
+     keywordsLabel: 'Keywords',
+     keywordsHint: 'separated by commas',
+     keywordsPlaceholder: 'e.g., worldview, main characters...',
+     contentLabel: 'Content',
+     contentPlaceholder: 'Describe this setting in detail...',
+     addTitle: 'Add New Entry',
+     editTitle: 'Edit Entry',
+     add: 'Add Entry',
+     save: 'Save Changes',
+     edit: 'Edit',
+     delete: 'Delete',
+     cancelEdit: 'Cancel Edit'
+   }
+ }
 };

@@ -1,104 +1,112 @@
 # backend/plugins/manager.py
+import inspect
 import logging
-import re
+import importlib
+import pkgutil
 from typing import List, Dict, Any, Optional, Tuple
 
 import discord
-# --- [最终修复] ---
-# 直接从根目录导入 app 包
-from app.utils import _execute_http_request, _format_with_placeholders
+
+from .base import BasePlugin
+from .configurable_plugin import ConfigurablePlugin
 
 logger = logging.getLogger(__name__)
 
 class PluginManager:
-    def __init__(self, plugins_config: Dict[str, Any], llm_caller):
-        self.plugins = [p for p in plugins_config.values() if p.get('enabled')]
+    def __init__(self, plugins_config: Dict[str, Any], llm_caller: callable):
         self.llm_caller = llm_caller
+        self.plugins_config = plugins_config
+        self.plugins: List[BasePlugin] = []
+        self._load_plugins()
+
+    def _load_plugins(self):
+        """
+        Dynamically loads all plugins.
+        This includes both Python-based plugins and config-based plugins.
+        """
+        logger.info("--- Loading Plugins ---")
+        
+        # 1. Load Python-based plugins from the 'plugins' directory
+        loaded_module_plugins = set()
+        import plugins
+        for _, name, _ in pkgutil.iter_modules(plugins.__path__):
+            if name in ["manager", "base", "configurable_plugin"]:
+                continue
+            try:
+                module = importlib.import_module(f"plugins.{name}")
+                for attribute_name in dir(module):
+                    attribute = getattr(module, attribute_name)
+                    if inspect.isclass(attribute) and issubclass(attribute, BasePlugin) and attribute is not BasePlugin:
+                        plugin_config = self.plugins_config.get(name, {})
+                        if plugin_config.get("enabled", False):
+                            self.plugins.append(attribute(plugin_config, self.llm_caller))
+                            logger.info(f"Successfully loaded Python-based plugin: {attribute.__name__} from module {name}")
+                            loaded_module_plugins.add(name)
+                        else:
+                            logger.info(f"Skipping disabled Python-based plugin: {name}")
+
+            except Exception as e:
+                logger.error(f"Failed to load plugin module {name}: {e}", exc_info=True)
+
+        # 2. Load config-based (dynamic) plugins
+        for name, config in self.plugins_config.items():
+            if name in loaded_module_plugins:
+                continue # Already loaded as a Python-based plugin
+            
+            if config.get("enabled", False):
+                try:
+                    self.plugins.append(ConfigurablePlugin(config, self.llm_caller))
+                    logger.info(f"Successfully loaded config-based plugin: {name}")
+                except Exception as e:
+                    logger.error(f"Failed to load config-based plugin {name}: {e}", exc_info=True)
+        logger.info("--- Plugin Loading Complete ---")
+
+
+    def get_all_tools(self) -> List[Dict[str, Any]]:
+        """Collects tools from all loaded plugins."""
+        all_tools = []
+        for plugin in self.plugins:
+            all_tools.extend(plugin.get_tools())
+        return all_tools
+    
+    def get_all_tool_functions(self) -> Dict[str, callable]:
+        """Collects tool functions from all loaded plugins."""
+        all_functions = {}
+        for plugin in self.plugins:
+            all_functions.update(plugin.get_tool_functions())
+        return all_functions
 
     async def process_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """
-        处理消息，检查是否有插件被触发。
-        允许多个 'append' 模式的插件被触发。
-        
-        Returns:
-            - ('append', list_of_strings): 如果一个或多个插件希望将数据注入上下文。
-            - True: 如果一个 'override' 模式的插件已处理消息并希望终止后续处理。
-            - None: 如果没有插件被触发。
+        Processes a message by passing it to all loaded plugins.
+        Handles different return types ('append', 'override') from plugins.
         """
         triggered_appends = []
-        
-        for plugin in self.plugins:
-            trigger_type = plugin.get('trigger_type', 'command')
-            triggers = plugin.get('triggers', [])
-            
-            is_triggered = False
-            args = ""
-            
-            if trigger_type == 'command':
-                for trigger in triggers:
-                    if message.content.startswith(trigger):
-                        is_triggered = True
-                        args = message.content[len(trigger):].strip()
-                        break
-            elif trigger_type == 'keyword':
-                for trigger in triggers:
-                    # Make sure triggers is a list of strings
-                    if isinstance(trigger, str) and re.search(r'\b' + re.escape(trigger) + r'\b', message.content, re.IGNORECASE):
-                        is_triggered = True
-                        args = message.content # For keywords, the whole message is the argument
-                        break
 
-            if is_triggered:
-                logger.info(f"Plugin '{plugin.get('name')}' triggered by message {message.id}.")
-                result = await self._execute_plugin(plugin, message, args, bot_config)
-                
-                if result is True:
-                    return True
-                
-                if isinstance(result, tuple) and result[0] == 'append':
-                    triggered_appends.append(result[1])
+        for plugin in self.plugins:
+            if not getattr(plugin, 'enabled', True):
+                continue
+
+            try:
+                result = await plugin.handle_message(message, bot_config)
+                if result:
+                    if result is True:
+                        logger.info(f"Plugin '{plugin.name}' triggered in override mode. Halting further processing.")
+                        return True  # Override and stop processing
+                    
+                    if isinstance(result, tuple) and result[0] == 'append':
+                        data_to_append = result[1]
+                        if not isinstance(data_to_append, list):
+                             data_to_append = [data_to_append] # Ensure it's a list
+                        
+                        logger.info(f"Plugin '{plugin.name}' triggered in append mode.")
+                        triggered_appends.extend(data_to_append)
+
+            except Exception as e:
+                logger.error(f"Error processing message with plugin '{plugin.name}': {e}", exc_info=True)
         
         if triggered_appends:
             return 'append', triggered_appends
         
         return None
-
-    async def _execute_plugin(self, plugin: Dict[str, Any], message: discord.Message, args: str, bot_config: Dict[str, Any]):
-        action_type = plugin.get('action_type', 'http_request')
-        
-        if action_type == 'http_request':
-            result_str = await _execute_http_request(plugin, message, args)
-            if result_str:
-                await message.reply(result_str[:2000], mention_author=False)
-            return True
-
-        elif action_type == 'llm_augmented_tool':
-            api_result = await _execute_http_request(plugin, message, args)
-            if not api_result or api_result.startswith("Error:"):
-                await message.reply(api_result or "Tool execution failed.", mention_author=False)
-                return True
-
-            prompt_template = plugin.get('llm_prompt_template')
-            final_prompt = _format_with_placeholders(prompt_template, message, args)
-            final_prompt = final_prompt.replace("{api_result}", api_result)
-            
-            llm_messages = [{"role": "system", "content": "You are a tool-using assistant."}, {"role": "user", "content": final_prompt}]
-            
-            injection_mode = plugin.get('injection_mode', 'override')
-            
-            if injection_mode == 'override':
-                sim_config = bot_config.copy()
-                sim_config["stream_response"] = False
-                full_response = ""
-                async for _, content in self.llm_caller(sim_config, llm_messages):
-                    full_response = content
-                if full_response:
-                    await message.reply(full_response[:2000], mention_author=False)
-                return True
-            
-            elif injection_mode == 'append':
-                formatted_result = f"Tool '{plugin.get('name')}' was used with input '{args}'. It returned the following data:\n{api_result}"
-                return 'append', formatted_result
-
-        return True
 

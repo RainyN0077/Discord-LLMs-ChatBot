@@ -1,5 +1,6 @@
 <!-- src/components/ScopedPromptEditor.svelte (FIXED) -->
 <script>
+    import '../styles/lists.css';
     import { scopedPromptsObject, config, updateConfigField } from '../lib/stores.js';
     import { t, get as t_get } from '../i18n.js';
 
@@ -54,8 +55,8 @@
         <div class="list-item complex-item">
             <div class="list-item-main scoped-prompt-grid">
                 <div class="cell-id">
-                    <label>{$t(`scopedPrompts.${type}.id`)}</label>
-                    <input type="text" placeholder={$t(`scopedPrompts.${type}.idPlaceholder`)} 
+                    <label for="scoped-prompt-id-{item._key}">{$t(`scopedPrompts.${type}.id`)}</label>
+                    <input id="scoped-prompt-id-{item._key}" type="text" placeholder={$t(`scopedPrompts.${type}.idPlaceholder`)}
                            value={item.id} on:blur={(e) => updateItemId(item._key, e.target.value)}>
                 </div>
                 <div class="cell-toggle">
@@ -65,7 +66,7 @@
                     </label>
                 </div>
                 <div class="cell-mode">
-                    <label>{$t('scopedPrompts.mode.title')}</label>
+                    <div class="group-label">{$t('scopedPrompts.mode.title')}</div>
                     <div class="radio-group small">
                         <label>
                             <input type="radio" name="mode-{type}-{item._key}" value='override' checked={item.mode === 'override'}
@@ -78,9 +79,9 @@
                     </div>
                 </div>
                 <div class="cell-prompt">
-                    <label>{$t(`scopedPrompts.${type}.prompt`)}</label>
-                    <textarea rows="3" 
-                        placeholder={item.mode === 'override' ? $t(`scopedPrompts.${type}.overridePlaceholder`) : $t(`scopedPrompts.${type}.appendPlaceholder`)} 
+                    <label for="scoped-prompt-prompt-{item._key}">{$t(`scopedPrompts.${type}.prompt`)}</label>
+                    <textarea id="scoped-prompt-prompt-{item._key}" rows="3"
+                        placeholder={item.mode === 'override' ? $t(`scopedPrompts.${type}.overridePlaceholder`) : $t(`scopedPrompts.${type}.appendPlaceholder`)}
                         value={item.prompt} on:input={(e) => updateItem(item._key, 'prompt', e.target.value)}
                     ></textarea>
                 </div>

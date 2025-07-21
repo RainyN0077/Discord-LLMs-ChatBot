@@ -40,11 +40,18 @@
     -   **User Portraits**: Define a user's identity *in the eyes of the bot*. This is a top-priority context layer that is *always* respected.
     -   **Role-Based Personas**: Assign the bot a specific persona to use when interacting with users of a certain role.
     -   **Priority Logic**: The bot's final personality is intelligently assembled, not just linearly overridden, ensuring complex and nuanced interactions.
+- **✅ 📚 Knowledge Base**: A powerful system to give the bot a persistent memory, managed entirely through the Web UI.
+    -   **World Book**: Define keyword-triggered knowledge entries. When a user's message contains a keyword, the corresponding information is injected into the LLM context, making the bot an expert on specific topics.
+    -   **Long-term Memory**: Manually add important facts or instructions for the bot to remember permanently across all conversations.
+- **✅ 📊 Usage Dashboard & Cost Tracking**:
+    -   A comprehensive dashboard to monitor usage statistics and estimate costs in real-time.
+    -   Track requests, input/output tokens, and calculate costs with configurable pricing for each model.
+    -   Filter and group data by user, role, channel, guild, and various time periods.
 - **✅ Secure RESTful Plugin System**:
     -   Create custom tools that call external APIs, triggered by commands or keywords.
     -   Exposes a secure endpoint (`/api/plugins/trigger`) protected by an auto-generated API Key for external service integration (IFTTT, Zapier, etc.).
     -   Supports two action types: direct HTTP output or **LLM-Augmented Tool** for smarter, summarized responses.
-- **✅ Quota Management**: Built-in usage tracking (message/token limits) for roles. Users can check their remaining quota with the `!myquota` command.
+- **✅ Quota Management**: Built-in usage tracking and limits (by message count or tokens) for different roles. Users can check their remaining quota with the `!myquota` command, while administrators can monitor all usage on the dashboard.
 - **✅ Advanced Context Awareness**: The bot reads chat history (configurable limits) to understand conversations deeply.
 - **✅ Real-time Log Viewer**: Monitor bot activities and debug issues directly from the web interface.
 - **✅ Dockerized & Easy Setup**: Get up and running in minutes with a single `docker-compose` command.
@@ -101,6 +108,10 @@ All configurations are managed through the web UI at `http://localhost:8080`.
      -   Customize the message template for when a response is blocked by a content filter (useful for Google Gemini), using `{reason}` as a placeholder.
 
 ### Advanced Tools
+-   **Knowledge Base**: Manage the bot's persistent memory.
+    -   **World Book**: Create and edit keyword-triggered knowledge entries.
+    -   **Long-term Memory**: Add and remove general facts for the bot to remember.
+-   **Usage Dashboard**: View detailed statistics on token usage, request counts, and estimated costs. You can also configure model pricing here for accurate cost tracking.
 -   **Plugin Manager**:
     -   Create tools that trigger on commands or keywords.
     -   **Action Type**: `HTTP Request (Direct Output)` for raw API data, or `LLM-Augmented Tool` to have the LLM summarize the API result (`{api_result}`) for a natural response.
@@ -158,11 +169,18 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
     -   **用户肖像**: 定义用户在Bot眼中的身份。这是一个永远被遵守的、最高优先级的上下文层。
     -   **基于身份组的人设**: 为Bot设定在与特定身份组成员互动时应有的人设。
     -   **优先级逻辑**: Bot的最终性格是智能组装而成，而非简单的线性覆盖，确保了复杂且细致入微的互动。
+- **✅ 📚 知识库系统**: 一个强大的系统，赋予机器人持久的记忆，完全通过Web UI进行管理。
+    -   **世界设定集 (World Book)**: 定义由关键词触发的知识条目。当用户消息包含关键词时，相应的信息会被注入到LLM的上下文中，让机器人成为特定主题的专家。
+    -   **长期记忆 (Long-term Memory)**: 手动添加重要的事实或指令，让机器人可以跨越不同对话永久记住它们。
+- **✅ 📊 用量仪表盘 & 成本追踪**:
+    -   一个全面的仪表盘，用于实时监控用量统计数据和估算成本。
+    -   可追踪请求数、输入/输出Token数，并基于每个模型可配置的价格来计算成本。
+    -   支持按用户、身份组、频道、服务器以及不同时间周期（今日、本周、本月、全部）进行数据筛选和分组。
 - **✅ 安全的RESTful插件系统**:
     -   创建自定义工具，通过命令或关键词触发，并调用外部API。
     -   提供一个由自动生成的API密钥保护的安全接口 (`/api/plugins/trigger`)，便于与外部服务（如 IFTTT、Zapier）集成。
     -   支持两种动作类型：直接输出API结果，或使用 **LLM增强工具** 对结果进行智能总结，生成更自然的回应。
-- **✅ 额度管理系统**: 内建针对身份组的用量追踪。用户可通过 `!myquota` 命令查询自己剩余的额度。
+- **✅ 额度管理系统**: 内建针对身份组的用量追踪和限制（按消息数或Token数）。用户可通过 `!myquota` 命令查询自己剩余的额度，同时管理员可以在仪表盘上监控所有用量。
 - **✅ 高级上下文感知**: 机器人能读取聊天历史（数量/字数可配置），以深入理解对话的来龙去脉。
 - **✅ 实时日志查看器**: 直接从Web界面监控机器人活动并调试问题。
 - **✅ Docker化，一键部署**: 使用 `docker-compose` 命令，数分钟内即可启动并运行。
@@ -220,6 +238,10 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
     -   自定义当响应被内容过滤器（主要针对Google Gemini）屏蔽时发送的回复消息模板，可使用 `{reason}` 作为原因占位符。
 
 ### 高级工具
+-   **知识库**: 管理机器人的持久记忆。
+    -   **世界设定集**: 创建并编辑基于关键词的知识条目。
+    -   **长期记忆**: 添加和删除机器人需要记住的通用事实。
+-   **用量仪表盘**: 查看关于Token用量、请求次数和估算成本的详细统计数据。你还可以在此配置模型价格以进行精确的成本追踪。
 -   **插件管理器**:
     -   创建由命令或关键词触发的工具。
     -   **动作类型**: `HTTP请求 (直接输出)`用于返回原始API数据；`LLM增强工具`则会让大模型总结API结果（用`{api_result}`引用），以生成更自然的回应。

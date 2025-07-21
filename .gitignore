@@ -1,26 +1,38 @@
-# Python
+# Python Virtual Environments
+env/
+venv/
+.venv/
+.Python
+
+# Python cache files
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-env/
-venv/
 pip-selfcheck.json
+
+# --- Project Data & Secrets ---
+# Ignore the entire data directory which contains logs, configs with secrets, and the database.
+data/
+frontend/.env*
 .env
 
-# Docker
-# 忽略由docker-compose生成的config.json文件，这是包含密钥的敏感文件！
-backend/app/config.json
+# --- Docker ---
+# No Docker specific files to ignore for now, data directory covers it.
 
-# Node.js / Vite
+# --- Node.js / Vite ---
 node_modules/
 dist/
 .svelte-kit/
 build/
 .DS_Store
 
-# IDE / Editor specific
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# --- IDE / Editor specific ---
 .vscode/
 .idea/
 *.suo
@@ -28,8 +40,3 @@ build/
 *.njsproj
 *.sln
 *.sw?
-
-# Log files
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*

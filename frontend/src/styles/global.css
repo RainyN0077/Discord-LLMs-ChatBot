@@ -1,0 +1,202 @@
+/* CSS Variables */
+:root {
+    --bg-color: #f7f9fc;
+    --card-bg: #fff;
+    --text-color: #2c3e50;
+    --text-light: #7f8c8d;
+    --primary-color: #3498db;
+    --primary-hover: #2980b9;
+    --border-color: #e4e7eb;
+    --success-bg: #e0f2f1;
+    --success-text: #00796b;
+    --error-bg: #fce4ec;
+    --error-text: #c2185b;
+    --info-bg: #e1f5fe;
+    --info-text: #0277bd;
+    --save-color: #2ecc71;
+    --save-hover: #27ae60;
+    --shadow: 0 4px 6px rgba(0, 0, 0, .05);
+}
+
+/* Base Body Styles */
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 2rem 2rem 120px 2rem;
+    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei",Segoe UI,Roboto,Oxygen,Ubuntu,Cantarell,"Fira Sans","Droid Sans",Helvetica Neue,sans-serif;
+}
+
+/* Base Headings */
+h1 {
+    color: var(--primary-color);
+    text-align: center;
+    font-weight: 300;
+    letter-spacing: 1px;
+    margin-bottom: 0;
+}
+
+h2 {
+    color: var(--text-color);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: .5rem;
+    margin-top: 0;
+}
+
+/* Base Form Elements */
+label {
+    font-weight: 500;
+    color: var(--text-light);
+}
+
+input,
+select,
+textarea {
+    width: 100%;
+    padding: .8rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 1rem;
+    box-sizing: border-box;
+    background-color: #fcfdfe;
+    transition: all .2s ease;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 0;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, .2);
+}
+
+textarea {
+    resize: vertical;
+    font-family: inherit;
+}
+
+/* Base Buttons */
+button {
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .2s ease;
+    padding: .8rem 1.5rem;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: .6;
+}
+
+/* Utility classes */
+.info {
+    font-size: .9rem;
+    color: var(--text-light);
+    margin: 0;
+    padding-bottom: .5rem;
+}
+
+/* Dark Theme specific styles that can be applied globally */
+.dark-theme {
+    background-color: #18181b; /* 更深的背景色 */
+    border: 1px solid #3f3f46;
+    color: #f4f4f5;
+}
+
+.dark-theme h2 {
+    color: #f4f4f5;
+    border-color: #3f3f46;
+}
+
+.dark-theme label {
+    color: #a1a1aa; /* 提高 label 对比度 */
+}
+
+.dark-theme input,
+.dark-theme select,
+.dark-theme textarea {
+    background-color: #27272a;
+    border: 1px solid #52525b;
+    color: #f4f4f5;
+}
+
+.dark-theme input::placeholder,
+.dark-theme textarea::placeholder {
+    color: #8e8ea0;
+}
+
+.dark-theme .remove-btn {
+    color: #acacbe;
+}
+
+.dark-theme .remove-btn:hover {
+    background-color: rgba(239, 68, 68, .2);
+    color: #ef4444;
+}
+
+.dark-theme .add-btn {
+    color: #ececf1;
+    background-color: #40414f;
+    border: 1px solid #565869;
+}
+
+.dark-theme .add-btn:hover {
+    background-color: #4d4e5a;
+}
+/* Toggle Switch Component */
+.toggle-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: .9rem;
+    color: var(--text-light);
+    user-select: none;
+    gap: .75rem;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+}
+
+.toggle-switch .slider {
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+    background-color: #ccc;
+    border-radius: 22px;
+    transition: background-color 0.2s;
+    position: relative;
+}
+
+.toggle-switch .slider::before {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    background-color: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+
+.toggle-switch input:checked + .slider {
+    background-color: var(--primary-color);
+}
+
+.toggle-switch input:focus-visible + .slider {
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, .4);
+}
+
+.toggle-switch input:checked + .slider::before {
+    transform: translateX(18px);
+}

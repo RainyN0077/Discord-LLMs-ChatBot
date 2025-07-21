@@ -2,7 +2,7 @@
 <script>
     import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { t } from '../i18n.js';
-    import { rawLogs } from '../lib/stores.js';
+    import { rawLogs, timezoneStore } from '../lib/stores.js';
     import { fetchLogs } from '../lib/api.js';
     import UsageDashboard from './UsageDashboard.svelte';
 
@@ -12,13 +12,52 @@
     let logOutputElement;
     let logInterval;
     
-    $: parsedLogs = ($rawLogs || '').split('\n').filter(line => line.trim() !== '').map(line => {
-        const match = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
-        return {
-            level: match ? match[1] : 'UNKNOWN',
-            message: line
-        };
-    });
+    // The 'sv-SE' locale is a trick to get the YYYY-MM-DD format easily.
+    const formatTimestamp = (utcString, timeZone) => {
+        if (!utcString) return '...';
+        try {
+            return new Intl.DateTimeFormat('sv-SE', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZone: timeZone
+            }).format(new Date(utcString));
+        } catch (e) {
+            console.error(`Invalid timezone: ${timeZone}`, e);
+            // Fallback to plain UTC string if timezone is invalid
+            return utcString.replace('T', ' ').substring(0, 19);
+        }
+    };
+    
+    $: parsedLogs = (($rawLogs, $timezoneStore), () => {
+        return ($rawLogs || '').split('\n').filter(line => line.trim() !== '').map(line => {
+            // Regex for ISO 8601 format: 2025-07-21T06:46:12.067Z
+            const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
+            const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
+
+            const originalTimestamp = timestampMatch ? timestampMatch[1] : null;
+            const level = levelMatch ? levelMatch[1] : 'UNKNOWN';
+
+            let messageText = line;
+            // Extract the actual message content, removing timestamp, module, and level.
+            if (levelMatch) {
+                messageText = line.substring(levelMatch.index + levelMatch[0].length);
+            } else if (timestampMatch) {
+                messageText = line.substring(timestampMatch[0].length).trim();
+            }
+
+            return {
+                level: level,
+                message: messageText,
+                originalLine: line, // Use a different name to avoid confusion and for keys
+                formattedTimestamp: formatTimestamp(originalTimestamp, $timezoneStore)
+            };
+        });
+    })();
 
     $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
 
@@ -59,13 +98,13 @@
                     </button>
                 {/each}
             </div>
-            <label class="autoscroll-toggle">
+            <label class="toggle-switch">
                 <input type="checkbox" bind:checked={autoScroll}>
-                <span>{$t('logViewer.autoscroll')}</span>
+                <span class="slider"></span>{$t('logViewer.autoscroll')}
             </label>
         </div>
         <div class="log-output-wrapper">
-            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.message + i)}<span class="log-line {log.level}">{log.message}</span>{'\n'}{/each}</code></pre>
+            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.originalLine + i)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{'\n'}{/each}</code></pre>
         </div>
     </div>
     
@@ -79,13 +118,11 @@
         display: flex;
         flex-direction: column;
         height: 100%;
-        gap: 1rem;
-        padding-bottom: 80px;
+        gap: 2rem;
     }
     
     .log-section {
-        flex: 1;
-        min-height: 0;
+        height: 60vh;
         display: flex;
         flex-direction: column;
         background-color: var(--card-bg);
@@ -95,9 +132,7 @@
     }
     
     .usage-section {
-        flex: 0 0 400px;
-        min-height: 0;
-        overflow: hidden;
+        height: 40vh;
     }
     
     h2 {
@@ -140,19 +175,6 @@
         border-color: var(--primary-color);
     }
     
-    .autoscroll-toggle {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        color: var(--text-light);
-        font-size: 0.9rem;
-        cursor: pointer;
-        user-select: none;
-    }
-    
-    .autoscroll-toggle input {
-        width: auto;
-    }
     
     .log-output-wrapper {
         flex-grow: 1;
@@ -178,6 +200,11 @@
     
     .log-output-wrapper code {
         display: block;
+    }
+
+    .timestamp {
+        color: #9e9e9e; /* Light grey for timestamp */
+        margin-right: 1em;
     }
     
     .log-line.INFO {
