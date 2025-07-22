@@ -113,12 +113,17 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                 image_note = IMAGE_NOTE_TPL.format(count=image_count)
 
         clean_content = escape_content(hist_msg.clean_content)
-        
-        content = MESSAGE_FORMAT_TPL.format(
-            author_id=rich_id,
-            content=clean_content,
-            image_note=image_note
-        )
+
+        if is_bot:
+            # For bot messages, use content directly to avoid prefix imitation.
+            content = f"{clean_content}{image_note}".strip()
+        else:
+            # For user messages, keep the original format with author ID.
+            content = MESSAGE_FORMAT_TPL.format(
+                author_id=rich_id,
+                content=clean_content,
+                image_note=image_note
+            )
 
         if total_chars + len(content) > char_limit:
             break
