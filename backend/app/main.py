@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import discord
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Response, Depends, Security
+from fastapi import FastAPI, HTTPException, Response, Depends, Security, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError
@@ -472,11 +472,12 @@ from fastapi import Query
 @app.get("/api/usage/stats", dependencies=[Depends(get_api_key)])
 async def get_usage_statistics(
     period: str = Query(default="today"),
-    view: str = Query(default="user")
+    view: str = Query(default="user"),
+    x_timezone: str = Header(default="UTC")
 ):
     from .usage_tracker import usage_tracker
-    print(f"API received: period={period}, view={view}")
-    stats = await usage_tracker.get_statistics(period, view)
+    print(f"API received: period={period}, view={view}, timezone={x_timezone}")
+    stats = await usage_tracker.get_statistics(period, view, timezone_str=x_timezone)
     return stats
 
 

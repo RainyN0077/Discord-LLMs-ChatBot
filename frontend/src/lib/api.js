@@ -1,4 +1,7 @@
 // frontend/src/lib/api.js
+import { get } from 'svelte/store';
+import { timezoneStore } from './stores.js';
+
 const BASE_URL = '/api';
 
 let apiSecretKey = null;
@@ -227,7 +230,12 @@ export async function savePluginConfig(pluginName, configData) {
 
 // --- Usage & Pricing API ---
 export async function fetchUsageStats(period, view) {
-    return apiFetch(`${BASE_URL}/usage/stats?period=${period}&view=${view}`);
+    const userTimezone = get(timezoneStore);
+    return apiFetch(`${BASE_URL}/usage/stats?period=${period}&view=${view}`, {
+        headers: {
+            'X-Timezone': userTimezone || 'UTC'
+        }
+    });
 }
 
 export async function fetchPricingConfig() {

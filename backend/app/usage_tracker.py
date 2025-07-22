@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import asyncio
 from collections import defaultdict
+import pytz
 
 class UsageTracker:
     def __init__(self, data_file="data/usage_data.json"):
@@ -217,23 +218,34 @@ class UsageTracker:
         # 异步保存
         asyncio.create_task(self.save_data())
     
-    async def get_statistics(self, period: str = "today", view: str = "user") -> Dict[str, Any]:
+    async def get_statistics(self, period: str = "today", view: str = "user", timezone_str: str = "UTC") -> Dict[str, Any]:
         async with self.lock:
-            now = datetime.now(timezone.utc)
+            try:
+                user_tz = pytz.timezone(timezone_str)
+            except pytz.UnknownTimeZoneError:
+                user_tz = pytz.utc
+
+            now_in_user_tz = datetime.now(user_tz)
             
             if period == "today":
-                start_date = now.strftime("%Y-%m-%d")
+                start_date = now_in_user_tz.strftime("%Y-%m-%d")
                 end_date = start_date
             elif period == "week":
-                start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
-                end_date = now.strftime("%Y-%m-%d")
+                # 以用户时区的“今天”为基准，往前推7天
+                start_of_today = now_in_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_date_dt = start_of_today - timedelta(days=6) # 包括今天在内总共7天
+                start_date = start_date_dt.strftime("%Y-%m-%d")
+                end_date = now_in_user_tz.strftime("%Y-%m-%d")
             elif period == "month":
-                start_date = (now - timedelta(days=30)).strftime("%Y-%m-%d")
-                end_date = now.strftime("%Y-%m-%d")
+                # 以用户时区的“今天”为基准，往前推30天
+                start_of_today = now_in_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_date_dt = start_of_today - timedelta(days=29) # 包括今天在内总共30天
+                start_date = start_date_dt.strftime("%Y-%m-%d")
+                end_date = now_in_user_tz.strftime("%Y-%m-%d")
             else:  # all time
                 dates = list(self.usage_data["daily"].keys())
-                start_date = min(dates) if dates else now.strftime("%Y-%m-%d")
-                end_date = now.strftime("%Y-%m-%d")
+                start_date = min(dates) if dates else now_in_user_tz.strftime("%Y-%m-%d")
+                end_date = now_in_user_tz.strftime("%Y-%m-%d")
             
             # 聚合数据
             total_stats = {
