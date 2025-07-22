@@ -1,4 +1,10 @@
 services:
+  redis:
+    image: "redis:alpine"
+    restart: always
+    volumes:
+      - ./redis_data:/data
+
   backend:
     build: ./backend
     restart: always
@@ -8,14 +14,21 @@ services:
       - ./data:/app/data
     ports:
       - "8093:8000"
+    depends_on:
+      - redis
     # --- 新增部分开始 ---
     # 为此容器设置环境变量，使其通过你的Windows主机代理访问网络
     environment:
+      # 添加 Redis 主机名，Docker Compose 会自动解析
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      # 在生产环境中，如果无法连接到Redis，应直接失败而不是静默退化
+      - FAIL_ON_REDIS_ERROR=true
       # 请将 "7890" 替换为你的代理软件（如Clash, V2RayN）实际的HTTP代理端口
       - HTTP_PROXY=http://10.255.255.254:7890
       - HTTPS_PROXY=http://10.255.255.254:7890
       # NO_PROXY用于指定哪些地址不走代理，比如内部服务间的通信
-      - NO_PROXY=localhost,127.0.0.1,backend,frontend
+      - NO_PROXY=localhost,127.0.0.1,backend,frontend,redis
     # --- 新增部分结束 ---
 
   frontend:

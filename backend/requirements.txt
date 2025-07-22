@@ -11,3 +11,4 @@ tiktoken
 Pillow
 tavily-python
 pytz
+redis>=4.0.0

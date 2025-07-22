@@ -2,37 +2,47 @@
 <script>
     import '../styles/lists.css';
     import { t } from '../i18n.js';
-    import { pluginsArray, config, updateConfigField } from '../lib/stores.js';
+    import { pluginsConfig, pluginsArray } from '../lib/stores.js';
     import Card from './Card.svelte';
 
     // --- 数据更新函数 ---
     function updatePluginField(key, field, value) {
-        if (field === 'triggers' && typeof value === 'string') {
-            value = value.split(',').map(s => s.trim()).filter(Boolean);
-        }
-        updateConfigField(`plugins.${key}.${field}`, value);
+        pluginsConfig.update(pc => {
+            if (pc[key]) {
+                if (field === 'triggers' && typeof value === 'string') {
+                    pc[key][field] = value.split(',').map(s => s.trim()).filter(Boolean);
+                } else {
+                    pc[key][field] = value;
+                }
+            }
+            return pc;
+        });
     }
     function updateHttpConfig(key, field, value) {
-        updateConfigField(`plugins.${key}.http_request_config.${field}`, value);
+        pluginsConfig.update(pc => {
+            if (pc[key] && pc[key].http_request_config) {
+                pc[key].http_request_config[field] = value;
+            }
+            return pc;
+        });
     }
 
     // --- 列表操作函数 ---
     function addPlugin() {
-        config.update(c => {
+        pluginsConfig.update(pc => {
             const newKey = `new-plugin-${Date.now()}`;
-            if (!c.plugins) c.plugins = {};
-            c.plugins[newKey] = { 
+            pc[newKey] = {
                 name: 'New Plugin', enabled: true, trigger_type: 'command', triggers: [], action_type: 'http_request', injection_mode: 'override',
                 http_request_config: { url: '', method: 'GET', headers: '{}', body_template: '{}', allow_internal_requests: false },
                 llm_prompt_template: 'Based on the user query "{user_input}", summarize the following API data:\n\n{api_result}'
             };
-            return c;
+            return pc;
         });
     }
     function removePlugin(key) {
-        config.update(c => {
-            delete c.plugins[key];
-            return c;
+        pluginsConfig.update(pc => {
+            delete pc[key];
+            return pc;
         });
     }
 </script>

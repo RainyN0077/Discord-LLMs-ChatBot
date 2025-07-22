@@ -298,6 +298,15 @@ export default {
     "enable": "Enable Search",
     "apiKey": "API Key",
     "apiUrl": "API URL",
+    "triggerMode": {
+        "title": "Trigger Mode",
+        "command": "Command",
+        "keyword": "Keyword"
+    },
+    "commandLabel": "Command",
+    "commandInfo": "The command to trigger the search (e.g., !search).",
+    "keywordsLabel": "Keywords",
+    "keywordsInfo": "Comma-separated keywords that trigger the search.",
     "includeDate": "Include Date in Search",
     "maxResults": "Max Search Results",
     "compression": "Compression Method",

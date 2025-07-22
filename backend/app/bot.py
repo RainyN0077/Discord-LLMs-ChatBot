@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import redis
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 
@@ -20,6 +21,33 @@ from .llm_providers.factory import get_llm_provider
 from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
+
+# --- [增强] 更健壮的Redis连接逻辑 ---
+redis_client = None
+try:
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+    
+    # 尝试连接 Redis
+    _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+    _redis_client.ping()
+    redis_client = _redis_client
+    logger.info(f"Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+
+except redis.exceptions.ConnectionError as e:
+    logger.error(f"Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
+    # 检查环境变量，决定是“快速失败”还是“静默退化”
+    if os.getenv('FAIL_ON_REDIS_ERROR', 'false').lower() == 'true':
+        logger.critical("FAIL_ON_REDIS_ERROR is true. Terminating application.")
+        # 抛出一个明确的异常，这将阻止 bot.start() 的执行
+        raise ConnectionAbortedError("Failed to connect to Redis. Aborting.")
+    else:
+        # 创建一个模拟客户端以允许在没有 Redis 的情况下进行开发
+        class MockRedis:
+            def set(self, *args, **kwargs): return True
+        redis_client = MockRedis()
+        logger.warning("FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client. CONCURRENCY PROTECTION IS DISABLED.")
+
 
 from pathlib import Path
 
@@ -131,25 +159,42 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     async def on_message(message):
         if message.author == bot.user:
             return
-        
+
+        # --- [BUG修复] 将配置加载移到函数顶部 ---
+        # 确保在任何需要配置的操作之前加载它
+        config = load_bot_config()
         
         # 插件处理
         plugin_result = await plugin_manager.process_message(message, config)
         if plugin_result is True:
-            return
+            return  # 插件已经处理了消息并希望停止后续逻辑
+        
         injected_data = None
         if isinstance(plugin_result, tuple) and plugin_result[0] == 'append':
             injected_data = "\n".join(plugin_result[1])
-        
-        # 触发条件检查
+
+        # --- [逻辑修正] 先检查触发条件，再获取锁 ---
         trigger_keywords = config.get("trigger_keywords", [])
         is_mentioned = bot.user in message.mentions
-        is_reply_to_bot = (message.reference and 
-                          isinstance(message.reference.resolved, discord.Message) and 
-                          message.reference.resolved.author == bot.user)
+        is_reply_to_bot = (message.reference and
+                           isinstance(message.reference.resolved, discord.Message) and
+                           message.reference.resolved.author == bot.user)
         has_trigger_keyword = any(keyword.lower() in message.content.lower() for keyword in trigger_keywords)
+
+        # 如果不是触发消息，则直接忽略
         if not (is_mentioned or is_reply_to_bot or has_trigger_keyword):
             return
+
+        # --- 分布式锁逻辑 ---
+        # 只有在确认消息是发给bot时，才进行加锁操作
+        lock_key = f"discord:message_lock:{message.id}"
+        is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
+        
+        if not is_lock_acquired:
+            logger.info(f"Triggering message {message.id} is already being processed. Skipping.")
+            return
+        
+        logger.info(f"Acquired lock for triggering message {message.id}. Processing...")
         
         # 图片收集
         image_urls = collect_image_urls(message)

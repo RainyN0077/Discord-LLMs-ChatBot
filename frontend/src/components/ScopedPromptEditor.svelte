@@ -1,48 +1,54 @@
 <!-- src/components/ScopedPromptEditor.svelte (FIXED) -->
 <script>
     import '../styles/lists.css';
-    import { scopedPromptsObject, config, updateConfigField } from '../lib/stores.js';
+    import { scopedPrompts, scopedPromptsObject } from '../lib/stores.js';
     import { t, get as t_get } from '../i18n.js';
 
     export let type; // 'guilds' or 'channels'
     
     // --- 数据更新函数 ---
     function updateItem(key, field, value) {
-        updateConfigField(`scoped_prompts.${type}.${key}.${field}`, value);
+        scopedPrompts.update(sp => {
+            if (sp[type] && sp[type][key]) {
+                sp[type][key][field] = value;
+            }
+            return sp;
+        });
     }
 
     function updateItemId(oldKey, newId) {
         if (!newId || oldKey === newId) return;
         
-        config.update(c => {
-            const typeItems = c.scoped_prompts[type] || {};
+        scopedPrompts.update(sp => {
+            const typeItems = sp[type] || {};
             if (typeItems[newId]) {
-                // 在 <script> 块中使用 t_get 是正确的，因为它不是响应式的
                 alert(t_get('errors.duplicateId', { id: newId }));
-                return c;
+                return sp;
             }
             const itemData = typeItems[oldKey];
             delete typeItems[oldKey];
             itemData.id = newId;
             typeItems[newId] = itemData;
-            return c;
+            return sp;
         });
     }
 
     // --- 列表操作函数 ---
     function addItem() {
-        config.update(c => {
+        scopedPrompts.update(sp => {
             const newKey = `new-${type}-${Date.now()}`;
-            if (!c.scoped_prompts[type]) c.scoped_prompts[type] = {};
-            c.scoped_prompts[type][newKey] = { id: '', enabled: true, mode: 'append', prompt: '' };
-            return c;
+            if (!sp[type]) sp[type] = {};
+            sp[type][newKey] = { id: '', enabled: true, mode: 'append', prompt: '' };
+            return sp;
         });
     }
 
     function removeItem(key) {
-        config.update(c => {
-            delete c.scoped_prompts[type][key];
-            return c;
+        scopedPrompts.update(sp => {
+            if (sp[type]) {
+                delete sp[type][key];
+            }
+            return sp;
         });
     }
 </script>

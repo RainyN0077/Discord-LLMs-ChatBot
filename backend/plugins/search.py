@@ -24,7 +24,12 @@ class SearchPlugin(BasePlugin):
             return
             
         self.client = TavilyClient(api_key=self.api_key)
+        
+        # 新增：读取触发模式和对应的触发器
+        self.trigger_mode = self.plugin_config.get("trigger_mode", "command")
         self.command = self.plugin_config.get("command", "!search")
+        self.keywords = self.plugin_config.get("keywords", [])
+
         self.search_depth = self.plugin_config.get("search_depth", "basic")
         self.max_results = self.plugin_config.get("max_results", 3)
         self.include_domains = self.plugin_config.get("include_domains", [])
@@ -34,14 +39,31 @@ class SearchPlugin(BasePlugin):
         """
         Handles incoming messages to check for the search command.
         """
-        if not self.enabled or not message.content.lower().startswith(self.command + " "):
+        if not self.enabled:
             return None
 
-        query = message.content[len(self.command):].strip()
+        query = ""
+        triggered = False
+
+        if self.trigger_mode == 'command':
+            if message.content.lower().startswith(self.command + " "):
+                query = message.content[len(self.command):].strip()
+                triggered = True
+        elif self.trigger_mode == 'keyword':
+            for keyword in self.keywords:
+                if keyword.lower() in message.content.lower():
+                    # 对于关键词模式，通常将整条消息作为查询
+                    query = message.content
+                    triggered = True
+                    logger.info(f"Search triggered by keyword: '{keyword}'")
+                    break
+        
+        if not triggered:
+            return None
+
         if not query:
-            # Maybe send a help message back to the user
-            # await message.reply("Please provide a search query after the command.", mention_author=False)
-            return True # Indicates we've handled the message and no further action is needed
+            logger.warning(f"Search plugin triggered but query is empty. Message: {message.content}")
+            return True # 停止处理，但什么也不做
 
         try:
             logger.info(f"Performing Tavily search for query: '{query}'")

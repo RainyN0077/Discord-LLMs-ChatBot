@@ -2,7 +2,22 @@
 <script>
     import '../styles/lists.css';
     import { t, get as t_get } from '../i18n.js';
-    import { config, keywordsInput, setKeywords, userPersonasArray, customFontName, showStatus, updateConfigField, timezoneStore } from '../lib/stores.js';
+    import {
+        coreConfig,
+        behaviorConfig,
+        contextConfig,
+        pluginsConfig,
+        userPersonas,
+        roleConfigs,
+        scopedPrompts,
+        customParameters,
+        keywordsInput,
+        setKeywords,
+        userPersonasArray,
+        customFontName,
+        showStatus,
+        timezoneStore
+    } from '../lib/stores.js';
     import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
@@ -40,14 +55,17 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
       'Asia/Tokyo'
     ];
 
-    function addPersona() { config.update(c => { const newKey = `new-user-${Date.now()}`; c.user_personas[newKey] = { id: '', nickname: '', prompt: '' }; return c; }); }
-    function removePersona(key) { config.update(c => { delete c.user_personas[key]; return c; }); }
-    function addParameter() { config.update(c => { if (!c.custom_parameters) c.custom_parameters = []; c.custom_parameters.push({ name: '', type: 'text', value: '' }); return c; }); }
-    function removeParameter(index) { config.update(c => { c.custom_parameters.splice(index, 1); return c; }); }
+    function addPersona() { userPersonas.update(up => { const newKey = `new-user-${Date.now()}`; up[newKey] = { id: '', nickname: '', prompt: '' }; return up; }); }
+    function removePersona(key) { userPersonas.update(up => { delete up[key]; return up; }); }
+    function addParameter() { customParameters.update(cp => { cp.push({ name: '', type: 'text', value: '' }); return cp; }); }
+    function removeParameter(index) { customParameters.update(cp => { cp.splice(index, 1); return cp; }); }
     function handleParamTypeChange(index, newType) {
         const value = newType === 'number' ? 0 : (newType === 'boolean' ? 'true' : '');
-        updateConfigField(`custom_parameters.${index}.type`, newType);
-        updateConfigField(`custom_parameters.${index}.value`, value);
+        customParameters.update(cp => {
+            cp[index].type = newType;
+            cp[index].value = value;
+            return cp;
+        });
     }
     
     async function handleClearMemory() {
@@ -122,7 +140,7 @@ async function resetFont() {
     
     // 模型选择相关函数
     async function loadModels() {
-        if (!$config.api_key) {
+        if (!$coreConfig.api_key) {
             showStatus(t_get('llmProvider.noApiKey'), 'error');
             return;
         }
@@ -130,9 +148,9 @@ async function resetFont() {
         isLoadingModels = true;
         try {
             const result = await fetchAvailableModels(
-                $config.llm_provider,
-                $config.api_key,
-                $config.base_url
+                $coreConfig.llm_provider,
+                $coreConfig.api_key,
+                $coreConfig.base_url
             );
             availableModels = result.models;
             useManualInput = false;
@@ -147,7 +165,7 @@ async function resetFont() {
     }
     
     async function handleTestModel() {
-        if (!$config.model_name) {
+        if (!$coreConfig.model_name) {
             showStatus(t_get('llmProvider.selectModelFirst'), 'error');
             return;
         }
@@ -156,10 +174,10 @@ async function resetFont() {
         testResult = null;
         try {
             const result = await testModel(
-                $config.llm_provider,
-                $config.api_key,
-                $config.base_url,
-                $config.model_name
+                $coreConfig.llm_provider,
+                $coreConfig.api_key,
+                $coreConfig.base_url,
+                $coreConfig.model_name
             );
             testResult = result;
             if (result.success) {
@@ -175,7 +193,7 @@ async function resetFont() {
     }
     
     // 当provider或API key改变时，重置状态
-    $: if ($config.llm_provider || $config.api_key) {
+    $: if ($coreConfig.llm_provider || $coreConfig.api_key) {
         availableModels = [];
         testResult = null;
         useManualInput = false;
@@ -192,37 +210,35 @@ async function resetFont() {
             <button class:active={activeTab === 'advanced'} on:click={() => activeTab = 'advanced'}>{$t('tabs.advanced')}</button>
         </div>
 
-        {#if $config}
+        {#if $coreConfig}
             <div class="tab-content" class:hidden={activeTab !== 'core'}>
                 <Card title={$t('globalConfig.title')}>
                     <label for="discord-token">{$t('globalConfig.token')}</label>
-                    <input id="discord-token" type="password" placeholder={$t('globalConfig.tokenPlaceholder')} value={$config.discord_token} on:input={e => updateConfigField('discord_token', e.target.value)}>
+                    <input id="discord-token" type="password" placeholder={$t('globalConfig.tokenPlaceholder')} bind:value={$coreConfig.discord_token}>
                     <label for="api-key-display">{$t('globalConfig.apiKey')}</label>
                     <div class="api-key-container">
-                        <input id="api-key-display" type="text" readonly value={$config.api_secret_key || ''} placeholder={$t('globalConfig.apiKeyUnavailable')}>
-                        <button on:click={() => navigator.clipboard.writeText($config.api_secret_key)} title={$t('globalConfig.copy')}><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
+                        <input id="api-key-display" type="text" readonly bind:value={$coreConfig.api_secret_key} placeholder={$t('globalConfig.apiKeyUnavailable')}>
+                        <button on:click={() => navigator.clipboard.writeText($coreConfig.api_secret_key)} title={$t('globalConfig.copy')}><svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg></button>
                     </div>
                     <p class="info">{$t('globalConfig.apiKeyInfo')}</p>
                 </Card>
                 <Card title={$t('llmProvider.title')}>
                     <label for="llm-provider">{$t('llmProvider.select')}</label>
-                    <select id="llm-provider" value={$config.llm_provider} on:change={e => updateConfigField('llm_provider', e.target.value)}>
+                    <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
                         <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
                     </select>
                     <label for="api-key">{$t('llmProvider.apiKey')}</label>
-                    <input id="api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} value={$config.api_key} on:input={e => updateConfigField('api_key', e.target.value)}>
-                    {#if $config.llm_provider === 'openai'}
+                    <input id="api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.api_key}>
+                    {#if $coreConfig.llm_provider === 'openai'}
                         <label for="base-url">{$t('llmProvider.baseUrl')}</label>
-                        <input id="base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} value={$config.base_url} on:input={e => updateConfigField('base_url', e.target.value)}>
+                        <input id="base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.base_url}>
                     {/if}
                     
-                    <!-- 新增的模型选择功能 -->
                     <div class="model-selector-group">
                         <label for="model-name">{$t('defaultBehavior.modelName')}</label>
                         <div class="model-controls">
                             {#if !useManualInput && availableModels.length > 0}
-                                <select id="model-name" value={$config.model_name}
-                                        on:change={e => updateConfigField('model_name', e.target.value)}>
+                                <select id="model-name" bind:value={$coreConfig.model_name}>
                                     <option value="">-- {$t('llmProvider.selectModel')} --</option>
                                     {#each availableModels as model}
                                         <option value={model}>{model}</option>
@@ -230,9 +246,8 @@ async function resetFont() {
                                 </select>
                             {:else}
                                 <input id="model-name" type="text"
-                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$config.llm_provider}`)}
-                                       value={$config.model_name}
-                                       on:input={e => updateConfigField('model_name', e.target.value)}>
+                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$coreConfig.llm_provider}`)}
+                                       bind:value={$coreConfig.model_name}>
                             {/if}
                             
                             <div class="model-buttons">
@@ -259,7 +274,7 @@ async function resetFont() {
                                 
                                 <button class="action-btn"
                                         on:click={handleTestModel}
-                                        disabled={isTesting || !$config.model_name}>
+                                        disabled={isTesting || !$coreConfig.model_name}>
                                     {isTesting ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
                                 </button>
                             </div>
@@ -291,23 +306,23 @@ async function resetFont() {
                 <Card title={$t('contextControl.title')}>
                     <div class="group-label">{$t('contextControl.contextMode')}</div>
                     <div class="radio-group">
-                        <label><input type="radio" name="context-mode" value='none' checked={$config.context_mode === 'none'} on:change={e => updateConfigField('context_mode', e.target.value)}> {$t('contextControl.modes.none')}</label>
-                        <label><input type="radio" name="context-mode" value='channel' checked={$config.context_mode === 'channel'} on:change={e => updateConfigField('context_mode', e.target.value)}> {$t('contextControl.modes.channel')}</label>
-                        <label><input type="radio" name="context-mode" value='memory' checked={$config.context_mode === 'memory'} on:change={e => updateConfigField('context_mode', e.target.value)}> {$t('contextControl.modes.memory')}</label>
+                        <label><input type="radio" name="context-mode" value='none' bind:group={$contextConfig.context_mode}> {$t('contextControl.modes.none')}</label>
+                        <label><input type="radio" name="context-mode" value='channel' bind:group={$contextConfig.context_mode}> {$t('contextControl.modes.channel')}</label>
+                        <label><input type="radio" name="context-mode" value='memory' bind:group={$contextConfig.context_mode}> {$t('contextControl.modes.memory')}</label>
                     </div>
-                    {#if $config.context_mode !== 'none'}
-                        {@const settingsKey = `${$config.context_mode}_context_settings`}
-                        {#if $config[settingsKey]}
+                    {#if $contextConfig.context_mode !== 'none'}
+                        {@const settingsKey = `${$contextConfig.context_mode}_context_settings`}
+                        {#if $contextConfig[settingsKey]}
                         <div class="context-settings">
-                            <p class="info">{$t(`contextControl.${$config.context_mode}ModeInfo`)}</p>
+                            <p class="info">{$t(`contextControl.${$contextConfig.context_mode}ModeInfo`)}</p>
                             <div class="control-grid">
                             <label for="context-messages">{$t('contextControl.historyLimit')}</label>
                             <div class="slider-container">
-                                <input type="range" id="context-messages" min="0" max="50" step="5" value={$config[settingsKey].message_limit} on:input={e => updateConfigField(`${settingsKey}.message_limit`, Number(e.target.value))}>
-                                <span>{$config[settingsKey].message_limit} {$t('contextControl.messages')}</span>
+                                <input type="range" id="context-messages" min="0" max="50" step="5" bind:value={$contextConfig[settingsKey].message_limit}>
+                                <span>{$contextConfig[settingsKey].message_limit} {$t('contextControl.messages')}</span>
                             </div>
                             <label for="context-chars">{$t('contextControl.charLimit')}</label>
-                            <input type="number" id="context-chars" placeholder={$t('contextControl.charLimitPlaceholder')} value={$config[settingsKey].char_limit} on:input={e => updateConfigField(`${settingsKey}.char_limit`, Number(e.target.value))}>
+                            <input type="number" id="context-chars" placeholder={$t('contextControl.charLimitPlaceholder')} bind:value={$contextConfig[settingsKey].char_limit}>
                             </div>
                         </div>
                         {/if}
@@ -326,9 +341,9 @@ async function resetFont() {
                         {#each $userPersonasArray as persona (persona._key)}
                             <div class="list-item">
                                 <div class="list-item-main">
-                                    <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} value={persona.id} on:input={e => updateConfigField(`user_personas.${persona._key}.id`, e.target.value)}>
-                                    <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} value={persona.nickname} on:input={e => updateConfigField(`user_personas.${persona._key}.nickname`, e.target.value)}>
-                                    <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} value={persona.prompt} on:input={e => updateConfigField(`user_personas.${persona._key}.prompt`, e.target.value)}></textarea>
+                                    <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} bind:value={persona.id}>
+                                    <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} bind:value={persona.nickname}>
+                                    <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} bind:value={persona.prompt}></textarea>
                                 </div>
                                 <button class="remove-btn" on:click={() => removePersona(persona._key)} title={$t('roleConfig.remove')}>×</button>
                             </div>
@@ -338,16 +353,16 @@ async function resetFont() {
                 </Card>
                 <Card title={$t('defaultBehavior.title')}>
                     <label for="system-prompt">{$t('defaultBehavior.systemPrompt')}</label>
-                    <textarea id="system-prompt" rows="4" placeholder={$t('defaultBehavior.systemPromptPlaceholder')} value={$config.system_prompt} on:input={e => updateConfigField('system_prompt', e.target.value)}></textarea>
+                    <textarea id="system-prompt" rows="4" placeholder={$t('defaultBehavior.systemPromptPlaceholder')} bind:value={$behaviorConfig.system_prompt}></textarea>
                     <label for="blocked-response">{$t('defaultBehavior.blockedResponse')}</label>
-                    <input id="blocked-response" type="text" value={$config.blocked_prompt_response} on:input={e => updateConfigField('blocked_prompt_response', e.target.value)}>
+                    <input id="blocked-response" type="text" bind:value={$behaviorConfig.blocked_prompt_response}>
                     <p class="info">{$t('defaultBehavior.blockedResponseInfo')}</p>
                     <label for="trigger-keywords">{$t('defaultBehavior.triggerKeywords')}</label>
                     <input id="trigger-keywords" type="text" placeholder={$t('defaultBehavior.triggerKeywordsPlaceholder')} value={$keywordsInput} on:input={e => setKeywords(e.target.value)}>
                     <div class="group-label">{$t('defaultBehavior.responseMode')}</div>
                     <div class="radio-group">
-                        <label><input type="radio" name="stream-mode" value={true} checked={$config.stream_response === true} on:change={() => updateConfigField('stream_response', true)}> {$t('defaultBehavior.modes.stream')}</label>
-                        <label><input type="radio" name="stream-mode" value={false} checked={$config.stream_response === false} on:change={() => updateConfigField('stream_response', false)}> {$t('defaultBehavior.modes.nonStream')}</label>
+                        <label><input type="radio" name="stream-mode" value={true} bind:group={$behaviorConfig.stream_response}> {$t('defaultBehavior.modes.stream')}</label>
+                        <label><input type="radio" name="stream-mode" value={false} bind:group={$behaviorConfig.stream_response}> {$t('defaultBehavior.modes.nonStream')}</label>
                     </div>
                 </Card>
             </div>
@@ -357,14 +372,14 @@ async function resetFont() {
                 <SearchSettings />
                 <Card title={$t('customParams.title')} theme="dark-theme">
                     <div class="list-container">
-                        {#if $config.custom_parameters}
-                        {#each $config.custom_parameters as param, i}
+                        {#if $customParameters}
+                        {#each $customParameters as param, i}
                             <div class="list-item param-item">
-                                <input class="param-input" type="text" placeholder={$t('customParams.paramName')} value={param.name} on:input={e => updateConfigField(`custom_parameters.${i}.name`, e.target.value)}>
-                                <select class="param-select" value={param.type} on:change={(e) => handleParamTypeChange(i, e.currentTarget.value)}>
+                                <input class="param-input" type="text" placeholder={$t('customParams.paramName')} bind:value={param.name}>
+                                <select class="param-select" bind:value={param.type} on:change={(e) => handleParamTypeChange(i, e.currentTarget.value)}>
                                     <option value="text">{$t('customParams.types.text')}</option><option value="number">{$t('customParams.types.number')}</option><option value="boolean">{$t('customParams.types.boolean')}</option><option value="json">{$t('customParams.types.json')}</option>
                                 </select>
-                                {#if param.type === 'text'}<input class="param-input" type="text" placeholder={$t('customParams.paramValue')} value={param.value} on:input={e => updateConfigField(`custom_parameters.${i}.value`, e.target.value)}>{:else if param.type === 'number'}<input class="param-input" type="number" step="0.01" placeholder={$t('customParams.paramValue')} value={param.value} on:input={e => updateConfigField(`custom_parameters.${i}.value`, e.target.value)}>{:else if param.type === 'boolean'}<select class="param-select wide" value={String(param.value)} on:change={e => updateConfigField(`custom_parameters.${i}.value`, e.target.value === 'true')}><option value="true">True</option><option value="false">False</option></select>{:else if param.type === 'json'}<textarea class="param-input param-textarea" rows="1" placeholder={$t('customParams.paramValue')} value={param.value} on:input={e => updateConfigField(`custom_parameters.${i}.value`, e.target.value)}></textarea>{/if}
+                                {#if param.type === 'text'}<input class="param-input" type="text" placeholder={$t('customParams.paramValue')} bind:value={param.value}>{:else if param.type === 'number'}<input class="param-input" type="number" step="0.01" placeholder={$t('customParams.paramValue')} bind:value={param.value}>{:else if param.type === 'boolean'}<select class="param-select wide" bind:value={param.value}><option value="true">True</option><option value="false">False</option></select>{:else if param.type === 'json'}<textarea class="param-input param-textarea" rows="1" placeholder={$t('customParams.paramValue')} bind:value={param.value}></textarea>{/if}
                                 <button class="remove-btn" on:click={() => removeParameter(i)} title={$t('customParams.remove')}>×</button>
                             </div>
                         {/each}

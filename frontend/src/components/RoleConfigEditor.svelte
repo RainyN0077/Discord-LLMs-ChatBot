@@ -1,54 +1,58 @@
 <!-- src/components/RoleConfigEditor.svelte (FINAL & CORRECT) -->
 <script>
     import '../styles/lists.css';
-    import { t } from '../i18n.js';
-    import { roleBasedConfigArray, config, updateConfigField } from '../lib/stores.js';
+    import { t, get as t_get } from '../i18n.js';
+    import { roleConfigs, roleBasedConfigArray } from '../lib/stores.js';
     import Card from './Card.svelte';
 
     // --- 数据更新函数 ---
     function updateRoleField(key, field, value) {
-        const numberFields = ['message_limit', 'message_refresh_minutes', 'char_limit', 'char_refresh_minutes', 'char_output_budget'];
-        if (numberFields.includes(field)) {
-            value = value === '' ? 0 : Number(value);
-        }
-        updateConfigField(`role_based_config.${key}.${field}`, value);
+        roleConfigs.update(rc => {
+            if (rc[key]) {
+                const numberFields = ['message_limit', 'message_refresh_minutes', 'char_limit', 'char_refresh_minutes', 'char_output_budget'];
+                if (numberFields.includes(field)) {
+                    rc[key][field] = value === '' ? 0 : Number(value);
+                } else {
+                    rc[key][field] = value;
+                }
+            }
+            return rc;
+        });
     }
     
     function updateRoleId(oldKey, newId) {
         if (!newId || oldKey === newId) return;
 
-        config.update(c => {
-            const roles = c.role_based_config || {};
-            if (roles[newId]) {
-                alert($t('errors.duplicateId', { id: newId }));
-                return c;
+        roleConfigs.update(rc => {
+            if (rc[newId]) {
+                alert(t_get('errors.duplicateId', { id: newId }));
+                return rc;
             }
-            const roleData = roles[oldKey];
-            delete roles[oldKey];
+            const roleData = rc[oldKey];
+            delete rc[oldKey];
             roleData.id = newId;
-            roles[newId] = roleData;
-            return c;
+            rc[newId] = roleData;
+            return rc;
         });
     }
 
     // --- 列表操作函数 ---
     function addRoleConfig() {
-        config.update(c => {
+        roleConfigs.update(rc => {
             const newKey = `new-role-${Date.now()}`;
-            if (!c.role_based_config) c.role_based_config = {};
-            c.role_based_config[newKey] = {
-                id: '', title: '', prompt: '', enable_message_limit: false, message_limit: 0, 
-                message_refresh_minutes: 60, message_output_budget: 1, enable_char_limit: false, 
+            rc[newKey] = {
+                id: '', title: '', prompt: '', enable_message_limit: false, message_limit: 0,
+                message_refresh_minutes: 60, message_output_budget: 1, enable_char_limit: false,
                 char_limit: 0, char_refresh_minutes: 60, char_output_budget: 300, display_color: '#ffffff'
             };
-            return c;
+            return rc;
         });
     }
 
     function removeRoleConfig(key) {
-        config.update(c => {
-            delete c.role_based_config[key];
-            return c;
+        roleConfigs.update(rc => {
+            delete rc[key];
+            return rc;
         });
     }
 </script>

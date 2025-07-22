@@ -298,6 +298,15 @@ export default {
     "enable": "启用搜索",
     "apiKey": "API 密钥",
     "apiUrl": "API 地址",
+    "triggerMode": {
+        "title": "触发模式",
+        "command": "指令模式",
+        "keyword": "关键词模式"
+    },
+    "commandLabel": "指令",
+    "commandInfo": "用于触发搜索的指令（例如 !search）。",
+    "keywordsLabel": "关键词",
+    "keywordsInfo": "用于触发搜索的关键词，用逗号分隔。",
     "includeDate": "搜索包含日期",
     "maxResults": "搜索结果个数",
     "compression": "压缩方法",

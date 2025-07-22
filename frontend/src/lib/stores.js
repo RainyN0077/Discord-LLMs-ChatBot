@@ -1,5 +1,5 @@
 // src/lib/stores.js
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 import { get as t_get } from '../i18n.js';
 import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig } from './api.js';
 
@@ -25,78 +25,82 @@ const defaultConfig = {
     api_secret_key: ''
 };
 
-// --- Writable Stores ---
-export const config = writable(JSON.parse(JSON.stringify(defaultConfig)));
+
+// --- NEW: Granular, Independent Stores ---
+export const coreConfig = writable({
+    discord_token: '',
+    llm_provider: 'openai',
+    api_key: '',
+    base_url: '',
+    model_name: 'gpt-4o',
+    api_secret_key: ''
+});
+
+export const behaviorConfig = writable({
+    system_prompt: '',
+    blocked_prompt_response: '',
+    trigger_keywords: [],
+    stream_response: true
+});
+
+export const contextConfig = writable({
+    context_mode: 'channel',
+    channel_context_settings: { message_limit: 10, char_limit: 4000 },
+    memory_context_settings: { message_limit: 15, char_limit: 6000 }
+});
+
+export const pluginsConfig = writable({});
+export const userPersonas = writable({});
+export const roleConfigs = writable({});
+export const scopedPrompts = writable({ guilds: {}, channels: {} });
+export const customParameters = writable([]);
+
+
+// --- General Purpose Stores (Unchanged) ---
 export const statusMessage = writable('');
 export const statusType = writable('info');
 export const isLoading = writable(false);
 export const customFontName = writable('');
 export const rawLogs = writable('');
 
-// --- Timezone Store ---
+// --- Timezone Store (Unchanged) ---
 const getInitialTimezone = () => {
     if (typeof window !== 'undefined') {
         const savedTimezone = localStorage.getItem('timezone');
-        if (savedTimezone) {
-            return savedTimezone;
-        }
-        // Fallback to browser's timezone
+        if (savedTimezone) return savedTimezone;
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
     }
-    // Default for SSR or other environments
     return 'UTC';
 };
-
 export const timezoneStore = writable(getInitialTimezone());
-
 if (typeof window !== 'undefined') {
     timezoneStore.subscribe(value => {
         localStorage.setItem('timezone', value);
     });
 }
- 
- // --- Derived Stores ---
-export const roleBasedConfigArray = derived(config, $config => 
-    Object.entries($config.role_based_config || {}).map(([key, value]) => ({ ...value, _key: key }))
+
+// --- NEW: Refactored Derived Stores ---
+// These now depend on smaller stores, reducing computation
+export const roleBasedConfigArray = derived(roleConfigs, $rc => 
+    Object.entries($rc || {}).map(([key, value]) => ({ ...value, _key: key }))
 );
-export const userPersonasArray = derived(config, $config => 
-    Object.entries($config.user_personas || {}).map(([key, value]) => ({ ...value, _key: key }))
+export const userPersonasArray = derived(userPersonas, $up => 
+    Object.entries($up || {}).map(([key, value]) => ({ ...value, _key: key }))
 );
-export const pluginsArray = derived(config, $config => 
-    Object.entries($config.plugins || {}).map(([key, value]) => ({ ...value, _key: key }))
+export const pluginsArray = derived(pluginsConfig, $pc => 
+    Object.entries($pc || {}).map(([key, value]) => ({ ...value, _key: key }))
 );
-export const scopedPromptsObject = derived(config, $config => ({
-    guilds: Object.entries($config.scoped_prompts?.guilds || {}).map(([key, s]) => ({ ...s, _key: key })),
-    channels: Object.entries($config.scoped_prompts?.channels || {}).map(([key, s]) => ({ ...s, _key: key }))
+export const scopedPromptsObject = derived(scopedPrompts, $sp => ({
+    guilds: Object.entries($sp?.guilds || {}).map(([key, s]) => ({ ...s, _key: key })),
+    channels: Object.entries($sp?.channels || {}).map(([key, s]) => ({ ...s, _key: key }))
 }));
-export const keywordsInput = derived(config, $config => ($config.trigger_keywords || []).join(', '));
+export const keywordsInput = derived(behaviorConfig, $bc => ($bc.trigger_keywords || []).join(', '));
 
 export function setKeywords(value) {
-    config.update(c => ({...c, trigger_keywords: value.split(',').map(k => k.trim()).filter(Boolean)}));
+    behaviorConfig.update(c => ({...c, trigger_keywords: value.split(',').map(k => k.trim()).filter(Boolean)}));
 }
 
-// --- Data Manipulation Functions ---
-export function updateConfigField(path, value) {
-    config.update(c => {
-        const keys = path.split('.');
-        // 浅拷贝根对象以实现不可变更新
-        const newConfig = { ...c };
-
-        let current = newConfig;
-        for (let i = 0; i < keys.length - 1; i++) {
-            const key = keys[i];
-            // 确保路径存在，然后对路径中的每个对象进行浅拷贝
-            const next = (current[key] === undefined || current[key] === null) ? {} : { ...current[key] };
-            current[key] = next;
-            current = next;
-        }
-
-        current[keys[keys.length - 1]] = value;
-        return newConfig;
-    });
-}
-
-// --- Global Actions ---
+// --- Global Actions (Status Message) ---
 let statusTimeout;
 export function showStatus(message, type = 'info', duration = 5000) {
     clearTimeout(statusTimeout);
@@ -109,35 +113,41 @@ export function showStatus(message, type = 'info', duration = 5000) {
     }
 }
 
-// This function is now centralized in api.js. This file will import and use it.
-// We keep a wrapper here to handle local store state updates (isLoading, statusMessage).
+// --- REFACTORED: Data Fetching and Saving ---
 export async function fetchConfig() {
     isLoading.set(true);
     showStatus(t_get('status.loading'), 'info');
     try {
         const loadedConfig = await apiFetchConfig();
-        
-        // Merge with defaults to ensure all keys are present
-        const mergedConfig = { ...defaultConfig };
-        const deepMerge = (target, source) => {
-            for (const key in source) {
-                if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-                    if (!target[key]) target[key] = {};
-                    deepMerge(target[key], source[key]);
-                } else {
-                    target[key] = source[key];
-                }
-            }
-        };
-        deepMerge(mergedConfig, loadedConfig);
+        const mergedConfig = { ...defaultConfig, ...loadedConfig };
 
-        // Ensure nested objects exist
-        mergedConfig.scoped_prompts = mergedConfig.scoped_prompts || { guilds: {}, channels: {} };
-        mergedConfig.scoped_prompts.guilds = mergedConfig.scoped_prompts.guilds || {};
-        mergedConfig.scoped_prompts.channels = mergedConfig.scoped_prompts.channels || {};
+        // Distribute fetched data into the new granular stores
+        coreConfig.set({
+            discord_token: mergedConfig.discord_token,
+            llm_provider: mergedConfig.llm_provider,
+            api_key: mergedConfig.api_key,
+            base_url: mergedConfig.base_url,
+            model_name: mergedConfig.model_name,
+            api_secret_key: mergedConfig.api_secret_key
+        });
+        behaviorConfig.set({
+            system_prompt: mergedConfig.system_prompt,
+            blocked_prompt_response: mergedConfig.blocked_prompt_response,
+            trigger_keywords: mergedConfig.trigger_keywords,
+            stream_response: mergedConfig.stream_response
+        });
+        contextConfig.set({
+            context_mode: mergedConfig.context_mode,
+            channel_context_settings: mergedConfig.channel_context_settings,
+            memory_context_settings: mergedConfig.memory_context_settings
+        });
+        pluginsConfig.set(mergedConfig.plugins || {});
+        userPersonas.set(mergedConfig.user_personas || {});
+        roleConfigs.set(mergedConfig.role_based_config || {});
+        scopedPrompts.set(mergedConfig.scoped_prompts || { guilds: {}, channels: {} });
+        customParameters.set(mergedConfig.custom_parameters || []);
 
-        config.set(mergedConfig);
-        showStatus('', 'info'); // Clear loading message
+        showStatus('', 'info');
     } catch (e) {
         console.error('Config fetch error in store:', e);
         showStatus(t_get('status.loadFailed', { error: e.message }), 'error');
@@ -150,20 +160,24 @@ export async function saveConfig() {
     isLoading.set(true);
     showStatus(t_get('status.saving'), 'info');
 
-    let currentConfig;
-    config.subscribe(value => { currentConfig = value; })();
-
-    const finalConfig = JSON.parse(JSON.stringify(currentConfig));
-
-    // 预处理数据
-    finalConfig.custom_parameters = (finalConfig.custom_parameters || []).map(p => {
-        let value = p.value;
-        if (p.type === 'number') value = parseFloat(p.value) || 0;
-        if (p.type === 'boolean') value = (p.value === 'true' || p.value === true);
-        return { ...p, value };
-    });
+    // Gather data from all granular stores to build the final config object
+    const finalConfig = {
+        ...get(coreConfig),
+        ...get(behaviorConfig),
+        ...get(contextConfig),
+        plugins: get(pluginsConfig),
+        user_personas: get(userPersonas),
+        role_based_config: get(roleConfigs),
+        scoped_prompts: get(scopedPrompts),
+        custom_parameters: get(customParameters).map(p => {
+            let value = p.value;
+            if (p.type === 'number') value = parseFloat(p.value) || 0;
+            if (p.type === 'boolean') value = (p.value === 'true' || p.value === true);
+            return { ...p, value };
+        })
+    };
     
-    // 清理临时前端键
+    // Cleanup logic remains the same
     const cleanup = (obj) => {
         if (typeof obj !== 'object' || obj === null) return;
         Object.values(obj).forEach(item => {
@@ -182,7 +196,7 @@ export async function saveConfig() {
 
     try {
         await apiSaveConfig(finalConfig);
-        await fetchConfig(); // 重新同步
+        await fetchConfig(); // Resync after saving
         showStatus(t_get('status.saveSuccess'), 'success');
     } catch (e) {
         console.error('Save error:', e);
