@@ -7,6 +7,9 @@ import ipaddress
 import socket
 from urllib.parse import urlparse
 from typing import List, Dict, Any, Optional
+import re
+from datetime import datetime
+import pytz # Timezone library
 
 import discord
 import aiohttp
@@ -285,3 +288,67 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
     except Exception as e:
         logger.error(f"An unexpected error occurred in plugin '{plugin_name}': {e}", exc_info=True)
         return f"Error: An unexpected error occurred while running the plugin."
+
+# --- Memory Transformation ---
+
+def transform_memories_for_prompt(memories: List[Dict[str, Any]], target_timezone_str: str = 'UTC') -> List[str]:
+    """
+    Transforms raw memory entries from the database into human-readable strings for the LLM prompt.
+    It converts the stored UTC timestamp to a target timezone.
+    """
+    transformed_memories = []
+    
+    try:
+        target_tz = pytz.timezone(target_timezone_str)
+    except pytz.UnknownTimeZoneError:
+        logger.warning(f"Unknown timezone '{target_timezone_str}'. Falling back to UTC.")
+        target_tz = pytz.utc
+
+    for memory in memories:
+        content = memory.get('content', '')
+        
+        # Regex to find the structured tag: [memory key="value" ...]
+        tag_match = re.search(r'\[memory\s+(.*?)\]', content)
+        
+        if not tag_match:
+            # If no tag, return content as-is
+            transformed_memories.append(content)
+            continue
+
+        tag_content = tag_match.group(1)
+        # Regex to parse attributes from the tag content
+        attributes = dict(re.findall(r'(\w+)="(.*?)"', tag_content))
+        
+        original_timestamp_str = attributes.get('timestamp')
+        user_name = attributes.get('user_name', 'Unknown')
+        
+        if not original_timestamp_str:
+            # If tag is malformed without a timestamp, strip the tag and return content
+            clean_content = content.replace(tag_match.group(0), '').strip()
+            transformed_memories.append(clean_content)
+            continue
+            
+        try:
+            # Parse the UTC timestamp from ISO format
+            utc_timestamp = datetime.fromisoformat(original_timestamp_str.replace('Z', '+00:00'))
+            
+            # Convert to target timezone
+            local_timestamp = utc_timestamp.astimezone(target_tz)
+            
+            # Format for display
+            formatted_time = local_timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')
+            
+            # Create the natural language prefix
+            nl_prefix = f"[由 {user_name} 在 {formatted_time} 记录]"
+            
+            # Replace the structured tag with the natural language prefix
+            final_content = content.replace(tag_match.group(0), nl_prefix).strip()
+            transformed_memories.append(final_content)
+            
+        except (ValueError, TypeError) as e:
+            logger.error(f"Could not parse or convert timestamp '{original_timestamp_str}': {e}")
+            # Fallback: just strip the tag
+            clean_content = content.replace(tag_match.group(0), '').strip()
+            transformed_memories.append(clean_content)
+
+    return transformed_memories

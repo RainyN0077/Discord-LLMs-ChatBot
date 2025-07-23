@@ -347,7 +347,11 @@ export default {
      title: 'Memory',
      addPlaceholder: 'Add a new memory item...',
      add: 'Add Memory',
-     delete: 'Delete'
+     delete: 'Delete',
+     by: 'By',
+     at: 'At',
+     source: 'Source',
+     contentLabel: 'Content'
    },
    worldBook: {
      title: 'World Book',

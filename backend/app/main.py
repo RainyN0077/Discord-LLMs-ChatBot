@@ -208,7 +208,11 @@ class AvailableModelsRequest(BaseModel):
 class MemoryItem(BaseModel):
     id: Optional[int] = None
     content: str
-    timestamp: str
+    timestamp: Optional[str] = None # Made optional, will default to now() if not provided
+    user_id: Optional[str] = None
+    user_name: Optional[str] = None
+    source: Optional[str] = None
+    timezone: Optional[str] = None # To get user's local timezone from frontend
 
 class WorldBookItem(BaseModel):
     id: Optional[int] = None
@@ -516,12 +520,58 @@ async def get_all_memory_items():
 @app.post("/api/memory", response_model=MemoryItem, dependencies=[Depends(get_api_key)])
 async def add_memory_item(item: MemoryItem):
     try:
-        # The timestamp is part of the request model now.
-        item_id = knowledge_manager.add_memory(content=item.content, timestamp=item.timestamp)
-        return {**item.dict(), "id": item_id}
+        utc_timestamp_str: str
+        # Convert local timestamp from UI to UTC
+        if item.timestamp and item.timezone:
+            try:
+                import pytz # Make sure pytz is available
+                local_tz = pytz.timezone(item.timezone)
+                # The timestamp from `<input type="datetime-local">` is naive
+                naive_dt = datetime.fromisoformat(item.timestamp)
+                # Localize it, then convert to UTC
+                local_dt = local_tz.localize(naive_dt)
+                utc_dt = local_dt.astimezone(pytz.utc)
+                utc_timestamp_str = utc_dt.isoformat()
+            except (pytz.UnknownTimeZoneError, ValueError) as e:
+                logger.warning(f"Could not parse timestamp '{item.timestamp}' with timezone '{item.timezone}': {e}. Falling back to now().")
+                utc_timestamp_str = datetime.now(timezone.utc).isoformat()
+        else:
+            # Fallback for requests without timestamp/timezone (e.g. from Discord bot)
+            utc_timestamp_str = item.timestamp or datetime.now(timezone.utc).isoformat()
+
+        # Assign defaults for user/source if not provided
+        user_id = item.user_id or "manual_user"
+        user_name = item.user_name or "WebUI"
+        source = item.source or "WebUI"
+        
+        item_id = knowledge_manager.add_memory(
+            content=item.content,
+            timestamp=utc_timestamp_str, # Always pass the processed UTC timestamp
+            user_id=user_id,
+            user_name=user_name,
+            source=source
+        )
+        
+        if not item_id:
+            raise HTTPException(status_code=409, detail="Memory content already exists or failed to add.")
+
+        # Return a success response with the data that was actually added
+        response_data = {
+            "id": item_id,
+            "content": item.content,
+            "timestamp": utc_timestamp_str,
+            "user_id": user_id,
+            "user_name": user_name,
+            "source": source,
+            "timezone": item.timezone
+        }
+        return response_data
+
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to add memory item: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
 
 @app.delete("/api/memory/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
 async def delete_memory_item(item_id: int):

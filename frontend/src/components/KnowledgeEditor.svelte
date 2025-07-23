@@ -12,6 +12,9 @@
   let memoryItems = [];
   let worldBookItems = [];
   let newMemoryContent = '';
+  let newMemoryUserName = 'WebUI';
+  let newMemoryUserId = '';
+  let newMemoryTimestamp = '';
   
   let newWorldBookItem = { keywords: '', content: '', enabled: true };
   let editingWorldBookItem = null;
@@ -32,8 +35,25 @@
   async function handleAddMemory() {
     if (!newMemoryContent.trim()) return;
     try {
-      await addMemoryItem(newMemoryContent.trim());
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const itemData = {
+        content: newMemoryContent.trim(),
+        user_name: newMemoryUserName.trim() || 'WebUI',
+        user_id: newMemoryUserId.trim() || null,
+        // Only include timestamp if it's been set by the user
+        timestamp: newMemoryTimestamp || null,
+        timezone: newMemoryTimestamp ? timezone : null,
+        source: 'WebUI'
+      };
+      
+      await addMemoryItem(itemData);
+
+      // Reset form
       newMemoryContent = '';
+      newMemoryUserId = '';
+      newMemoryTimestamp = '';
+      // Do not reset username, to allow multiple entries from same person
+      
       loadMemoryItems();
     } catch (e) {
       alert(`${$t('knowledge.error.addMemory')}: ${e.message}`);
@@ -99,9 +119,15 @@
     }
   }
 
+  function formatMemoryContent(rawContent) {
+    if (!rawContent) return '';
+    // Use replace with a regex to remove the tag and any leading space
+    return rawContent.replace(/\[memory\s+.*?\]\s*/, '');
+  }
+ 
 </script>
-
-<style>
+ 
+ <style>
   .tabs {
     display: flex;
     border-bottom: 2px solid #333;
@@ -133,12 +159,23 @@
     border: 1px solid #444;
     border-radius: 4px;
     margin-bottom: 0.5rem;
-    background-color: #2a2a2a;
+    background-color: #333740; /* A lighter, more distinct dark color for better contrast */
   }
   .item-content {
     flex-grow: 1;
     margin-right: 1rem;
     white-space: pre-wrap;
+  }
+  .item-content > span {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #81c784; /* Set text color to INFO green for readability */
+  }
+  .meta {
+      font-size: 0.8em;
+      color: #ddd; /* Increased font color contrast for better readability */
+      display: flex;
+      gap: 1rem;
   }
   .keywords {
     font-style: italic;
@@ -155,7 +192,16 @@
   label {
       display: block;
       margin-bottom: 0.5rem;
-  }
+ }
+ .form-grid {
+   display: grid;
+   grid-template-columns: 1fr 2fr;
+   gap: 1rem;
+   align-items: end;
+ }
+ .form-group.full-width {
+   grid-column: 1 / -1;
+ }
 </style>
 
 <Card>
@@ -176,14 +222,44 @@
       <div class="item-list">
         {#each memoryItems as item (item.id)}
           <div class="item">
-            <span class="item-content">{item.content}</span>
+            <div class="item-content">
+              <span>{formatMemoryContent(item.content)}</span>
+              <div class="meta">
+                {#if item.user_name}
+                  <span>{$t('knowledge.memory.by')}: {item.user_name}</span>
+                {/if}
+                {#if item.timestamp}
+                  <span>{$t('knowledge.memory.at')}: {new Date(item.timestamp).toLocaleString()}</span>
+                {/if}
+                {#if item.source}
+                  <span>{$t('knowledge.memory.source')}: {item.source}</span>
+                {/if}
+              </div>
+            </div>
             <div class="actions">
               <button on:click={() => handleDeleteMemory(item.id)}>{$t('knowledge.memory.delete')}</button>
             </div>
           </div>
         {/each}
       </div>
-      <textarea bind:value={newMemoryContent} placeholder={$t('knowledge.memory.addPlaceholder')}></textarea>
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr 2fr; gap: 0.5rem 1rem;">
+        <div class="form-group">
+            <label for="memory-user-name">{$t('knowledge.memory.by')}</label>
+            <input id="memory-user-name" type="text" bind:value={newMemoryUserName} placeholder={$t('knowledge.memory.byPlaceholder')}>
+        </div>
+        <div class="form-group">
+            <label for="memory-user-id">{$t('knowledge.memory.userIdLabel')}</label>
+            <input id="memory-user-id" type="text" bind:value={newMemoryUserId} placeholder={$t('knowledge.memory.userIdPlaceholder')}>
+        </div>
+        <div class="form-group">
+            <label for="memory-timestamp">{$t('knowledge.memory.timestampLabel')}</label>
+            <input id="memory-timestamp" type="datetime-local" bind:value={newMemoryTimestamp}>
+        </div>
+        <div class="form-group full-width">
+            <label for="memory-content">{$t('knowledge.memory.contentLabel')}</label>
+            <textarea id="memory-content" bind:value={newMemoryContent} placeholder={$t('knowledge.memory.addPlaceholder')} rows="3"></textarea>
+        </div>
+      </div>
       <button on:click={handleAddMemory}>{$t('knowledge.memory.add')}</button>
     </div>
   {/if}

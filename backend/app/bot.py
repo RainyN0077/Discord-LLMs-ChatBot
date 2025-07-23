@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 import discord
 from discord.ext import commands
 
-from .utils import TokenCalculator, download_image, split_message
+from .utils import TokenCalculator, download_image, split_message, transform_memories_for_prompt
 from .usage_tracker import usage_tracker
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt, get_highest_configured_role
 from .core_logic.context_builder import build_context_history, format_user_message_for_llm
@@ -103,6 +103,46 @@ def collect_image_urls(msg: discord.Message) -> List[str]:
     # 使用 dict.fromkeys 来去重，同时保持原始顺序
     return list(dict.fromkeys(urls))
 
+
+
+def process_memory_tags(message: discord.Message, text: str) -> str:
+    """
+    Finds <memory> tags in the text, saves the content with metadata to long-term memory,
+    and returns the text with the tags removed.
+    """
+    if not text or '<memory>' not in text:
+        return text
+
+    # Use a non-greedy regex to find all memory tags
+    # re.DOTALL allows '.' to match newlines within the tag content
+    memories_to_add = re.findall(r'<memory>(.*?)</memory>', text, re.DOTALL)
+    
+    for memory_content in memories_to_add:
+        stripped_content = memory_content.strip()
+        if stripped_content:
+            # Use the message's creation time for accurate timestamping
+            timestamp = message.created_at.astimezone(timezone.utc).isoformat()
+            user_id = str(message.author.id)
+            user_name = message.author.name
+            
+            try:
+                memory_id = knowledge_manager.add_memory(
+                    content=stripped_content,
+                    timestamp=timestamp,
+                    user_id=user_id,
+                    user_name=user_name,
+                    source='ai'
+                )
+                if memory_id:
+                    logger.info(f"Added new memory from tag by '{user_name}' with ID: {memory_id}")
+                else:
+                    logger.info(f"Memory from tag by '{user_name}' already exists, skipping: '{stripped_content[:50]}...'")
+            except Exception as e:
+                logger.error(f"Error adding memory from tag by '{user_name}': {e}", exc_info=True)
+
+    # Remove the tags from the text for the final response
+    cleaned_text = re.sub(r'<memory>.*?</memory>', '', text, flags=re.DOTALL).strip()
+    return cleaned_text
 
 
 async def run_bot(memory_cutoffs: Dict[int, datetime]):
@@ -223,6 +263,21 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         system_prompt = build_system_prompt(config, specific_persona_prompt, situational_prompt, message, history_messages, active_directives_log)
         final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
         
+        # --- [NEW] Memory Retrieval and Injection ---
+        all_memories = knowledge_manager.get_all_memories()
+        if all_memories:
+            # We don't know the Discord user's timezone, so we transform using UTC as a neutral default.
+            # The important part is that manually added memories with specific times are preserved correctly.
+            transformed_memories = transform_memories_for_prompt(all_memories, target_timezone_str='UTC')
+            
+            # Combine memories into a single block for the system prompt
+            memory_knowledge = "\n".join(transformed_memories)
+            
+            # Prepend to the system prompt inside a <knowledge> tag
+            system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+            logger.info(f"Injected {len(transformed_memories)} memories into the system prompt.")
+        # --- End of Memory Injection ---
+
         if role_config:
             user_usage = await usage_manager.check_quota_and_get_usage(message.author.id, role_config)
             
@@ -286,13 +341,17 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         await message.reply(final_error_msg, mention_author=False)
                     return
 
+                # --- [NEW] Process memory tags before sending response ---
+                # This keeps the original `full_response` for accurate token calculation later.
+                cleaned_response = process_memory_tags(message, full_response)
+
                 if response_message:
-                    final_chunks = split_message(full_response, 2000)
+                    final_chunks = split_message(cleaned_response, 2000)
                     await response_message.edit(content=final_chunks[0] if final_chunks else "")
                     for chunk in final_chunks[1:]:
                         await message.channel.send(chunk)
                 else:
-                    final_chunks = split_message(full_response, 2000)
+                    final_chunks = split_message(cleaned_response, 2000)
                     for i, chunk in enumerate(final_chunks):
                         if i == 0 and chunk.strip():
                             await message.reply(chunk, mention_author=False)

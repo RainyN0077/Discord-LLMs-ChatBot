@@ -79,6 +79,53 @@ export default {
       nonStream: '完整响应 (一次性发送)'
     }
   },
+knowledge: {
+    title: '知识库',
+    confirmDeleteMemory: '确定要删除这条记忆吗？',
+    confirmDeleteWorldBook: '确定要删除这个世界书条目吗？',
+    tabs: {
+      worldBook: '世界书',
+      memory: '记忆库'
+    },
+    error: {
+      loadMemory: '加载记忆库失败',
+      addMemory: '添加记忆失败',
+      deleteMemory: '删除记忆失败',
+      loadWorldBook: '加载世界书失败',
+      saveWorldBook: '保存世界书条目失败',
+      deleteWorldBook: '删除世界书条目失败',
+      emptyFields: '关键词和内容不能为空'
+    },
+    memory: {
+      title: '记忆库',
+      add: '添加记忆',
+      delete: '删除',
+      addPlaceholder: '添加一条新的记忆...',
+      by: '记录者',
+      at: '时间',
+      source: '来源',
+      contentLabel: '内容',
+      userIdLabel: '用户 ID',
+      timestampLabel: '时间戳 (可选, 你的本地时间)',
+      byPlaceholder: '例如 WebUI 或用户名',
+      userIdPlaceholder: '例如 1234567890 (可选)'
+    },
+    worldBook: {
+      title: '世界书',
+      edit: '编辑',
+      delete: '删除',
+      add: '添加条目',
+      save: '保存更改',
+      cancelEdit: '取消编辑',
+      addTitle: '添加新条目',
+      editTitle: '编辑条目',
+      keywordsLabel: '关键词',
+      keywordsHint: '用逗号分隔',
+      keywordsPlaceholder: '例如：地点, 设定, 角色A',
+      contentLabel: '内容',
+      contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。'
+    }
+  },
   contextControl: {
     title: '上下文控制',
     contextMode: '上下文模式',
@@ -325,44 +372,5 @@ export default {
         "updateNow": "立即更新",
         "deleteSource": "删除订阅源"
     }
- },
- knowledge: {
-   title: '知识库',
-   tabs: {
-     worldBook: '世界书',
-     memory: '记忆库'
-   },
-   confirmDeleteMemory: '确定要删除这条记忆吗？',
-   confirmDeleteWorldBook: '确定要删除这个词条吗？',
-   error: {
-     loadMemory: '加载记忆库失败',
-     addMemory: '添加记忆失败',
-     deleteMemory: '删除记忆失败',
-     loadWorldBook: '加载世界书失败',
-     emptyFields: '关键词和内容不能为空',
-     saveWorldBook: '保存世界书失败',
-     deleteWorldBook: '删除世界书失败'
-   },
-   memory: {
-     title: '记忆库',
-     addPlaceholder: '添加一条新的记忆...',
-     add: '添加记忆',
-     delete: '删除'
-   },
-   worldBook: {
-     title: '世界书',
-     keywordsLabel: '关键词',
-     keywordsHint: '用逗号分隔',
-     keywordsPlaceholder: '例如：世界观, 主要角色...',
-     contentLabel: '内容',
-     contentPlaceholder: '详细描述这个设定...',
-     addTitle: '添加新词条',
-     editTitle: '编辑词条',
-     add: '添加词条',
-     save: '保存更改',
-     edit: '编辑',
-     delete: '删除',
-     cancelEdit: '取消编辑'
-   }
  }
 };

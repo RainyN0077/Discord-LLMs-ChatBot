@@ -76,12 +76,21 @@ async function handleResponse(response) {
 
     // Standard JSON response handling for all other API requests
     if (!response.ok) {
-        let errorDetail = 'An unknown error occurred.';
+        let errorDetail = `Request failed with status ${response.status}`;
+        // Clone the response to allow reading the body twice
+        const responseClone = response.clone();
         try {
+            // Try to parse as JSON first
             const errorJson = await response.json();
             errorDetail = errorJson.detail || JSON.stringify(errorJson);
         } catch (e) {
-            errorDetail = `Request failed with status ${response.status}: ${await response.text()}`;
+            // If JSON parsing fails, read as text from the clone
+            try {
+                const errorText = await responseClone.text();
+                errorDetail = errorText || errorDetail;
+            } catch (textErr) {
+                // If reading as text also fails, stick with the status code
+            }
         }
         console.error('API Error:', response.status, errorDetail);
         throw new Error(errorDetail);
@@ -179,11 +188,12 @@ export async function fetchMemoryItems() {
     return apiFetch(`${BASE_URL}/memory`);
 }
 
-export async function addMemoryItem(content) {
-    const timestamp = new Date().toISOString();
+export async function addMemoryItem(itemData) {
+    // The component now prepares the full object, including optional timestamp, userid, and timezone.
+    // We just need to pass it along.
     return apiFetch(`${BASE_URL}/memory`, {
         method: 'POST',
-        body: JSON.stringify({ content, timestamp }),
+        body: JSON.stringify(itemData),
     });
 }
 
