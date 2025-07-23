@@ -304,7 +304,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 response_message = None
                 llm_provider = get_llm_provider(config)
                 tools = plugin_manager.get_all_tools()
-                tool_functions = plugin_manager.get_all_tool_functions()
+                tool_functions = plugin_manager.get_all_tool_functions(message)
 
                 response_generator = llm_provider.get_response_stream(
                     llm_messages, images, tools=tools, tool_functions=tool_functions

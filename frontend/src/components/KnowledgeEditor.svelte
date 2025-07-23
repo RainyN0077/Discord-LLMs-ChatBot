@@ -16,8 +16,11 @@
   let newMemoryUserId = '';
   let newMemoryTimestamp = '';
   
+  let searchQuery = '';
+  
   let newWorldBookItem = { keywords: '', content: '', enabled: true };
   let editingWorldBookItem = null;
+  let worldBookSearchQuery = '';
   let editingMemoryId = null;
   let editingMemoryContent = '';
   let intervalId = null;
@@ -156,11 +159,26 @@
     return rawContent.replace(/\[memory\s+.*?\]\s*/, '');
   }
  
+  $: filteredMemoryItems = memoryItems.filter(item =>
+    item.user_name && item.user_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  $: filteredWorldBookItems = worldBookItems.filter(item =>
+    (item.keywords || '').toLowerCase().includes(worldBookSearchQuery.toLowerCase())
+  );
 </script>
  
  <style>
-  .tabs {
-    display: flex;
+   .search-bar {
+    margin-bottom: 1rem;
+  }
+  .search-bar input {
+    width: 100%;
+    padding: 0.5rem;
+    box-sizing: border-box;
+  }
+   .tabs {
+     display: flex;
     border-bottom: 2px solid #333;
     margin-bottom: 1rem;
   }
@@ -267,11 +285,17 @@
   {#if activeTab === 'memory'}
     <div class="memory-section">
       <h3>{$t('knowledge.memory.title')}</h3>
+      <div class="search-bar">
+        <input type="text" bind:value={searchQuery} placeholder={$t('knowledge.memory.searchPlaceholder')}>
+      </div>
       <div class="item-list">
-        {#each memoryItems as item (item.id)}
-          <div class="item">
-            <div class="item-content">
-              {#if editingMemoryId === item.id}
+        {#if filteredMemoryItems.length === 0}
+          <p>{$t('knowledge.memory.noResults')}</p>
+        {:else}
+          {#each filteredMemoryItems as item (item.id)}
+            <div class="item">
+              <div class="item-content">
+                {#if editingMemoryId === item.id}
                 <textarea bind:value={editingMemoryContent} rows="2" class="edit-textarea"></textarea>
               {:else}
                 <span>{formatMemoryContent(item.content)}</span>
@@ -298,7 +322,8 @@
               {/if}
             </div>
           </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
       <div class="form-grid" style="grid-template-columns: 1fr 1fr 2fr; gap: 0.5rem 1rem;">
         <div class="form-group">
@@ -325,11 +350,17 @@
   {#if activeTab === 'worldbook'}
     <div class="worldbook-section">
       <h3>{$t('knowledge.worldBook.title')}</h3>
+      <div class="search-bar">
+        <input type="text" bind:value={worldBookSearchQuery} placeholder={$t('knowledge.worldBook.searchPlaceholder')}>
+      </div>
       <div class="item-list">
-        {#each worldBookItems as item (item.id)}
-          <div class="item">
-            <div class="item-content">
-              <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
+        {#if filteredWorldBookItems.length === 0}
+          <p>{$t('knowledge.worldBook.noResults')}</p>
+        {:else}
+          {#each filteredWorldBookItems as item (item.id)}
+            <div class="item">
+              <div class="item-content">
+                <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
               <div>{item.content}</div>
             </div>
             <div class="actions">
@@ -337,7 +368,8 @@
               <button class="small-btn" on:click={() => handleDeleteWorldBookItem(item.id)}>{$t('knowledge.worldBook.delete')}</button>
             </div>
           </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
       
       <Card extraClass="form-card">

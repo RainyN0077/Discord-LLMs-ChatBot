@@ -114,7 +114,9 @@ knowledge: {
       userIdLabel: '用户 ID',
       timestampLabel: '时间戳 (可选, 你的本地时间)',
       byPlaceholder: '例如 WebUI 或用户名',
-      userIdPlaceholder: '例如 1234567890 (可选)'
+      userIdPlaceholder: '例如 1234567890 (可选)',
+      searchPlaceholder: '按记录者搜索...',
+      noResults: '没有找到匹配的记录。'
     },
     worldBook: {
       title: '世界书',
@@ -129,7 +131,9 @@ knowledge: {
       keywordsHint: '用逗号分隔',
       keywordsPlaceholder: '例如：地点, 设定, 角色A',
       contentLabel: '内容',
-      contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。'
+      contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。',
+      searchPlaceholder: '按关键词搜索...',
+      noResults: '没有找到匹配的条目。'
     }
   },
   contextControl: {

@@ -357,7 +357,13 @@ export default {
      by: 'By',
      at: 'At',
      source: 'Source',
-     contentLabel: 'Content'
+     contentLabel: 'Content',
+     userIdLabel: 'User ID',
+     timestampLabel: 'Timestamp (optional, your local time)',
+     byPlaceholder: 'e.g., WebUI or username',
+     userIdPlaceholder: 'e.g., 1234567890 (optional)',
+     searchPlaceholder: 'Search by recorder...',
+     noResults: 'No matching records found.'
    },
    worldBook: {
      title: 'World Book',
@@ -373,6 +379,8 @@ export default {
      edit: 'Edit',
      delete: 'Delete',
      cancelEdit: 'Cancel Edit'
-   }
+   },
+   searchPlaceholder: 'Search by keywords...',
+   noResults: 'No matching entries found.'
  }
 };

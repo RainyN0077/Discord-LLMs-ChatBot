@@ -3,12 +3,14 @@ import inspect
 import logging
 import importlib
 import pkgutil
+import functools
 from typing import List, Dict, Any, Optional, Tuple
 
 import discord
 
 from .base import BasePlugin
 from .configurable_plugin import ConfigurablePlugin
+from .memory_plugin import MemoryPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +73,21 @@ class PluginManager:
             all_tools.extend(plugin.get_tools())
         return all_tools
     
-    def get_all_tool_functions(self) -> Dict[str, callable]:
+    def get_all_tool_functions(self, message: discord.Message) -> Dict[str, callable]:
         """Collects tool functions from all loaded plugins."""
         all_functions = {}
         for plugin in self.plugins:
-            all_functions.update(plugin.get_tool_functions())
+            functions = plugin.get_tool_functions()
+            # Check if it's the MemoryPlugin and wrap the add_to_memory function
+            if isinstance(plugin, MemoryPlugin) and 'add_to_memory' in functions:
+                original_func = functions['add_to_memory']
+                # Create a partial function with user_id and user_name pre-filled
+                functions['add_to_memory'] = functools.partial(
+                    original_func,
+                    user_id=str(message.author.id),
+                    user_name=message.author.name
+                )
+            all_functions.update(functions)
         return all_functions
 
     async def process_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:

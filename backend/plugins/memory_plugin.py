@@ -1,5 +1,4 @@
 from app.core_logic.knowledge_manager import knowledge_manager
-from app.main import load_config
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple, List
 import discord
@@ -66,19 +65,17 @@ class MemoryPlugin(BasePlugin):
             "add_to_world_book": self.add_to_world_book
         }
 
-    def add_to_memory(self, content: str) -> str:
+    def add_to_memory(self, content: str, user_id: str, user_name: str) -> str:
         """
         Adds a new piece of information to the long-term memory.
         """
         try:
             timestamp = datetime.now(timezone.utc).isoformat()
-            config = load_config()
-            bot_nickname = config.get('bot_nickname', 'Bot')
             memory_id = knowledge_manager.add_memory(
                 content=content,
                 timestamp=timestamp,
-                user_id="bot",
-                user_name=bot_nickname,
+                user_id=user_id,
+                user_name=user_name,
                 source="对话"
             )
             return f"Successfully added to memory with ID: {memory_id}"
