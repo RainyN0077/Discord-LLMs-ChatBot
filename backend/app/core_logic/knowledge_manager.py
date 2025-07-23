@@ -191,23 +191,31 @@ class KnowledgeManager:
             return cursor.rowcount > 0
 
     def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Finds all world book entries whose keywords are present in the given text.
+        This implementation iterates through all enabled entries and performs a case-insensitive check for each keyword.
+        """
+        matched_entries = []
+        added_entry_ids = set()  # To prevent adding the same entry multiple times
+
         with self.get_conn() as conn:
             cursor = conn.cursor()
+            cursor.execute("SELECT id, keywords, content FROM world_book WHERE enabled = 1")
+            enabled_entries = [dict(row) for row in cursor.fetchall()]
 
-            # For FTS5, " characters are special. We need to escape them.
-            # To perform a phrase search with text that contains double quotes,
-            # the inner quotes must be escaped by doubling them (e.g., " -> "").
-            sanitized_text = text.replace('"', '""')
-            query = f'"{sanitized_text}"'
+        lower_text = text.lower()
 
-            cursor.execute("""
-                SELECT wb.keywords, wb.content
-                FROM world_book wb
-                JOIN world_book_fts fts ON wb.id = fts.rowid
-                WHERE world_book_fts MATCH ? AND wb.enabled = 1
-            """, (query,))
-            
-            return [dict(row) for row in cursor.fetchall()]
+        for entry in enabled_entries:
+            keywords = [k.strip().lower() for k in entry['keywords'].split(',') if k.strip()]
+            for keyword in keywords:
+                if keyword in lower_text:
+                    if entry['id'] not in added_entry_ids:
+                        # We only need to return 'keywords' and 'content' as per the original function's return signature
+                        matched_entries.append({'keywords': entry['keywords'], 'content': entry['content']})
+                        added_entry_ids.add(entry['id'])
+                    break  # Move to the next entry once a keyword is matched
+
+        return matched_entries
 
 # Singleton instance
 knowledge_manager = KnowledgeManager()
