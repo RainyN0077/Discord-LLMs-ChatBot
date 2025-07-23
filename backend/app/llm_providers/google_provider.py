@@ -205,6 +205,10 @@ class GoogleProvider(LLMProvider):
                 
                 # If no tool calls, process as regular text stream
                 for chunk in collected_chunks:
+                    # Skip any parts that are tool calls, as they don't have .text and will cause errors
+                    if chunk.parts and chunk.parts[0].function_call:
+                        continue
+                    
                     try:
                         # [FIX] Check for safety feedback before accessing text
                         if chunk.prompt_feedback and chunk.prompt_feedback.block_reason:
@@ -215,7 +219,8 @@ class GoogleProvider(LLMProvider):
                             full_response += f" [SYSTEM: {error_msg}]"
                             break # Stop processing further chunks
                         
-                        if chunk.text:
+                        # Use hasattr to be safe before accessing .text
+                        if hasattr(chunk, 'text') and chunk.text:
                             full_response += chunk.text
                             yield "partial", full_response
                     except ValueError:
@@ -259,7 +264,10 @@ class GoogleProvider(LLMProvider):
                     else:
                         yield "final", f"Tool '{function_name}' not found."
                 else:
-                    yield "final", response.text
+                    # [FIX] Avoid using response.text directly, as it fails on function calls.
+                    # Instead, construct the text from parts that are not function calls.
+                    full_text = "".join(part.text for part in response.parts if hasattr(part, 'text'))
+                    yield "final", full_text
                 
         except Exception as e:
             yield "final", self._handle_error(e)
