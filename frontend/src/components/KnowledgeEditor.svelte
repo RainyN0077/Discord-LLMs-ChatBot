@@ -201,9 +201,12 @@
       display: block;
       margin-bottom: 0.5rem;
       color: #81c784; /* Set text color to INFO green for readability */
-  }
-  .meta {
-      font-size: 0.8em;
+   }
+   .item-content > .wb-content {
+        color: #81c784; /* INFO green for world book content */
+   }
+   .meta {
+       font-size: 0.8em;
       color: #ddd; /* Increased font color contrast for better readability */
       display: flex;
       gap: 1rem;
@@ -317,7 +320,7 @@
           <div class="item">
             <div class="item-content">
               <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
-              <div>{item.content}</div>
+              <div class="wb-content">{item.content}</div>
             </div>
             <div class="actions">
               <button on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
