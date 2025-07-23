@@ -37,6 +37,7 @@ export const coreConfig = writable({
 });
 
 export const behaviorConfig = writable({
+    bot_nickname: 'Endless',
     system_prompt: '',
     blocked_prompt_response: '',
     trigger_keywords: [],
@@ -131,6 +132,7 @@ export async function fetchConfig() {
             api_secret_key: mergedConfig.api_secret_key
         });
         behaviorConfig.set({
+            bot_nickname: mergedConfig.bot_nickname,
             system_prompt: mergedConfig.system_prompt,
             blocked_prompt_response: mergedConfig.blocked_prompt_response,
             trigger_keywords: mergedConfig.trigger_keywords,

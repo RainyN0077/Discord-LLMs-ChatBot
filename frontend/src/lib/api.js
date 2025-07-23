@@ -203,6 +203,13 @@ export async function deleteMemoryItem(itemId) {
     });
 }
 
+export async function updateMemoryItem(itemId, content) {
+    return apiFetch(`${BASE_URL}/memory/${itemId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+    });
+}
+
 // World Book Functions
 export async function fetchWorldBookItems() {
     return apiFetch(`${BASE_URL}/worldbook`);

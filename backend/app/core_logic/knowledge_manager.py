@@ -125,7 +125,40 @@ class KnowledgeManager:
             conn.commit()
             return cursor.rowcount > 0
 
-    # World Book methods
+    def update_memory(self, memory_id: int, new_content: str) -> bool:
+        """
+        Updates the content of a specific memory entry.
+        Only the user-provided part of the content is updated, the machine-readable tag is preserved.
+        """
+        with self.get_conn() as conn:
+            cursor = conn.cursor()
+            # First, fetch the existing memory to preserve the tag
+            cursor.execute("SELECT content FROM memory WHERE id = ?", (memory_id,))
+            row = cursor.fetchone()
+            if not row:
+                return False
+
+            existing_content = row['content']
+            # The content is in the format "[tag] actual_content". We need to split them.
+            try:
+                tag_part, _ = existing_content.split(']', 1)
+                tag_part += ']' # re-add the closing bracket
+            except ValueError:
+                # If there's no tag for some reason, we can't safely update.
+                # Or, we could just prepend a default tag, but for now, let's be safe.
+                return False
+            
+            # Combine the old tag with the new content
+            updated_content = f"{tag_part} {new_content}"
+
+            cursor.execute(
+                "UPDATE memory SET content = ? WHERE id = ?",
+                (updated_content, memory_id)
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+ 
+     # World Book methods
     def add_world_book_entry(self, keywords: str, content: str) -> int:
         with self.get_conn() as conn:
             cursor = conn.cursor()
@@ -161,16 +194,12 @@ class KnowledgeManager:
         with self.get_conn() as conn:
             cursor = conn.cursor()
 
-            # [FIX] Sanitize the user input for FTS5 query.
-            # 1. Remove special characters that could interfere with FTS syntax.
-            # 2. Wrap the query in double quotes to treat it as a phrase.
-            # This prevents sqlite3.OperationalError for inputs containing quotes or other special characters.
-            sanitized_text = ''.join(e for e in text if e.isalnum() or e.isspace())
+            # For FTS5, " characters are special. We need to escape them.
+            # To perform a phrase search with text that contains double quotes,
+            # the inner quotes must be escaped by doubling them (e.g., " -> "").
+            sanitized_text = text.replace('"', '""')
             query = f'"{sanitized_text}"'
 
-            # [FIX] The MATCH operator should apply to the FTS table itself (world_book_fts),
-            # not a specific column within it (fts.keywords). This searches across all
-            # indexed columns ('keywords' and 'content').
             cursor.execute("""
                 SELECT wb.keywords, wb.content
                 FROM world_book wb

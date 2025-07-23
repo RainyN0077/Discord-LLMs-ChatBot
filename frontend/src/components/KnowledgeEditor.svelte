@@ -1,9 +1,9 @@
 <!-- frontend/src/components/KnowledgeEditor.svelte -->
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import { t } from '../i18n.js';
   import {
-    fetchMemoryItems, addMemoryItem, deleteMemoryItem,
+    fetchMemoryItems, addMemoryItem, deleteMemoryItem, updateMemoryItem,
     fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem
   } from '../lib/api.js';
   import Card from './Card.svelte';
@@ -18,10 +18,20 @@
   
   let newWorldBookItem = { keywords: '', content: '', enabled: true };
   let editingWorldBookItem = null;
+  let editingMemoryId = null;
+  let editingMemoryContent = '';
+  let intervalId = null;
 
   onMount(async () => {
     loadMemoryItems();
     loadWorldBookItems();
+    intervalId = setInterval(loadMemoryItems, 5000); // Poll for new memories
+  });
+
+  onDestroy(() => {
+    if (intervalId) {
+      clearInterval(intervalId);
+    }
   });
 
   async function loadMemoryItems() {
@@ -43,7 +53,7 @@
         // Only include timestamp if it's been set by the user
         timestamp: newMemoryTimestamp || null,
         timezone: newMemoryTimestamp ? timezone : null,
-        source: 'WebUI'
+        source: '手动添加'
       };
       
       await addMemoryItem(itemData);
@@ -68,6 +78,27 @@
       } catch (e) {
         alert(`${$t('knowledge.error.deleteMemory')}: ${e.message}`);
       }
+    }
+  }
+
+  function startEditMemory(item) {
+    editingMemoryId = item.id;
+    editingMemoryContent = formatMemoryContent(item.content);
+  }
+
+  function cancelEditMemory() {
+    editingMemoryId = null;
+    editingMemoryContent = '';
+  }
+
+  async function handleUpdateMemory() {
+    if (!editingMemoryContent.trim()) return;
+    try {
+      await updateMemoryItem(editingMemoryId, editingMemoryContent.trim());
+      cancelEditMemory();
+      loadMemoryItems(); // Refresh the list
+    } catch (e) {
+      alert(`${$t('knowledge.error.updateMemory')}: ${e.message}`);
     }
   }
   
@@ -189,6 +220,10 @@
     width: 100%;
     margin-bottom: 0.5rem;
   }
+  .edit-textarea {
+      width: 100%;
+      box-sizing: border-box;
+  }
   label {
       display: block;
       margin-bottom: 0.5rem;
@@ -223,7 +258,11 @@
         {#each memoryItems as item (item.id)}
           <div class="item">
             <div class="item-content">
-              <span>{formatMemoryContent(item.content)}</span>
+              {#if editingMemoryId === item.id}
+                <textarea bind:value={editingMemoryContent} rows="3" class="edit-textarea"></textarea>
+              {:else}
+                <span>{formatMemoryContent(item.content)}</span>
+              {/if}
               <div class="meta">
                 {#if item.user_name}
                   <span>{$t('knowledge.memory.by')}: {item.user_name}</span>
@@ -237,7 +276,13 @@
               </div>
             </div>
             <div class="actions">
-              <button on:click={() => handleDeleteMemory(item.id)}>{$t('knowledge.memory.delete')}</button>
+              {#if editingMemoryId === item.id}
+                <button on:click={handleUpdateMemory}>{$t('knowledge.memory.save')}</button>
+                <button on:click={cancelEditMemory}>{$t('knowledge.memory.cancel')}</button>
+              {:else}
+                <button on:click={() => startEditMemory(item)}>{$t('knowledge.memory.edit')}</button>
+                <button on:click={() => handleDeleteMemory(item.id)}>{$t('knowledge.memory.delete')}</button>
+              {/if}
             </div>
           </div>
         {/each}

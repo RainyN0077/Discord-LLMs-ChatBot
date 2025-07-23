@@ -67,6 +67,8 @@ export default {
       google: '例如: gemini-1.5-flash, gemini-1.5-pro',
       anthropic: '例如: claude-3-opus-20240229'
     },
+    botNickname: 'Bot 昵称',
+    botNicknamePlaceholder: '例如: Endless',
     systemPrompt: '系统提示词',
     systemPromptPlaceholder: '定义机器人的基础人设和行为准则...',
     blockedResponse: '屏蔽响应模板',
@@ -91,6 +93,7 @@ knowledge: {
       loadMemory: '加载记忆库失败',
       addMemory: '添加记忆失败',
       deleteMemory: '删除记忆失败',
+      updateMemory: '更新记忆失败',
       loadWorldBook: '加载世界书失败',
       saveWorldBook: '保存世界书条目失败',
       deleteWorldBook: '删除世界书条目失败',
@@ -99,6 +102,9 @@ knowledge: {
     memory: {
       title: '记忆库',
       add: '添加记忆',
+      edit: '编辑',
+      save: '保存',
+      cancel: '取消',
       delete: '删除',
       addPlaceholder: '添加一条新的记忆...',
       by: '记录者',

@@ -352,6 +352,8 @@ async function resetFont() {
                     <button class="add-btn" on:click={addPersona}>{$t('userPortrait.add')}</button>
                 </Card>
                 <Card title={$t('defaultBehavior.title')}>
+                    <label for="bot-nickname">{$t('defaultBehavior.botNickname')}</label>
+                    <input id="bot-nickname" type="text" placeholder={$t('defaultBehavior.botNicknamePlaceholder')} bind:value={$behaviorConfig.bot_nickname}>
                     <label for="system-prompt">{$t('defaultBehavior.systemPrompt')}</label>
                     <textarea id="system-prompt" rows="4" placeholder={$t('defaultBehavior.systemPromptPlaceholder')} bind:value={$behaviorConfig.system_prompt}></textarea>
                     <label for="blocked-response">{$t('defaultBehavior.blockedResponse')}</label>

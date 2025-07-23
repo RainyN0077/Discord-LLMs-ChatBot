@@ -8,6 +8,7 @@ from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional
 
 from .base import LLMProvider
 import google.generativeai.types as genai_types
+from google.ai.generativelanguage import Part, FunctionResponse, Type
 
 logger = logging.getLogger(__name__)
 
@@ -112,14 +113,59 @@ class GoogleProvider(LLMProvider):
                 history=history_for_gemini,
             )
             
-            # Add tools if available
-            tool_config = {"function_declarations": tools} if tools else {}
+            # Add tools if available.
+            sanitized_tools = None
+            if tools:
+                # [FIX] Deeply convert OpenAI-style tool schemas to Google's format.
+                # This involves both removing the top-level 'type: object' from parameters
+                # and converting type strings (e.g., "string") to Google's Type enum.
+                
+                # Mapping from JSON Schema types to Google's Type enum
+                type_map = {
+                    "string": Type.STRING,
+                    "number": Type.NUMBER,
+                    "integer": Type.INTEGER,
+                    "boolean": Type.BOOLEAN,
+                    "array": Type.ARRAY,
+                    "object": Type.OBJECT,
+                }
+
+                def _convert_schema(schema_dict):
+                    if not isinstance(schema_dict, dict):
+                        return schema_dict
+                    
+                    # Recursively convert nested properties first
+                    if 'properties' in schema_dict:
+                        for key, prop in schema_dict['properties'].items():
+                            schema_dict['properties'][key] = _convert_schema(prop)
+                    
+                    # Convert items in arrays
+                    if 'items' in schema_dict:
+                        schema_dict['items'] = _convert_schema(schema_dict['items'])
+                        
+                    # Convert the type string to enum at the current level
+                    if 'type' in schema_dict and schema_dict['type'] in type_map:
+                        schema_dict['type'] = type_map[schema_dict['type']]
+                        
+                    return schema_dict
+
+                sanitized_tools = []
+                tools_copy = json.loads(json.dumps(tools)) # Deep copy
+
+                for tool_def in tools_copy:
+                    declaration = tool_def.get('function', tool_def)
+                    
+                    if 'parameters' in declaration:
+                        # Recursively convert all type strings to enums
+                        declaration['parameters'] = _convert_schema(declaration['parameters'])
+                        
+                    sanitized_tools.append(declaration)
 
             response = await chat.send_message_async(
                 current_message_parts,
                 stream=self.stream,
                 generation_config=api_kwargs.get('generation_config'),
-                tools=tool_config.get('function_declarations')
+                tools=sanitized_tools
             )
 
             if self.stream:
@@ -143,8 +189,8 @@ class GoogleProvider(LLMProvider):
                             function_response = function_to_call(**function_args)
                             
                             # Send the tool response back to the model
-                            tool_response_part = genai_types.Part(
-                                function_response=genai_types.FunctionResponse(
+                            tool_response_part = Part(
+                                function_response=FunctionResponse(
                                     name=function_name,
                                     response={'result': function_response}
                                 )
@@ -160,6 +206,15 @@ class GoogleProvider(LLMProvider):
                 # If no tool calls, process as regular text stream
                 for chunk in collected_chunks:
                     try:
+                        # [FIX] Check for safety feedback before accessing text
+                        if chunk.prompt_feedback and chunk.prompt_feedback.block_reason:
+                            reason = chunk.prompt_feedback.block_reason.name
+                            ratings = [str(rating) for rating in chunk.prompt_feedback.safety_ratings]
+                            error_msg = f"Response blocked by Google's safety settings. Reason: {reason}. Details: {', '.join(ratings)}"
+                            logger.warning(error_msg)
+                            full_response += f" [SYSTEM: {error_msg}]"
+                            break # Stop processing further chunks
+                        
                         if chunk.text:
                             full_response += chunk.text
                             yield "partial", full_response
@@ -170,6 +225,15 @@ class GoogleProvider(LLMProvider):
                 yield "final", full_response
 
             else: # Non-streaming mode
+                # [FIX] Check for safety feedback before accessing text
+                if response.prompt_feedback and response.prompt_feedback.block_reason:
+                    reason = response.prompt_feedback.block_reason.name
+                    ratings = [str(rating) for rating in response.prompt_feedback.safety_ratings]
+                    error_msg = f"Response blocked by Google's safety settings. Reason: {reason}. Details: {', '.join(ratings)}"
+                    logger.warning(error_msg)
+                    yield "final", self._handle_error(Exception(error_msg))
+                    return
+
                 if response.parts and response.parts[0].function_call and tool_functions:
                     function_call = response.parts[0].function_call
                     function_name = function_call.name
@@ -181,8 +245,8 @@ class GoogleProvider(LLMProvider):
                             logger.info(f"Executing tool '{function_name}' with args: {function_args}")
                             function_response = function_to_call(**function_args)
                             
-                            tool_response_part = genai_types.Part(
-                                function_response=genai_types.FunctionResponse(
+                            tool_response_part = Part(
+                                function_response=FunctionResponse(
                                     name=function_name,
                                     response={'result': function_response}
                                 )

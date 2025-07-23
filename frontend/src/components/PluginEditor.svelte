@@ -94,6 +94,7 @@
                     </div>
                 </div>
                 {/if}
+                {#if plugin.action_type === 'http_request'}
                 <div class="plugin-cell cell-http-config wide-cell">
                     <div class="group-label">{$t('pluginManager.httpRequest')}</div>
                     <div class="http-grid">
@@ -111,6 +112,7 @@
                        </div>
                     </div>
                 </div>
+                {/if}
                 {#if plugin.action_type === 'llm_augmented_tool'}
                 <div class="plugin-cell cell-llm-prompt wide-cell">
                     <label for="llm-prompt-{plugin._key}">{$t('pluginManager.llmPrompt')}</label>

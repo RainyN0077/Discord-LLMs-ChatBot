@@ -38,7 +38,9 @@ class PluginManager:
                     attribute = getattr(module, attribute_name)
                     if inspect.isclass(attribute) and issubclass(attribute, BasePlugin) and attribute is not BasePlugin:
                         plugin_config = self.plugins_config.get(name, {})
-                        if plugin_config.get("enabled", False):
+                        # Per user request, force-enable memory_plugin to bypass config/volume issues.
+                        is_memory_plugin = name == "memory_plugin"
+                        if plugin_config.get("enabled", False) or is_memory_plugin:
                             self.plugins.append(attribute(plugin_config, self.llm_caller))
                             logger.info(f"Successfully loaded Python-based plugin: {attribute.__name__} from module {name}")
                             loaded_module_plugins.add(name)

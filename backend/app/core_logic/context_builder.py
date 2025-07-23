@@ -210,12 +210,6 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
         wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in triggered_wb_entries])
         request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
 
-    # 2. Inject long-term memory
-    all_memories = knowledge_manager.get_all_memories()
-    if all_memories:
-        # For now, we inject all memories. This could be optimized later.
-        memory_content = "\n".join([f"- {mem['content']}" for mem in all_memories])
-        request_block_parts.append(MEMORY_CONTEXT_TPL.format(data=memory_content))
     # --- End of new section ---
 
     return USER_REQUEST_BLOCK_TPL.format(parts="\n\n".join(request_block_parts))
