@@ -338,14 +338,14 @@ async function resetFont() {
                 <Card title={$t('userPortrait.title')}>
                     <p class="info">{$t('userPortrait.info')}</p>
                     <div class="list-container">
-                        {#each $userPersonasArray as persona (persona._key)}
+                        {#each Object.keys($userPersonas) as key (key)}
                             <div class="list-item">
                                 <div class="list-item-main">
-                                    <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} bind:value={persona.id}>
-                                    <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} bind:value={persona.nickname}>
-                                    <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} bind:value={persona.prompt}></textarea>
+                                    <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} bind:value={$userPersonas[key].id}>
+                                    <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} bind:value={$userPersonas[key].nickname}>
+                                    <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} bind:value={$userPersonas[key].prompt}></textarea>
                                 </div>
-                                <button class="remove-btn" on:click={() => removePersona(persona._key)} title={$t('roleConfig.remove')}>×</button>
+                                <button class="remove-btn" on:click={() => removePersona(key)} title={$t('roleConfig.remove')}>×</button>
                             </div>
                         {/each}
                     </div>
