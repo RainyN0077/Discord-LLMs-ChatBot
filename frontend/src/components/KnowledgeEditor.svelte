@@ -190,7 +190,7 @@
     border: 1px solid #444;
     border-radius: 4px;
     margin-bottom: 0.5rem;
-    background-color: #333740; /* A lighter, more distinct dark color for better contrast */
+    background-color: #ffffff; /* A lighter, more distinct dark color for better contrast */
   }
   .item-content {
     flex-grow: 1;
@@ -198,26 +198,36 @@
     white-space: pre-wrap;
   }
   .item-content > span {
-      display: block;
-      margin-bottom: 0.5rem;
-      color: #81c784; /* Set text color to INFO green for readability */
-   }
-   .item-content > .wb-content {
-        color: #81c784; /* INFO green for world book content */
-   }
-   .meta {
-       font-size: 0.8em;
-      color: #ddd; /* Increased font color contrast for better readability */
+      display: inline-block;
+      color: #00ad09; /* Set text color to INFO green for readability */
+  }
+  .meta {
+      font-size: 0.8em;
+      color: #000000; /* Increased font color contrast for better readability */
       display: flex;
       gap: 1rem;
   }
   .keywords {
     font-style: italic;
-    color: #aaa;
+    color: #7e7e7e;
     margin-bottom: 0.5em;
+  }
+  .actions {
+    display: flex;                /* 横向排列 */
+    justify-content: flex-end;    /* 靠右对齐 */
+    align-items: center;          /* 垂直居中 */
+    gap: 0.2rem;                  /* 按钮之间间隔 */
   }
   .actions button {
     margin-left: 0.5rem;
+  }
+  .actions .small-btn {
+    font-size: 12px;   
+    padding: 4px 8px; 
+    border-radius: 4px;
+    min-width: 50px;
+    text-align: center;
+    white-space: nowrap; /* 禁止换行 */
   }
   textarea, input[type="text"] {
     width: 100%;
@@ -230,16 +240,16 @@
   label {
       display: block;
       margin-bottom: 0.5rem;
- }
- .form-grid {
-   display: grid;
-   grid-template-columns: 1fr 2fr;
-   gap: 1rem;
-   align-items: end;
- }
- .form-group.full-width {
-   grid-column: 1 / -1;
- }
+  }
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1rem;
+    align-items: end;
+  }
+  .form-group.full-width {
+    grid-column: 1 / -1;
+  }
 </style>
 
 <Card>
@@ -262,7 +272,7 @@
           <div class="item">
             <div class="item-content">
               {#if editingMemoryId === item.id}
-                <textarea bind:value={editingMemoryContent} rows="3" class="edit-textarea"></textarea>
+                <textarea bind:value={editingMemoryContent} rows="2" class="edit-textarea"></textarea>
               {:else}
                 <span>{formatMemoryContent(item.content)}</span>
               {/if}
@@ -280,11 +290,11 @@
             </div>
             <div class="actions">
               {#if editingMemoryId === item.id}
-                <button on:click={handleUpdateMemory}>{$t('knowledge.memory.save')}</button>
-                <button on:click={cancelEditMemory}>{$t('knowledge.memory.cancel')}</button>
+                <button class="small-btn" on:click={handleUpdateMemory}>{$t('knowledge.memory.save')}</button>
+                <button class="small-btn" on:click={cancelEditMemory}>{$t('knowledge.memory.cancel')}</button>
               {:else}
-                <button on:click={() => startEditMemory(item)}>{$t('knowledge.memory.edit')}</button>
-                <button on:click={() => handleDeleteMemory(item.id)}>{$t('knowledge.memory.delete')}</button>
+                <button class="small-btn" on:click={() => startEditMemory(item)}>{$t('knowledge.memory.edit')}</button>
+                <button class="small-btn" on:click={() => handleDeleteMemory(item.id)}>{$t('knowledge.memory.delete')}</button>
               {/if}
             </div>
           </div>
@@ -320,11 +330,11 @@
           <div class="item">
             <div class="item-content">
               <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
-              <div class="wb-content">{item.content}</div>
+              <div>{item.content}</div>
             </div>
             <div class="actions">
-              <button on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
-              <button on:click={() => handleDeleteWorldBookItem(item.id)}>{$t('knowledge.worldBook.delete')}</button>
+              <button class="small-btn" on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
+              <button class="small-btn" on:click={() => handleDeleteWorldBookItem(item.id)}>{$t('knowledge.worldBook.delete')}</button>
             </div>
           </div>
         {/each}
@@ -351,7 +361,7 @@
             <textarea rows="4" bind:value={newWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea>
           </label>
         {/if}
-        <button on:click={handleSaveWorldBookItem}>{editingWorldBookItem ? $t('knowledge.worldBook.save') : $t('knowledge.worldBook.add')}</button>
+          <button on:click={handleSaveWorldBookItem}>{editingWorldBookItem ? $t('knowledge.worldBook.save') : $t('knowledge.worldBook.add')}</button>
         {#if editingWorldBookItem}
           <button on:click={resetWorldBookForm}>{$t('knowledge.worldBook.cancelEdit')}</button>
         {/if}
