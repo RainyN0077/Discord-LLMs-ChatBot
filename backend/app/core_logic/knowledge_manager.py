@@ -160,15 +160,22 @@ class KnowledgeManager:
     def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
         with self.get_conn() as conn:
             cursor = conn.cursor()
-            # Sanitize the search query for FTS5
-            # This creates a search query where each word in the input text must be present.
-            query = ' AND '.join(text.split())
-            
+
+            # [FIX] Sanitize the user input for FTS5 query.
+            # 1. Remove special characters that could interfere with FTS syntax.
+            # 2. Wrap the query in double quotes to treat it as a phrase.
+            # This prevents sqlite3.OperationalError for inputs containing quotes or other special characters.
+            sanitized_text = ''.join(e for e in text if e.isalnum() or e.isspace())
+            query = f'"{sanitized_text}"'
+
+            # [FIX] The MATCH operator should apply to the FTS table itself (world_book_fts),
+            # not a specific column within it (fts.keywords). This searches across all
+            # indexed columns ('keywords' and 'content').
             cursor.execute("""
                 SELECT wb.keywords, wb.content
                 FROM world_book wb
                 JOIN world_book_fts fts ON wb.id = fts.rowid
-                WHERE fts.keywords MATCH ? AND wb.enabled = 1
+                WHERE world_book_fts MATCH ? AND wb.enabled = 1
             """, (query,))
             
             return [dict(row) for row in cursor.fetchall()]
