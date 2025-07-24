@@ -133,7 +133,7 @@ class MemoryPlugin(BasePlugin):
         return False
 
     # --- Memory Bank Functions ---
-    def add_to_memory(self, content: str, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
+    def add_to_memory(self, content: str, user_id: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
         if not message or not config: return json.dumps({"status": "error", "message": "Missing context."})
         
         try:
@@ -180,7 +180,7 @@ class MemoryPlugin(BasePlugin):
             return f"Error deleting memory: {e}"
 
     # --- World Book / Portrait Functions ---
-    def add_to_world_book(self, keywords: str, content: str, subject_of_knowledge: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
+    def add_to_world_book(self, keywords: str, content: str, subject_of_knowledge: Optional[str] = None, user_id: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
         if not message or not config: return json.dumps({"status": "error", "message": "Missing context."})
         
         try:

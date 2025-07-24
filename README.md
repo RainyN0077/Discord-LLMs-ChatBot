@@ -33,6 +33,7 @@
 
 ## ✨ Features
 
+- **🎮 Multiplayer Optimization (In Testing)**: Now available on the experimental `Multiplayer-optimization` branch, this branch focuses on optimizing bot performance and response speed in multiplayer gaming or high-frequency discussion environments.
 - **✅ Multi-Provider Support**: Seamlessly switch between **OpenAI** (and compatible APIs), **Google Gemini**, and **Anthropic Claude**.
 - **✅ Powerful Web UI**: A comprehensive control panel to configure every aspect of the bot in real-time, including UI customizations like **custom fonts**.
 - **✅ Advanced Layered Persona System**: A sophisticated, multi-layered system to define the bot's identity and context awareness with clear priorities.
@@ -68,7 +69,7 @@
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
+    git clone -b Multiplayer-optimization https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
     cd Discord-LLMs-ChatBot
     ```
 
@@ -162,6 +163,7 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 ## ✨ 功能特性
 
+- **🎮 多人游戏优化 (测试中)**: 现已加入实验性的 `Multiplayer-optimization` 分支，此分支专注于优化在多人游戏或高频讨论环境下的机器人性能和响应速度。
 - **✅ 多服务商支持**: 可在 **OpenAI** (及兼容API)、**Google Gemini**、**Anthropic Claude** 之间无缝切换。
 - **✅ 强大的Web控制面板**: 一个全面的网页控制台，无需接触代码即可实时配置机器人的方方面面，甚至包括**自定义界面字体**等个性化设置。
 - **✅ 高级分层人设系统**: 一个精密、多层级的系统，用清晰的优先级逻辑来定义机器人的身份和场景感知能力。
@@ -197,7 +199,7 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 1.  **克隆本仓库:**
     ```sh
-    git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
+    git clone -b Multiplayer-optimization https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
     cd Discord-LLMs-ChatBot
     ```
 
