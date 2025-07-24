@@ -50,6 +50,8 @@ def load_config():
         'blocked_prompt_response': '抱歉，通讯出了一些问题，这是一条自动回复：【{reason}】',
         'bot_nickname': 'Endless',
         'trigger_keywords': [], 'stream_response': True,
+        'memory_dedup_threshold': 0.0,
+        'world_book_dedup_threshold': 0.0,
         'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
         'context_mode': 'channel',
         'channel_context_settings': {'message_limit': 10, 'char_limit': 4000},
@@ -171,6 +173,8 @@ class Config(BaseModel):
     bot_nickname: Optional[str] = None
     trigger_keywords: List[str]
     stream_response: bool
+    memory_dedup_threshold: Optional[float] = Field(0.0, ge=0, le=1)
+    world_book_dedup_threshold: Optional[float] = Field(0.0, ge=0, le=1)
     user_personas: Dict[str, Persona] = Field(default_factory=dict)
     role_based_config: Dict[str, RoleConfig] = Field(default_factory=dict)
     scoped_prompts: ScopedPrompts = Field(default_factory=ScopedPrompts)

@@ -3,8 +3,13 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple, List
 import discord
 import re
+import logging
+import json
+from difflib import SequenceMatcher
 
 from .base import BasePlugin
+
+logger = logging.getLogger(__name__)
 
 class MemoryPlugin(BasePlugin):
     """
@@ -70,26 +75,49 @@ class MemoryPlugin(BasePlugin):
             "add_to_world_book": self.add_to_world_book
         }
 
-    def add_to_memory(self, content: str, user_id: str, user_name: str) -> str:
+    def _is_duplicate(self, new_content: str, existing_entries: List[Dict[str, Any]], threshold: float, content_key: str) -> bool:
+        """Checks for duplicate content based on a similarity threshold."""
+        if not threshold or threshold <= 0:
+            return False
+        
+        for entry in existing_entries:
+            existing_content = entry.get(content_key)
+            if not existing_content:
+                continue
+            
+            similarity = SequenceMatcher(None, new_content, existing_content).ratio()
+            
+            if similarity >= threshold:
+                logger.info(f"Duplicate found for content '{new_content[:50]}...'. Similarity {similarity:.2f} >= threshold {threshold:.2f} with existing entry ID: {entry.get('id')}")
+                return True
+                
+        return False
+
+    def add_to_memory(self, content: str, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
         """
         Adds a new piece of information to the long-term memory.
         """
+        if not message or not config: return json.dumps({"status": "error", "message": "Missing context."})
+
         try:
+            threshold = config.get("behavior", {}).get("memory_dedup_threshold", 0.0)
+            if threshold > 0:
+                all_memories = knowledge_manager.get_all_memories()
+                if self._is_duplicate(content, all_memories, threshold, 'content'):
+                    return json.dumps({"status": "duplicate_found", "message": "A similar memory entry already exists."})
+
             timestamp = datetime.now(timezone.utc).isoformat()
             memory_id = knowledge_manager.add_memory(
                 content=content,
                 timestamp=timestamp,
-                user_id=user_id,
-                user_name=user_name,
+                user_id=str(message.author.id),
+                user_name=message.author.display_name,
                 source="对话"
             )
-            # Return a simple, neutral message to avoid confusing the LLM into a loop.
-            # The detailed log is already printed on the server side if needed.
-            return "OK"
+            return json.dumps({"status": "success", "id": memory_id, "message": f"Successfully added to memory with ID: {memory_id}."})
         except Exception as e:
             logger.error(f"Error in add_to_memory tool: {e}", exc_info=True)
-            # Return a descriptive error for the LLM's context, but keep it simple.
-            return f"Error: {e}"
+            return json.dumps({"status": "error", "message": str(e)})
 
     def _get_cleaned_string_list(self, data: Any) -> List[str]:
         """Safely converts a string or list of strings into a cleaned list of lowercased strings."""
@@ -108,54 +136,59 @@ class MemoryPlugin(BasePlugin):
         Adds a new entry to the world book, trying to link it to a user if a subject is provided.
         """
         if not message or not config:
-            return "Error: Could not add to world book because message context or config is missing."
-
-        linked_user_id = None
-        user_search_log = ""
-
-        if subject_of_knowledge:
-            subject_name_lower = subject_of_knowledge.lower().strip()
-            found_user = None
-
-            # 1. Check mentions first (most accurate)
-            for user in message.mentions:
-                if user.name.lower() == subject_name_lower or (hasattr(user, 'nick') and user.nick and user.nick.lower() == subject_name_lower):
-                    found_user = user
-                    break
-            
-            # 2. If not in mentions, search the guild members by name/nickname
-            if not found_user and message.guild:
-                for member in message.guild.members:
-                    if member.name.lower() == subject_name_lower or (member.nick and member.nick.lower() == subject_name_lower):
-                        found_user = member
-                        break
-
-            # 3. If still not found, search by user persona name or trigger keywords
-            if not found_user:
-                user_personas = config.get("user_personas", {})
-                for uid, persona_data in user_personas.items():
-                    names_to_check = self._get_cleaned_string_list(persona_data.get('name'))
-                    triggers_to_check = self._get_cleaned_string_list(persona_data.get('trigger_keywords'))
-
-                    if subject_name_lower in names_to_check or subject_name_lower in triggers_to_check:
-                        if message.guild:
-                           found_user = message.guild.get_member(int(uid))
-                        if found_user:
-                            break
-            
-            if found_user:
-                linked_user_id = str(found_user.id)
-                user_search_log = f"Knowledge successfully linked to user '{found_user.display_name}' (ID: {linked_user_id}) based on subject '{subject_of_knowledge}'."
-            else:
-                user_search_log = f"Could not find a user matching '{subject_of_knowledge}'. Entry will be saved as general knowledge."
+            return json.dumps({"status": "error", "message": "Missing context."})
 
         try:
+            threshold = config.get("behavior", {}).get("world_book_dedup_threshold", 0.0)
+            if threshold > 0:
+                all_entries = knowledge_manager.get_all_world_book_entries()
+                if self._is_duplicate(content, all_entries, threshold, 'content'):
+                    return json.dumps({"status": "duplicate_found", "message": "A similar world book entry already exists."})
+
+            linked_user_id = None
+            user_search_log = ""
+
+            if subject_of_knowledge:
+                subject_name_lower = subject_of_knowledge.lower().strip()
+                found_user = None
+
+                for user in message.mentions:
+                    if user.name.lower() == subject_name_lower or (hasattr(user, 'nick') and user.nick and user.nick.lower() == subject_name_lower):
+                        found_user = user
+                        break
+                
+                if not found_user and message.guild:
+                    for member in message.guild.members:
+                        if member.name.lower() == subject_name_lower or (member.nick and member.nick.lower() == subject_name_lower):
+                            found_user = member
+                            break
+
+                if not found_user:
+                    user_personas = config.get("user_personas", {})
+                    for uid, persona_data in user_personas.items():
+                        names_to_check = self._get_cleaned_string_list(persona_data.get('name'))
+                        triggers_to_check = self._get_cleaned_string_list(persona_data.get('trigger_keywords'))
+
+                        if subject_name_lower in names_to_check or subject_name_lower in triggers_to_check:
+                            if message.guild:
+                               found_user = message.guild.get_member(int(uid))
+                            if found_user:
+                                break
+                
+                if found_user:
+                    linked_user_id = str(found_user.id)
+                    user_search_log = f"Knowledge successfully linked to user '{found_user.display_name}' (ID: {linked_user_id})."
+                else:
+                    user_search_log = f"Could not find a user matching '{subject_of_knowledge}'."
+
             entry_id = knowledge_manager.add_world_book_entry(
                 keywords=keywords,
                 content=content,
                 linked_user_id=linked_user_id
             )
             success_message = f"Successfully added to world book with ID: {entry_id}."
-            return f"{success_message} {user_search_log}".strip()
+            final_message = f"{success_message} {user_search_log}".strip()
+            return json.dumps({"status": "success", "id": entry_id, "message": final_message})
         except Exception as e:
-            return f"Error adding to world book: {e}"
+            logger.error(f"Error in add_to_world_book tool: {e}", exc_info=True)
+            return json.dumps({"status": "error", "message": str(e)})

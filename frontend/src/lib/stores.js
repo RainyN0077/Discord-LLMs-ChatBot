@@ -41,7 +41,9 @@ export const behaviorConfig = writable({
     system_prompt: '',
     blocked_prompt_response: '',
     trigger_keywords: [],
-    stream_response: true
+    stream_response: true,
+    memory_dedup_threshold: 0.0,
+    world_book_dedup_threshold: 0.0
 });
 
 export const contextConfig = writable({
@@ -136,7 +138,9 @@ export async function fetchConfig() {
             system_prompt: mergedConfig.system_prompt,
             blocked_prompt_response: mergedConfig.blocked_prompt_response,
             trigger_keywords: mergedConfig.trigger_keywords,
-            stream_response: mergedConfig.stream_response
+            stream_response: mergedConfig.stream_response,
+            memory_dedup_threshold: mergedConfig.memory_dedup_threshold || 0.0,
+            world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold || 0.0
         });
         contextConfig.set({
             context_mode: mergedConfig.context_mode,
