@@ -86,8 +86,8 @@ class PluginManager:
                     original_func = functions['add_to_memory']
                     functions['add_to_memory'] = functools.partial(
                         original_func,
-                        user_id=str(message.author.id),
-                        user_name=message.author.name
+                        message=message,
+                        config=config
                     )
                 # Wrap add_to_world_book to inject the full message object and config for context
                 if 'add_to_world_book' in functions:
