@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import glob
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -25,59 +26,38 @@ class KnowledgeManager:
         return conn
 
     def init_db(self):
+        """
+        Initializes the database by executing the master schema script.
+        This approach is simpler and more robust for this project's needs
+        than a complex migration system.
+        """
+        # Define the path to the initialization script
+        # This path is relative to the project root in the Docker container
+        scripts_dir = '/app/scripts'
+        if not os.path.isdir(scripts_dir):
+            # Fallback for local development
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+            scripts_dir = os.path.join(base_dir, 'scripts')
+        
+        init_script_path = os.path.join(scripts_dir, '1_initialize_schema.sql')
+
+        if not os.path.exists(init_script_path):
+            print(f"CRITICAL: Database initialization script not found at {init_script_path}")
+            return
+
         with self.get_conn() as conn:
             cursor = conn.cursor()
-            # Create memory table
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS memory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                content TEXT NOT NULL UNIQUE,
-                timestamp TEXT NOT NULL,
-                user_id TEXT,
-                user_name TEXT,
-                source TEXT
-            )
-            """)
-            # Create world_book table
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS world_book (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                keywords TEXT NOT NULL,
-                content TEXT NOT NULL,
-                enabled INTEGER NOT NULL DEFAULT 1
-            )
-            """)
-            # Create FTS5 virtual table for world_book
-            cursor.execute("""
-            CREATE VIRTUAL TABLE IF NOT EXISTS world_book_fts
-            USING fts5(keywords, content, content='world_book', content_rowid='id')
-            """)
-            # Create triggers to keep FTS table in sync with world_book table
-            cursor.executescript("""
-            CREATE TRIGGER IF NOT EXISTS world_book_after_insert
-            AFTER INSERT ON world_book
-            BEGIN
-                INSERT INTO world_book_fts(rowid, keywords, content)
-                VALUES (new.id, new.keywords, new.content);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS world_book_after_delete
-            AFTER DELETE ON world_book
-            BEGIN
-                INSERT INTO world_book_fts(world_book_fts, rowid, keywords, content)
-                VALUES ('delete', old.id, old.keywords, old.content);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS world_book_after_update
-            AFTER UPDATE ON world_book
-            BEGIN
-                INSERT INTO world_book_fts(world_book_fts, rowid, keywords, content)
-                VALUES ('delete', old.id, old.keywords, old.content);
-                INSERT INTO world_book_fts(rowid, keywords, content)
-                VALUES (new.id, new.keywords, new.content);
-            END;
-            """)
-            conn.commit()
+            print(f"Executing database initialization from: {init_script_path}")
+            try:
+                with open(init_script_path, 'r', encoding='utf-8') as f:
+                    sql_script = f.read()
+                cursor.executescript(sql_script)
+                conn.commit()
+                print("Database initialization successful.")
+            except sqlite3.Error as e:
+                print(f"CRITICAL: Database initialization failed: {e}")
+                conn.rollback()
+                raise
 
     # Memory methods
     def add_memory(self, content: str, timestamp: str, user_id: str, user_name: str, source: str) -> Optional[int]:
@@ -159,10 +139,13 @@ class KnowledgeManager:
             return cursor.rowcount > 0
  
      # World Book methods
-    def add_world_book_entry(self, keywords: str, content: str) -> int:
+    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None) -> int:
         with self.get_conn() as conn:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO world_book (keywords, content) VALUES (?, ?)", (keywords, content))
+            cursor.execute(
+                "INSERT INTO world_book (keywords, content, linked_user_id) VALUES (?, ?, ?)",
+                (keywords, content, linked_user_id)
+            )
             conn.commit()
             return cursor.lastrowid
 
@@ -172,14 +155,14 @@ class KnowledgeManager:
             cursor.execute("SELECT * FROM world_book ORDER BY id")
             return [dict(row) for row in cursor.fetchall()]
 
-    def update_world_book_entry(self, entry_id: int, keywords: str, content: str, enabled: bool) -> bool:
+    def update_world_book_entry(self, entry_id: int, keywords: str, content: str, enabled: bool, linked_user_id: Optional[str] = None) -> bool:
         with self.get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("""
             UPDATE world_book
-            SET keywords = ?, content = ?, enabled = ?
+            SET keywords = ?, content = ?, enabled = ?, linked_user_id = ?
             WHERE id = ?
-            """, (keywords, content, 1 if enabled else 0, entry_id))
+            """, (keywords, content, 1 if enabled else 0, linked_user_id, entry_id))
             conn.commit()
             return cursor.rowcount > 0
 
@@ -189,6 +172,18 @@ class KnowledgeManager:
             cursor.execute("DELETE FROM world_book WHERE id = ?", (entry_id,))
             conn.commit()
             return cursor.rowcount > 0
+
+    def get_world_book_entries_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Finds all enabled world book entries linked to a specific user ID.
+        """
+        with self.get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, keywords, content FROM world_book WHERE enabled = 1 AND linked_user_id = ?",
+                (user_id,)
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
     def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
         """
@@ -210,8 +205,8 @@ class KnowledgeManager:
             for keyword in keywords:
                 if keyword in lower_text:
                     if entry['id'] not in added_entry_ids:
-                        # We only need to return 'keywords' and 'content' as per the original function's return signature
-                        matched_entries.append({'keywords': entry['keywords'], 'content': entry['content']})
+                        # Return the full entry object to ensure the 'id' is available downstream.
+                        matched_entries.append(entry)
                         added_entry_ids.add(entry['id'])
                     break  # Move to the next entry once a keyword is matched
 

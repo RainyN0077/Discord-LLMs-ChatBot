@@ -1,4 +1,5 @@
 # backend/app/core_logic/persona_manager.py
+import re
 from typing import Dict, Any, Optional, Tuple, Set, Union
 import discord
 
@@ -88,7 +89,40 @@ def determine_bot_persona(bot_config: Dict[str, Any], channel_id_str: str, guild
 
     return specific_persona_prompt or "", situational_prompt or "", active_directives_log
 
-def build_system_prompt(bot_config: Dict[str, Any], specific_persona_prompt: str, situational_prompt: str, message: discord.Message, history_messages: list, active_directives_log: list) -> str:
+def find_mentioned_users_by_keywords(text: str, personas: Dict[str, Any]) -> Set[str]:
+    """
+    Scans text to find mentions of users based on their trigger keywords.
+    Returns a set of mentioned user IDs.
+    """
+    mentioned_user_ids = set()
+    if not text or not personas:
+        return mentioned_user_ids
+
+    lower_text = text.lower()
+
+    for persona_config in personas.values():
+        user_id = persona_config.get('id')
+        if not user_id:
+            continue
+
+        # Combine keywords from the config and the user's nickname for matching.
+        trigger_keywords = set(k.lower() for k in persona_config.get('trigger_keywords', []))
+        nickname = persona_config.get('nickname')
+        if nickname:
+            trigger_keywords.add(nickname.lower())
+
+        for keyword in trigger_keywords:
+            if not keyword:
+                continue
+            # Use simple substring matching, which is more robust for multi-language phrases.
+            if keyword in lower_text:
+                mentioned_user_ids.add(user_id)
+                break  # Move to the next persona once a match is found.
+
+    return mentioned_user_ids
+
+
+async def build_system_prompt(bot: discord.Client, bot_config: Dict[str, Any], specific_persona_prompt: str, situational_prompt: str, message: discord.Message, active_directives_log: list) -> str:
     """构建最终的系统提示词。"""
     global_system_prompt = bot_config.get("system_prompt", "You are a helpful assistant.")
     user_personas = bot_config.get("user_personas", {})
@@ -106,10 +140,42 @@ def build_system_prompt(bot_config: Dict[str, Any], specific_persona_prompt: str
     
     # 构建参与者肖像
     relevant_users: Set[Union[discord.User, discord.Member]] = {message.author}
-    for user in message.mentions: relevant_users.add(user)
-    for hist_msg in history_messages: relevant_users.add(hist_msg.author)
+    for user in message.mentions:
+        relevant_users.add(user)
+    
+    # `history_messages` is no longer used for user collection to meet the "no history dependency" constraint.
+
     if message.reference and isinstance(message.reference.resolved, discord.Message):
         relevant_users.add(message.reference.resolved.author)
+            
+    # --- [NEW] Find users mentioned by keyword ---
+    mentioned_user_ids = find_mentioned_users_by_keywords(message.clean_content, user_personas)
+    author_id_str = str(message.author.id)
+    
+    for user_id_str in mentioned_user_ids:
+        if user_id_str == author_id_str:
+            continue  # Skip the author, they are already included
+        
+        is_already_present = any(str(u.id) == user_id_str for u in relevant_users)
+        if is_already_present:
+            continue
+
+        try:
+            user_id = int(user_id_str)
+            user = None
+            if message.guild:
+                user = message.guild.get_member(user_id)
+            if user is None:
+                # This is a fallback for users not in the current guild or for DMs
+                user = await bot.fetch_user(user_id)
+            
+            if user:
+                relevant_users.add(user)
+                active_directives_log.append(f"Participant_Context:Keyword_Mention(id:{user_id})")
+        except (ValueError, discord.errors.NotFound):
+            active_directives_log.append(f"Participant_Context:Keyword_Mention_FAIL(id:{user_id_str})")
+            continue
+    # --- [END NEW] ---
             
     participant_descriptions = []
     for user in relevant_users:

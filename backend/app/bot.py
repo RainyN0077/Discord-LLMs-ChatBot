@@ -260,7 +260,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         cutoff_timestamp = memory_cutoffs.get(message.channel.id)
         history_messages, history_for_llm = await build_context_history(bot, config, message, cutoff_timestamp)
         specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(config, str(message.channel.id), str(message.guild.id) if message.guild else None, role_name, role_config)
-        system_prompt = build_system_prompt(config, specific_persona_prompt, situational_prompt, message, history_messages, active_directives_log)
+        system_prompt = await build_system_prompt(bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log)
         final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
         
         # --- [NEW] Memory Retrieval and Injection ---
@@ -299,32 +299,58 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         usage_data = None
         
         try:
+            full_response = ""
+            usage_data = None
+            
             async with message.channel.typing():
-                full_response = ""
                 response_message = None
+
+                # Helper function to render the response stream to avoid code duplication
+                async def _render_llm_response(response_generator: AsyncGenerator[Tuple[str, Any], None]) -> Tuple[str, Optional[Dict[str, int]]]:
+                    nonlocal response_message
+                    _full_response = ""
+                    _usage_data = None
+                    async for response_type, data in response_generator:
+                        if response_type == "partial":
+                            content_chunks = split_message(data, 2000)
+                            current_chunk = content_chunks[0] if content_chunks else ""
+                            if response_message is None and current_chunk.strip():
+                                response_message = await message.reply(current_chunk, mention_author=False)
+                            elif response_message and current_chunk and current_chunk != response_message.content:
+                                try:
+                                    await response_message.edit(content=current_chunk)
+                                except discord.errors.HTTPException: pass
+                        elif response_type == "final":
+                            _full_response = data
+                        elif response_type == "usage":
+                            _usage_data = data
+                    return _full_response, _usage_data
+
                 llm_provider = get_llm_provider(config)
-                tools = plugin_manager.get_all_tools()
-                tool_functions = plugin_manager.get_all_tool_functions(message)
+                try:
+                    # First attempt: with tools
+                    tools = plugin_manager.get_all_tools()
+                    tool_functions = plugin_manager.get_all_tool_functions(message, config)
+                    logger.info(f"Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
+                    response_gen_with_tools = llm_provider.get_response_stream(
+                        llm_messages, images, tools=tools, tool_functions=tool_functions
+                    )
+                    full_response, usage_data = await _render_llm_response(response_gen_with_tools)
+                except Exception as e:
+                    error_str = str(e).lower()
+                    # Check for keywords indicating a malformed tool call
+                    if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
+                        logger.warning(f"Malformed tool call from LLM for message {message.id}. Retrying without tools. Original error: {e}")
+                        # Second attempt: without tools
+                        response_gen_no_tools = llm_provider.get_response_stream(
+                            llm_messages, images, tools=[], tool_functions={}
+                        )
+                        full_response, usage_data = await _render_llm_response(response_gen_no_tools)
+                    else:
+                        # It's a different error, re-raise it to be caught by the main handler
+                        raise e
 
-                response_generator = llm_provider.get_response_stream(
-                    llm_messages, images, tools=tools, tool_functions=tool_functions
-                )
-
-                async for response_type, data in response_generator:
-                    if response_type == "partial":
-                        content_chunks = split_message(data, 2000)
-                        current_chunk = content_chunks[0] if content_chunks else ""
-                        if response_message is None and current_chunk.strip():
-                            response_message = await message.reply(current_chunk, mention_author=False)
-                        elif response_message and current_chunk and current_chunk != response_message.content:
-                            try:
-                                await response_message.edit(content=current_chunk)
-                            except discord.errors.HTTPException: pass
-                    elif response_type == "final":
-                        full_response = data
-                    elif response_type == "usage":
-                        usage_data = data
-                
+                # --- Response Validation and Finalization ---
                 error_reason = None
                 if not full_response or not full_response.strip():
                     error_reason = "LLM returned an empty response."
@@ -341,8 +367,6 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         await message.reply(final_error_msg, mention_author=False)
                     return
 
-                # --- [NEW] Process memory tags before sending response ---
-                # This keeps the original `full_response` for accurate token calculation later.
                 cleaned_response = process_memory_tags(message, full_response)
 
                 if response_message:
@@ -358,13 +382,12 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         elif i > 0:
                             await message.channel.send(chunk)
 
-            # --- [NEW] Token Calculation Logic ---
+            # --- Token Calculation and Usage Recording ---
             if usage_data:
                 input_tokens = usage_data.get("input_tokens", 0)
                 output_tokens = usage_data.get("output_tokens", 0)
                 logger.info(f"Using official usage data: Input={input_tokens}, Output={output_tokens}")
             else:
-                # Fallback to estimation
                 provider, model = config.get("llm_provider"), config.get("model_name")
                 input_tokens = token_calculator.get_token_count_for_messages(llm_messages, provider, model)
                 output_tokens = token_calculator.get_token_count(full_response, provider, model)

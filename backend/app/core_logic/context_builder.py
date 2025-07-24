@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
-from .persona_manager import get_highest_configured_role, get_rich_identity
+from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
 from ..utils import escape_content
 from .knowledge_manager import knowledge_manager
 
@@ -204,10 +204,36 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
         request_block_parts.append(TOOL_CONTEXT_TPL.format(data=injected_data))
 
     # --- New: Inject knowledge base content ---
-    # 1. Inject World Book entries
-    triggered_wb_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
-    if triggered_wb_entries:
-        wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in triggered_wb_entries])
+    # 1. Inject World Book entries (Append Strategy)
+    all_wb_entries = []
+    added_entry_ids = set()
+
+    # Gather all relevant user IDs: author, @mentions, and keyword mentions
+    relevant_user_ids = {str(message.author.id)}
+    for mentioned_user in message.mentions:
+        relevant_user_ids.add(str(mentioned_user.id))
+    
+    keyword_mentioned_ids = find_mentioned_users_by_keywords(final_text_content, user_personas)
+    relevant_user_ids.update(keyword_mentioned_ids)
+
+    # a. Load entries linked to users
+    for user_id in relevant_user_ids:
+        user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
+        for entry in user_entries:
+            if entry['id'] not in added_entry_ids:
+                all_wb_entries.append(entry)
+                added_entry_ids.add(entry['id'])
+
+    # b. Load entries triggered by keywords in the text
+    text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+    for entry in text_triggered_entries:
+        # With knowledge_manager now returning full entries, this check is valid.
+        if entry['id'] not in added_entry_ids:
+            all_wb_entries.append(entry)
+            added_entry_ids.add(entry['id'])
+
+    if all_wb_entries:
+        wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in all_wb_entries])
         request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
 
     # --- End of new section ---

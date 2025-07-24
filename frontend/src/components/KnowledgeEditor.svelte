@@ -6,6 +6,7 @@
     fetchMemoryItems, addMemoryItem, deleteMemoryItem, updateMemoryItem,
     fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem
   } from '../lib/api.js';
+  import { userPersonasArray } from '../lib/stores.js';
   import Card from './Card.svelte';
 
   let activeTab = 'worldbook';
@@ -18,7 +19,7 @@
   
   let searchQuery = '';
   
-  let newWorldBookItem = { keywords: '', content: '', enabled: true };
+  let newWorldBookItem = { keywords: '', content: '', enabled: true, linked_user_id: null };
   let editingWorldBookItem = null;
   let worldBookSearchQuery = '';
   let editingMemoryId = null;
@@ -138,7 +139,7 @@
   }
 
   function resetWorldBookForm() {
-    newWorldBookItem = { keywords: '', content: '', enabled: true };
+    newWorldBookItem = { keywords: '', content: '', enabled: true, linked_user_id: null };
     editingWorldBookItem = null;
   }
   
@@ -157,6 +158,13 @@
     if (!rawContent) return '';
     // Use replace with a regex to remove the tag and any leading space
     return rawContent.replace(/\[memory\s+.*?\]\s*/, '');
+  }
+
+  function getPersonaName(userId) {
+    if (!userId || !$userPersonasArray) return null;
+    const persona = $userPersonasArray.find(p => p.id === userId);
+    if (!persona) return `ID: ${userId}`;
+    return persona.nickname || `ID: ${userId}`;
   }
  
   $: filteredMemoryItems = memoryItems.filter(item =>
@@ -361,10 +369,15 @@
             <div class="item">
               <div class="item-content">
                 <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
-              <div>{item.content}</div>
-            </div>
-            <div class="actions">
-              <button class="small-btn" on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
+                <div>{item.content}</div>
+                {#if item.linked_user_id}
+                  <div class="meta" style="margin-top: 0.5em;">
+                    <span>{$t('knowledge.worldBook.linkedUserLabel')}: {getPersonaName(item.linked_user_id)}</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="actions">
+                <button class="small-btn" on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
               <button class="small-btn" on:click={() => handleDeleteWorldBookItem(item.id)}>{$t('knowledge.worldBook.delete')}</button>
             </div>
           </div>
@@ -383,6 +396,17 @@
             {$t('knowledge.worldBook.contentLabel')}:
             <textarea rows="4" bind:value={editingWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea>
           </label>
+          <label>
+            {$t('knowledge.worldBook.linkedUserLabel')}:
+            <select bind:value={editingWorldBookItem.linked_user_id}>
+              <option value={null}>{$t('knowledge.worldBook.noLinkedUser')}</option>
+              {#each $userPersonasArray as persona}
+                <option value={persona.id}>
+                  {persona.nickname || `ID: ${persona.id}`}
+                </option>
+              {/each}
+            </select>
+          </label>
         {:else}
           <label>
             {$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')}):
@@ -391,6 +415,17 @@
           <label>
             {$t('knowledge.worldBook.contentLabel')}:
             <textarea rows="4" bind:value={newWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea>
+          </label>
+          <label>
+            {$t('knowledge.worldBook.linkedUserLabel')}:
+            <select bind:value={newWorldBookItem.linked_user_id}>
+              <option value={null}>{$t('knowledge.worldBook.noLinkedUser')}</option>
+              {#each $userPersonasArray as persona}
+                <option value={persona.id}>
+                  {persona.nickname || `ID: ${persona.id}`}
+                </option>
+              {/each}
+            </select>
           </label>
         {/if}
           <button on:click={handleSaveWorldBookItem}>{editingWorldBookItem ? $t('knowledge.worldBook.save') : $t('knowledge.worldBook.add')}</button>

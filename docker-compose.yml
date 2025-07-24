@@ -6,7 +6,9 @@ services:
       - ./redis_data:/data
 
   backend:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     restart: always
     volumes:
       # 将单个文件映射替换为目录映射

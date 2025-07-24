@@ -73,20 +73,29 @@ class PluginManager:
             all_tools.extend(plugin.get_tools())
         return all_tools
     
-    def get_all_tool_functions(self, message: discord.Message) -> Dict[str, callable]:
+    def get_all_tool_functions(self, message: discord.Message, config: Dict[str, Any]) -> Dict[str, callable]:
         """Collects tool functions from all loaded plugins."""
         all_functions = {}
         for plugin in self.plugins:
             functions = plugin.get_tool_functions()
-            # Check if it's the MemoryPlugin and wrap the add_to_memory function
-            if isinstance(plugin, MemoryPlugin) and 'add_to_memory' in functions:
-                original_func = functions['add_to_memory']
-                # Create a partial function with user_id and user_name pre-filled
-                functions['add_to_memory'] = functools.partial(
-                    original_func,
-                    user_id=str(message.author.id),
-                    user_name=message.author.name
-                )
+            # For MemoryPlugin, pre-fill context for its specific tools
+            if isinstance(plugin, MemoryPlugin):
+                # Wrap add_to_memory to inject user info
+                if 'add_to_memory' in functions:
+                    original_func = functions['add_to_memory']
+                    functions['add_to_memory'] = functools.partial(
+                        original_func,
+                        user_id=str(message.author.id),
+                        user_name=message.author.name
+                    )
+                # Wrap add_to_world_book to inject the full message object and config for context
+                if 'add_to_world_book' in functions:
+                    original_func = functions['add_to_world_book']
+                    functions['add_to_world_book'] = functools.partial(
+                        original_func,
+                        message=message,
+                        config=config
+                    )
             all_functions.update(functions)
         return all_functions
 

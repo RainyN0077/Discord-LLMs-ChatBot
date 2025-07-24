@@ -108,6 +108,7 @@ class Persona(BaseModel):
     id: Optional[str] = None
     nickname: Optional[str] = None
     prompt: Optional[str] = None
+    trigger_keywords: List[str] = Field(default_factory=list)
 
 class RoleConfig(BaseModel):
     id: Optional[str] = None
@@ -221,6 +222,7 @@ class WorldBookItem(BaseModel):
     keywords: str
     content: str
     enabled: bool = True
+    linked_user_id: Optional[str] = None
 
 class UpdateMemoryRequest(BaseModel):
     content: str
@@ -599,9 +601,12 @@ async def get_all_worldbook_items():
 @app.post("/api/worldbook", response_model=WorldBookItem, dependencies=[Depends(get_api_key)])
 async def add_worldbook_item(item: WorldBookItem):
     try:
-        item_id = knowledge_manager.add_world_book_entry(keywords=item.keywords, content=item.content)
-        new_item = knowledge_manager.get_all_world_book_entries() # Inefficient, but gets the full object
-        return next((i for i in new_item if i['id'] == item_id), None)
+        item_id = knowledge_manager.add_world_book_entry(
+            keywords=item.keywords,
+            content=item.content,
+            linked_user_id=item.linked_user_id
+        )
+        return {**item.dict(), "id": item_id}
     except Exception as e:
         logger.error(f"Failed to add world book item: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -613,7 +618,8 @@ async def update_worldbook_item(item_id: int, item: WorldBookItem):
             entry_id=item_id,
             keywords=item.keywords,
             content=item.content,
-            enabled=item.enabled
+            enabled=item.enabled,
+            linked_user_id=item.linked_user_id
         )
         if not success:
             raise HTTPException(status_code=404, detail="World book item not found")

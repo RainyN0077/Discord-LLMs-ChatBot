@@ -344,6 +344,7 @@ async function resetFont() {
                                     <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} bind:value={$userPersonas[key].id}>
                                     <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} bind:value={$userPersonas[key].nickname}>
                                     <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} bind:value={$userPersonas[key].prompt}></textarea>
+                                    <input class="keywords-input" type="text" placeholder={$t('userPortrait.triggerKeywordsPlaceholder')} bind:value={$userPersonas[key].trigger_keywords}>
                                 </div>
                                 <button class="remove-btn" on:click={() => removePersona(key)} title={$t('roleConfig.remove')}>×</button>
                             </div>
@@ -580,6 +581,22 @@ async function resetFont() {
         gap: 1rem;
         align-items: center;
     }
+
+    .list-item-main {
+        display: grid;
+        grid-template-areas:
+            "id nickname"
+            "prompt prompt"
+            "keywords keywords";
+        grid-template-columns: 1fr 2fr;
+        gap: 0.5rem;
+        width: 100%;
+    }
+
+    .id-input { grid-area: id; }
+    .nickname-input { grid-area: nickname; }
+    .prompt-input { grid-area: prompt; }
+    .keywords-input { grid-area: keywords; }
     
     .param-select.wide, .param-textarea {
         grid-column: 3/4;

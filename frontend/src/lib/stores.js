@@ -178,6 +178,15 @@ export async function saveConfig() {
             return { ...p, value };
         })
     };
+
+    // Process user_personas to convert trigger_keywords from string to array
+    if (finalConfig.user_personas) {
+        Object.values(finalConfig.user_personas).forEach(persona => {
+            if (typeof persona.trigger_keywords === 'string') {
+                persona.trigger_keywords = persona.trigger_keywords.split(',').map(k => k.trim()).filter(Boolean);
+            }
+        });
+    }
     
     // Cleanup logic remains the same
     const cleanup = (obj) => {

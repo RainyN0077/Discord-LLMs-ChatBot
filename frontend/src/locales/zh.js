@@ -133,7 +133,9 @@ knowledge: {
       contentLabel: '内容',
       contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。',
       searchPlaceholder: '按关键词搜索...',
-      noResults: '没有找到匹配的条目。'
+      noResults: '没有找到匹配的条目。',
+      linkedUserLabel: '关联用户',
+      noLinkedUser: '无'
     }
   },
   contextControl: {
@@ -207,7 +209,8 @@ knowledge: {
     userId: '用户 ID',
     customNicknamePlaceholder: '自定义昵称（可选）',
     personaPrompt: '描述这个用户的身份、特征或与机器人的关系',
-    add: '添加用户肖像'
+    add: '添加用户肖像',
+    triggerKeywordsPlaceholder: '触发关键词 (用英文逗号 , 分隔)'
   },
   pluginManager: {
     title: '插件管理器',

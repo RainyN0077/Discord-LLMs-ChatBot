@@ -152,7 +152,8 @@ export default {
     userId: 'User ID',
     customNicknamePlaceholder: 'Custom nickname (optional)',
     personaPrompt: 'Describe this user\'s identity, characteristics, or relationship with the bot',
-    add: 'Add User Portrait'
+    add: 'Add User Portrait',
+    triggerKeywordsPlaceholder: 'Trigger Keywords (comma-separated)'
   },
   pluginManager: {
     title: 'Plugin Manager',
@@ -378,7 +379,9 @@ export default {
      save: 'Save Changes',
      edit: 'Edit',
      delete: 'Delete',
-     cancelEdit: 'Cancel Edit'
+     cancelEdit: 'Cancel Edit',
+     linkedUserLabel: 'Linked User',
+     noLinkedUser: 'None'
    },
    searchPlaceholder: 'Search by keywords...',
    noResults: 'No matching entries found.'

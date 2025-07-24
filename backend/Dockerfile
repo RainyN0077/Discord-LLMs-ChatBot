@@ -6,17 +6,20 @@ WORKDIR /app
 
 # 复制 requirements.txt 并安装依赖
 # 这一步保持不变
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # --- 【【【核心修改区】】】 ---
 
 # 复制 app 目录到容器的 /app/app 子目录
-COPY ./app ./app
+COPY ./backend/app ./app
 
 # 复制 plugins 目录到容器的 /app/plugins 子目录
-COPY ./plugins ./plugins
+COPY ./backend/plugins ./plugins
+
+# 复制 scripts 目录到容器的 /app/scripts 子目录
+COPY ./scripts ./scripts
 
 # --- 【【【修改结束】】】 ---
 
