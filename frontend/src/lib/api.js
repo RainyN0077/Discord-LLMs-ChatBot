@@ -82,11 +82,13 @@ async function handleResponse(response) {
         try {
             // Try to parse as JSON first
             const errorJson = await response.json();
+            console.error('Full API Error JSON:', errorJson); // Add this line for debugging
             errorDetail = errorJson.detail || JSON.stringify(errorJson);
         } catch (e) {
             // If JSON parsing fails, read as text from the clone
             try {
                 const errorText = await responseClone.text();
+                console.error('Full API Error Text:', errorText); // Add this line for debugging
                 errorDetail = errorText || errorDetail;
             } catch (textErr) {
                 // If reading as text also fails, stick with the status code

@@ -87,7 +87,15 @@ export default {
     confirmDeleteWorldBook: '确定要删除这个世界书条目吗？',
     tabs: {
       worldBook: '世界书',
-      memory: '记忆库'
+      memory: '记忆库',
+      settings: '查重设置'
+    },
+    settings: {
+      title: '查重设置',
+      memoryDedupThreshold: '记忆库查重阈值',
+      worldBookDedupThreshold: '世界书查重阈值',
+      dedupDescription: '设置查重阈值。0%将会导致完全不记录任何信息，100%则只阻止完全相同的信息。推荐值为80-90%。',
+      save: '保存查重设置'
     },
     error: {
       loadMemory: '加载记忆库失败',

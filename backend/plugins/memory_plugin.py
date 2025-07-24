@@ -5,6 +5,7 @@ import discord
 import re
 import logging
 import json
+from difflib import SequenceMatcher
 
 from .base import BasePlugin
 
@@ -113,16 +114,41 @@ class MemoryPlugin(BasePlugin):
             "delete_memory": self.delete_memory
         }
 
+    def _is_duplicate(self, new_content: str, existing_entries: List[Dict[str, Any]], threshold: float, content_key: str) -> bool:
+        """Checks for duplicate content based on a similarity threshold."""
+        if not threshold or threshold <= 0:
+            return False
+        
+        for entry in existing_entries:
+            existing_content = entry.get(content_key)
+            if not existing_content:
+                continue
+            
+            similarity = SequenceMatcher(None, new_content, existing_content).ratio()
+            
+            if similarity >= threshold:
+                logger.info(f"Duplicate found for content '{new_content[:50]}...'. Similarity {similarity:.2f} >= threshold {threshold:.2f} with existing entry ID: {entry.get('id')}")
+                return True
+                
+        return False
+
     # --- Memory Bank Functions ---
-    def add_to_memory(self, content: str, message: Optional[discord.Message] = None) -> str:
-        if not message: return "Error: Message context is missing."
+    def add_to_memory(self, content: str, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
+        if not message or not config: return json.dumps({"status": "error", "message": "Missing context."})
+        
         try:
+            threshold = config.get("behavior", {}).get("memory_dedup_threshold", 0.0)
+            if threshold > 0:
+                all_memories = knowledge_manager.get_all_memories()
+                if self._is_duplicate(content, all_memories, threshold, 'content'):
+                    return json.dumps({"status": "duplicate_found", "message": "A similar memory entry already exists."})
+
             timestamp = datetime.now(timezone.utc).isoformat()
             memory_id = knowledge_manager.add_memory(content=content, timestamp=timestamp, user_id=str(message.author.id), user_name=message.author.display_name, source="对话")
-            return "OK"
+            return json.dumps({"status": "success", "id": memory_id, "message": f"Successfully added to memory with ID: {memory_id}."})
         except Exception as e:
             logger.error(f"Error in add_to_memory tool: {e}", exc_info=True)
-            return f"Error: {e}"
+            return json.dumps({"status": "error", "message": str(e)})
     
     def find_memories(self, query: str) -> str:
         try:
@@ -155,19 +181,25 @@ class MemoryPlugin(BasePlugin):
 
     # --- World Book / Portrait Functions ---
     def add_to_world_book(self, keywords: str, content: str, subject_of_knowledge: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
-        if not message or not config: return "Error: Missing context."
-        
-        linked_user_id = None
-        if subject_of_knowledge:
-            # (user search logic can be reused here if needed)
-            pass
+        if not message or not config: return json.dumps({"status": "error", "message": "Missing context."})
         
         try:
+            threshold = config.get("behavior", {}).get("world_book_dedup_threshold", 0.0)
+            if threshold > 0:
+                all_entries = knowledge_manager.get_all_world_book_entries()
+                if self._is_duplicate(content, all_entries, threshold, 'content'):
+                    return json.dumps({"status": "duplicate_found", "message": "A similar world book entry already exists."})
+
+            linked_user_id = None
+            if subject_of_knowledge:
+                # (user search logic can be reused here if needed)
+                pass
+            
             entry_id = knowledge_manager.add_world_book_entry(keywords=keywords, content=content, linked_user_id=linked_user_id)
-            return f"Successfully added general knowledge to world book with ID: {entry_id}."
+            return json.dumps({"status": "success", "id": entry_id, "message": f"Successfully added to world book with ID: {entry_id}."})
         except Exception as e:
             logger.error(f"Error in add_to_world_book tool: {e}", exc_info=True)
-            return f"Error adding to world book: {e}"
+            return json.dumps({"status": "error", "message": str(e)})
 
     def find_user_portrait(self, user_id: str) -> str:
         try:

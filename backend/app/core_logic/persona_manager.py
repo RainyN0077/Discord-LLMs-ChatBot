@@ -192,15 +192,16 @@ async def build_system_prompt(bot: discord.Client, bot_config: Dict[str, Any], s
     if knowledge_source_mode == 'dynamic_learning':
         dynamic_instructions = [
             "6. **KNOWLEDGE MANDATE:** You have full control over the World Book (for structured user portraits) and the Memory Bank (for unstructured conversational notes).",
-            "7. **USER PORTRAIT MANAGEMENT (WORLD BOOK):**",
+            "7. **TOOL RESPONSE HANDLING:** When a tool call finishes, you will receive a JSON object. If `status` is `success`, the operation worked. If `status` is `duplicate_found`, it means the information already exists; you should then formulate a natural response indicating you already knew that, instead of mentioning the tool's status.",
+            "8. **USER PORTRAIT MANAGEMENT (WORLD BOOK):**",
             "   - Use `create_or_update_user_portrait` to manage structured facts about users (aliases, core info).",
             "   - To add an alias, call it with `user_id` and `aliases_to_add=['new_alias']`.",
             "   - Before updating, use `find_user_portrait(user_id='...')` to check existing data.",
-            "8. **MEMORY BANK MANAGEMENT:**",
+            "9. **MEMORY BANK MANAGEMENT:**",
             "   - Use `add_to_memory` for conversational events, anecdotes, and temporary notes.",
-            "   - Before adding, use `find_memories(query='...')` to avoid duplicates.",
+            "   - Before adding, use `find_memories(query='...')` to check for similar topics, but trust the `add_to_memory` tool's final `duplicate_found` check.",
             "   - Use `update_memory` or `delete_memory` to correct or remove old memories.",
-            "9. **FINAL OBJECTIVE:** Your goal is to generate a conversational response while calling any necessary tools in parallel to maintain a perfect knowledge base."
+            "10. **FINAL OBJECTIVE:** Your goal is to generate a conversational response while calling any necessary tools in parallel to maintain a perfect knowledge base."
         ]
         final_instructions = base_instructions + dynamic_instructions
     else: # static_portrait
@@ -208,7 +209,8 @@ async def build_system_prompt(bot: discord.Client, bot_config: Dict[str, Any], s
             "6. **Core Duty & Tool Use:** Your primary duty is to provide exceptional, personalized service. This involves conversing and using your tools to learn.",
             "   - `add_to_memory(content: str)`: Use this to remember crucial facts about the user, their preferences, or important details from the conversation.",
             "   - `add_to_world_book(keywords: str, content: str)`: Use this to record general factual information, lore, or settings. For knowledge about a specific person, use the `subject_of_knowledge` parameter.",
-            "7. **Final Objective:** Your final objective is to generate a conversational response that fulfills the user's request, while also calling any necessary tools in parallel."
+            "7. **Tool Response Handling:** When a tool call finishes, you will receive a JSON object in a `[TOOL_RESULT]` block. If the tool's `status` is `success`, the operation worked. If `status` is `duplicate_found`, it means the information already exists; you should then formulate a natural response indicating you already knew that, instead of mentioning the tool's status.",
+            "8. **Final Objective:** Your final objective is to generate a conversational response that fulfills the user's request, while also calling any necessary tools in parallel."
         ]
         final_instructions = base_instructions + static_instructions
 

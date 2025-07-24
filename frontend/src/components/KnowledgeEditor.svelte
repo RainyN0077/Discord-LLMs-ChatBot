@@ -6,7 +6,7 @@
     fetchMemoryItems, addMemoryItem, deleteMemoryItem, updateMemoryItem,
     fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem
   } from '../lib/api.js';
-  import { userPersonasArray, behaviorConfig } from '../lib/stores.js';
+  import { userPersonasArray, behaviorConfig, saveConfig } from '../lib/stores.js';
   import Card from './Card.svelte';
 
   let activeTab = 'worldbook';
@@ -249,12 +249,20 @@
    label { display: block; margin-bottom: 0.5rem; }
    .form-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; align-items: end; }
    .form-group.full-width { grid-column: 1 / -1; }
- </style>
+    .settings-section { display: flex; flex-direction: column; gap: 1.5rem; }
+    .setting-item { display: flex; flex-direction: column; gap: 0.5rem; }
+    .setting-item label { font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+    .threshold-value { font-weight: normal; background-color: #444; padding: 2px 8px; border-radius: 12px; font-size: 0.9em; }
+    .setting-description { font-size: 0.9em; color: #aaa; margin: 0; }
+  </style>
 
 <Card>
   <h2>{$t('knowledge.title')}</h2>
 
   <div class="tabs">
+    <button class="tab" class:active={activeTab === 'settings'} on:click={() => activeTab = 'settings'}>
+      {$t('knowledge.tabs.settings')}
+    </button>
     <button class="tab" class:active={activeTab === 'worldbook'} on:click={() => activeTab = 'worldbook'}>
       {$t('knowledge.tabs.worldBook')}
     </button>
@@ -262,6 +270,46 @@
       {$t('knowledge.tabs.memory')}
     </button>
   </div>
+
+  {#if activeTab === 'settings'}
+    <div class="settings-section">
+      <h3>{$t('knowledge.settings.title')}</h3>
+      
+      <div class="setting-item">
+        <label for="memory-dedup-threshold">
+          {$t('knowledge.settings.memoryDedupThreshold')}
+          <span class="threshold-value">{Math.round(($behaviorConfig.memory_dedup_threshold || 0) * 100)}%</span>
+        </label>
+        <input
+          type="range"
+          id="memory-dedup-threshold"
+          min="0"
+          max="1"
+          step="0.01"
+          bind:value={$behaviorConfig.memory_dedup_threshold}
+        />
+        <p class="setting-description">{$t('knowledge.settings.dedupDescription')}</p>
+      </div>
+
+      <div class="setting-item">
+        <label for="world-book-dedup-threshold">
+          {$t('knowledge.settings.worldBookDedupThreshold')}
+          <span class="threshold-value">{Math.round(($behaviorConfig.world_book_dedup_threshold || 0) * 100)}%</span>
+        </label>
+        <input
+          type="range"
+          id="world-book-dedup-threshold"
+          min="0"
+          max="1"
+          step="0.01"
+          bind:value={$behaviorConfig.world_book_dedup_threshold}
+        />
+        <p class="setting-description">{$t('knowledge.settings.dedupDescription')}</p>
+      </div>
+
+      <button on:click={saveConfig}>{$t('knowledge.settings.save')}</button>
+    </div>
+  {/if}
 
   {#if activeTab === 'memory'}
     <div class="memory-section">

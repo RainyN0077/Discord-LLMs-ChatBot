@@ -3,12 +3,14 @@ import inspect
 import logging
 import importlib
 import pkgutil
+import functools
 from typing import List, Dict, Any, Optional, Tuple
 
 import discord
 
 from .base import BasePlugin
 from .configurable_plugin import ConfigurablePlugin
+from .memory_plugin import MemoryPlugin
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +74,30 @@ class PluginManager:
             all_tools.extend(plugin.get_tools(bot_config))
         return all_tools
     
-    def get_all_tool_functions(self) -> Dict[str, callable]:
+    def get_all_tool_functions(self, message: discord.Message, config: Dict[str, Any]) -> Dict[str, callable]:
         """Collects tool functions from all loaded plugins."""
         all_functions = {}
         for plugin in self.plugins:
-            all_functions.update(plugin.get_tool_functions())
+            functions = plugin.get_tool_functions()
+            # For MemoryPlugin, pre-fill context for its specific tools
+            if isinstance(plugin, MemoryPlugin):
+                # Wrap add_to_memory to inject user info
+                if 'add_to_memory' in functions:
+                    original_func = functions['add_to_memory']
+                    functions['add_to_memory'] = functools.partial(
+                        original_func,
+                        user_id=str(message.author.id),
+                        user_name=message.author.name
+                    )
+                # Wrap add_to_world_book to inject the full message object and config for context
+                if 'add_to_world_book' in functions:
+                    original_func = functions['add_to_world_book']
+                    functions['add_to_world_book'] = functools.partial(
+                        original_func,
+                        message=message,
+                        config=config
+                    )
+            all_functions.update(functions)
         return all_functions
 
     async def process_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:

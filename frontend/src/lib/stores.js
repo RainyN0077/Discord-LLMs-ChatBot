@@ -43,7 +43,9 @@ export const behaviorConfig = writable({
     blocked_prompt_response: '',
     trigger_keywords: [],
     stream_response: true,
-    knowledge_source_mode: 'static_portrait'
+    knowledge_source_mode: 'static_portrait',
+    memory_dedup_threshold: 0.0,
+    world_book_dedup_threshold: 0.0
 });
 
 export const contextConfig = writable({
@@ -139,7 +141,9 @@ export async function fetchConfig() {
             blocked_prompt_response: mergedConfig.blocked_prompt_response,
             trigger_keywords: mergedConfig.trigger_keywords,
             stream_response: mergedConfig.stream_response,
-            knowledge_source_mode: mergedConfig.knowledge_source_mode
+            knowledge_source_mode: mergedConfig.knowledge_source_mode,
+            memory_dedup_threshold: mergedConfig.memory_dedup_threshold || 0.0,
+            world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold || 0.0
         });
         contextConfig.set({
             context_mode: mergedConfig.context_mode,
@@ -181,6 +185,15 @@ export async function saveConfig() {
             return { ...p, value };
         })
     };
+
+    // Process user_personas to convert trigger_keywords from string to array
+    if (finalConfig.user_personas) {
+        Object.values(finalConfig.user_personas).forEach(persona => {
+            if (typeof persona.trigger_keywords === 'string') {
+                persona.trigger_keywords = persona.trigger_keywords.split(',').map(k => k.trim()).filter(Boolean);
+            }
+        });
+    }
     
     // Cleanup logic remains the same
     const cleanup = (obj) => {

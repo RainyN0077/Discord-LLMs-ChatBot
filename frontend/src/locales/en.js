@@ -357,7 +357,15 @@ export default {
    title: 'Knowledge Base',
    tabs: {
      worldBook: 'World Book',
-     memory: 'Memory'
+     memory: 'Memory',
+     settings: 'Deduplication Settings'
+   },
+   settings: {
+     title: 'Deduplication Settings',
+     memoryDedupThreshold: 'Memory Deduplication Threshold',
+     worldBookDedupThreshold: 'World Book Deduplication Threshold',
+     dedupDescription: 'Set the deduplication threshold. 0% will prevent almost all new entries, while 100% will only block identical content. Recommended: 80-90%.',
+     save: 'Save Deduplication Settings'
    },
    confirmDeleteMemory: 'Are you sure you want to delete this memory item?',
    confirmDeleteWorldBook: 'Are you sure you want to delete this entry?',
