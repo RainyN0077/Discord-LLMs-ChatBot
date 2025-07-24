@@ -66,11 +66,12 @@ class PluginManager:
         logger.info("--- Plugin Loading Complete ---")
 
 
-    def get_all_tools(self) -> List[Dict[str, Any]]:
+    def get_all_tools(self, bot_config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """Collects tools from all loaded plugins."""
         all_tools = []
         for plugin in self.plugins:
-            all_tools.extend(plugin.get_tools())
+            # Pass the bot_config to the plugin's get_tools method
+            all_tools.extend(plugin.get_tools(bot_config))
         return all_tools
     
     def get_all_tool_functions(self, message: discord.Message, config: Dict[str, Any]) -> Dict[str, callable]:
