@@ -2,81 +2,60 @@
 <script>
     import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { t } from '../i18n.js';
-    import { rawLogs, timezoneStore } from '../lib/stores.js';
-    import { fetchLogs } from '../lib/api.js';
+    import { rawLogs, timezoneStore, startLogPolling, stopLogPolling } from '../lib/stores.js';
     import UsageDashboard from './UsageDashboard.svelte';
 
     let logLevelFilter = 'ALL';
     const logLevels = ['ALL', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
     let autoScroll = true;
     let logOutputElement;
-    let logInterval;
     
-    // The 'sv-SE' locale is a trick to get the YYYY-MM-DD format easily.
     const formatTimestamp = (utcString, timeZone) => {
         if (!utcString) return '...';
         try {
             return new Intl.DateTimeFormat('sv-SE', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZone: timeZone
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false, timeZone: timeZone
             }).format(new Date(utcString));
         } catch (e) {
             console.error(`Invalid timezone: ${timeZone}`, e);
-            // Fallback to plain UTC string if timezone is invalid
             return utcString.replace('T', ' ').substring(0, 19);
         }
     };
     
-    $: parsedLogs = (($rawLogs, $timezoneStore), () => {
-        return ($rawLogs || '').split('\n').filter(line => line.trim() !== '').map(line => {
-            // Regex for ISO 8601 format: 2025-07-21T06:46:12.067Z
-            const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-            const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
+    // Corrected, standard Svelte reactive statement.
+    // It automatically depends on $rawLogs and $timezoneStore because they are used inside.
+    $: parsedLogs = ($rawLogs || '').split('\n').filter(line => line.trim() !== '').map(line => {
+        const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
+        const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
 
-            const originalTimestamp = timestampMatch ? timestampMatch[1] : null;
-            const level = levelMatch ? levelMatch[1] : 'UNKNOWN';
+        const originalTimestamp = timestampMatch ? timestampMatch[1] : null;
+        const level = levelMatch ? levelMatch[1] : 'UNKNOWN';
 
-            let messageText = line;
-            // Extract the actual message content, removing timestamp, module, and level.
-            if (levelMatch) {
-                messageText = line.substring(levelMatch.index + levelMatch[0].length);
-            } else if (timestampMatch) {
-                messageText = line.substring(timestampMatch[0].length).trim();
-            }
+        let messageText = line;
+        if (levelMatch) {
+            messageText = line.substring(levelMatch.index + levelMatch[0].length);
+        } else if (timestampMatch) {
+            messageText = line.substring(timestampMatch[0].length).trim();
+        }
 
-            return {
-                level: level,
-                message: messageText,
-                originalLine: line, // Use a different name to avoid confusion and for keys
-                formattedTimestamp: formatTimestamp(originalTimestamp, $timezoneStore)
-            };
-        });
-    })();
+        return {
+            level: level,
+            message: messageText,
+            originalLine: line,
+            formattedTimestamp: formatTimestamp(originalTimestamp, $timezoneStore)
+        };
+    });
 
     $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
 
     onMount(() => {
-        const getLogs = async () => {
-            try {
-                const logsText = await fetchLogs();
-                rawLogs.set(logsText);
-            } catch(e) {
-                rawLogs.set(`Error fetching logs: ${e.message}`);
-                console.error(e);
-            }
-        };
-        getLogs();
-        logInterval = setInterval(getLogs, 5000);
+        startLogPolling();
     });
 
     onDestroy(() => {
-        if (logInterval) clearInterval(logInterval);
+        stopLogPolling();
     });
     
     afterUpdate(() => {

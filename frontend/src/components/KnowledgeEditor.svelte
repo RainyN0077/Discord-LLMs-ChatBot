@@ -6,6 +6,7 @@
     fetchMemoryItems, addMemoryItem, deleteMemoryItem, updateMemoryItem,
     fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem
   } from '../lib/api.js';
+  import { userPersonasArray, behaviorConfig } from '../lib/stores.js';
   import Card from './Card.svelte';
 
   let activeTab = 'worldbook';
@@ -16,24 +17,26 @@
   let newMemoryUserId = '';
   let newMemoryTimestamp = '';
   
-  let newWorldBookItem = { keywords: '', content: '', enabled: true };
+  let searchQuery = '';
+  
+  let newWorldBookItem = { keywords: '', content: '', enabled: true, linked_user_id: '', aliases: '', triggers: '' };
   let editingWorldBookItem = null;
+  let worldBookSearchQuery = '';
   let editingMemoryId = null;
   let editingMemoryContent = '';
-  let intervalId = null;
+  let memoryPollInterval = null;
 
   onMount(async () => {
     loadMemoryItems();
     loadWorldBookItems();
-    intervalId = setInterval(loadMemoryItems, 5000); // Poll for new memories
+    memoryPollInterval = setInterval(loadMemoryItems, 5000);
   });
 
   onDestroy(() => {
-    if (intervalId) {
-      clearInterval(intervalId);
-    }
+    if (memoryPollInterval) clearInterval(memoryPollInterval);
   });
 
+  // --- Memory Functions ---
   async function loadMemoryItems() {
     try {
       memoryItems = await fetchMemoryItems();
@@ -50,20 +53,14 @@
         content: newMemoryContent.trim(),
         user_name: newMemoryUserName.trim() || 'WebUI',
         user_id: newMemoryUserId.trim() || null,
-        // Only include timestamp if it's been set by the user
         timestamp: newMemoryTimestamp || null,
         timezone: newMemoryTimestamp ? timezone : null,
         source: '手动添加'
       };
-      
       await addMemoryItem(itemData);
-
-      // Reset form
       newMemoryContent = '';
       newMemoryUserId = '';
       newMemoryTimestamp = '';
-      // Do not reset username, to allow multiple entries from same person
-      
       loadMemoryItems();
     } catch (e) {
       alert(`${$t('knowledge.error.addMemory')}: ${e.message}`);
@@ -96,12 +93,13 @@
     try {
       await updateMemoryItem(editingMemoryId, editingMemoryContent.trim());
       cancelEditMemory();
-      loadMemoryItems(); // Refresh the list
+      loadMemoryItems();
     } catch (e) {
       alert(`${$t('knowledge.error.updateMemory')}: ${e.message}`);
     }
   }
   
+  // --- World Book Functions ---
   async function loadWorldBookItems() {
     try {
       worldBookItems = await fetchWorldBookItems();
@@ -111,12 +109,37 @@
   }
 
   async function handleSaveWorldBookItem() {
-    const itemToSave = editingWorldBookItem || newWorldBookItem;
+    let itemToSave = editingWorldBookItem || newWorldBookItem;
+    
+    if ($behaviorConfig.knowledge_source_mode === 'dynamic_learning') {
+        const aliases = (itemToSave.aliases || '').split(',').map(k => k.trim()).filter(Boolean);
+        const triggers = (itemToSave.triggers || '').split(',').map(k => k.trim()).filter(Boolean);
+        const baseKeywords = (itemToSave.keywords || '').split(',').map(k => k.trim()).filter(Boolean);
+        
+        const allKeywords = [...new Set([...baseKeywords, ...aliases, ...triggers])];
+        itemToSave.keywords = allKeywords.join(', ');
+
+        const structuredContent = {
+            schema_version: 1,
+            aliases: aliases,
+            triggers: triggers,
+            core_content: itemToSave.content.trim()
+        };
+        itemToSave.content = JSON.stringify(structuredContent, null, 2);
+    }
+
     if (!itemToSave.keywords.trim() || !itemToSave.content.trim()) {
         alert($t('knowledge.error.emptyFields'));
         return;
     }
     
+    if (itemToSave.linked_user_id !== null && itemToSave.linked_user_id !== undefined) {
+        itemToSave.linked_user_id = String(itemToSave.linked_user_id).trim();
+        if (itemToSave.linked_user_id === '') {
+            itemToSave.linked_user_id = null;
+        }
+    }
+
     try {
       if (editingWorldBookItem) {
         await updateWorldBookItem(editingWorldBookItem.id, itemToSave);
@@ -131,11 +154,27 @@
   }
 
   function editWorldBookItem(item) {
-    editingWorldBookItem = { ...item };
+    let content = item.content;
+    let aliases = '';
+    let triggers = '';
+
+    if ($behaviorConfig.knowledge_source_mode === 'dynamic_learning') {
+        try {
+            const data = JSON.parse(item.content);
+            if (data && typeof data === 'object' && data.schema_version === 1) {
+                content = data.core_content || '';
+                aliases = (data.aliases || []).join(', ');
+                triggers = (data.triggers || []).join(', ');
+            }
+        } catch (e) {
+            // It's a plain text entry, leave it as is.
+        }
+    }
+    editingWorldBookItem = { ...item, content, aliases, triggers };
   }
 
   function resetWorldBookForm() {
-    newWorldBookItem = { keywords: '', content: '', enabled: true };
+    newWorldBookItem = { keywords: '', content: '', enabled: true, linked_user_id: '', aliases: '', triggers: '' };
     editingWorldBookItem = null;
   }
   
@@ -150,107 +189,67 @@
     }
   }
 
+  // --- Utility Functions ---
   function formatMemoryContent(rawContent) {
     if (!rawContent) return '';
-    // Use replace with a regex to remove the tag and any leading space
     return rawContent.replace(/\[memory\s+.*?\]\s*/, '');
   }
+
+  function formatWorldBookContent(rawContent) {
+      if (!rawContent || !rawContent.includes('schema_version')) {
+          return rawContent;
+      }
+      try {
+          const data = JSON.parse(rawContent);
+          if (data && typeof data === 'object' && data.schema_version === 1) {
+              return data.core_content || '';
+          }
+      } catch (e) {
+          // Not a valid JSON, return as is
+      }
+      return rawContent;
+  }
+
+  function getPersonaName(userId) {
+    if (!userId) return `ID: ${userId}`;
+    if ($userPersonasArray) {
+        const persona = $userPersonasArray.find(p => p.id === userId);
+        if (persona) return persona.nickname || `ID: ${userId}`;
+    }
+    return `ID: ${userId}`;
+  }
  
+  $: filteredMemoryItems = memoryItems.filter(item =>
+    item.user_name && item.user_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  $: filteredWorldBookItems = worldBookItems.filter(item =>
+    (item.keywords || '').toLowerCase().includes(worldBookSearchQuery.toLowerCase())
+  );
+
 </script>
  
  <style>
-  .tabs {
-    display: flex;
-    border-bottom: 2px solid #333;
-    margin-bottom: 1rem;
-  }
-  .tab {
-    padding: 0.5rem 1rem;
-    cursor: pointer;
-    border: none;
-    background: none;
-    color: #ccc;
-    font-size: 1rem;
-  }
-  .tab.active {
-    background-color: #333;
-    color: #fff;
-    border-radius: 5px 5px 0 0;
-  }
-  .item-list {
-    max-height: 400px;
-    overflow-y: auto;
-    margin-bottom: 1rem;
-  }
-  .item {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding: 0.5rem;
-    border: 1px solid #444;
-    border-radius: 4px;
-    margin-bottom: 0.5rem;
-    background-color: #ffffff; /* A lighter, more distinct dark color for better contrast */
-  }
-  .item-content {
-    flex-grow: 1;
-    margin-right: 1rem;
-    white-space: pre-wrap;
-  }
-  .item-content > span {
-      display: inline-block;
-      color: #00ad09; /* Set text color to INFO green for readability */
-  }
-  .meta {
-      font-size: 0.8em;
-      color: #000000; /* Increased font color contrast for better readability */
-      display: flex;
-      gap: 1rem;
-  }
-  .keywords {
-    font-style: italic;
-    color: #7e7e7e;
-    margin-bottom: 0.5em;
-  }
-  .actions {
-    display: flex;                /* 横向排列 */
-    justify-content: flex-end;    /* 靠右对齐 */
-    align-items: center;          /* 垂直居中 */
-    gap: 0.2rem;                  /* 按钮之间间隔 */
-  }
-  .actions button {
-    margin-left: 0.5rem;
-  }
-  .actions .small-btn {
-    font-size: 12px;   
-    padding: 4px 8px; 
-    border-radius: 4px;
-    min-width: 50px;
-    text-align: center;
-    white-space: nowrap; /* 禁止换行 */
-  }
-  textarea, input[type="text"] {
-    width: 100%;
-    margin-bottom: 0.5rem;
-  }
-  .edit-textarea {
-      width: 100%;
-      box-sizing: border-box;
-  }
-  label {
-      display: block;
-      margin-bottom: 0.5rem;
-  }
-  .form-grid {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-    gap: 1rem;
-    align-items: end;
-  }
-  .form-group.full-width {
-    grid-column: 1 / -1;
-  }
-</style>
+   .search-bar { margin-bottom: 1rem; }
+   .search-bar input { width: 100%; padding: 0.5rem; box-sizing: border-box; }
+   .tabs { display: flex; border-bottom: 2px solid #333; margin-bottom: 1rem; }
+   .tab { padding: 0.5rem 1rem; cursor: pointer; border: none; background: none; color: #ccc; font-size: 1rem; }
+   .tab.active { background-color: #333; color: #fff; border-radius: 5px 5px 0 0; }
+   .item-list { max-height: 400px; overflow-y: auto; margin-bottom: 1rem; }
+   .item { display: flex; justify-content: space-between; align-items: flex-start; padding: 0.5rem; border: 1px solid #444; border-radius: 4px; margin-bottom: 0.5rem; background-color: #ffffff; }
+   .item-content { flex-grow: 1; margin-right: 1rem; white-space: pre-wrap; }
+   .item-content > span { display: inline-block; color: #00ad09; }
+   .meta { font-size: 0.8em; color: #000000; display: flex; gap: 1rem; }
+   .keywords { font-style: italic; color: #7e7e7e; margin-bottom: 0.5em; }
+   .actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.2rem; }
+   .actions button { margin-left: 0.5rem; }
+   .actions .small-btn { font-size: 12px; padding: 4px 8px; border-radius: 4px; min-width: 50px; text-align: center; white-space: nowrap; }
+   textarea, input[type="text"] { width: 100%; margin-bottom: 0.5rem; }
+   .edit-textarea { width: 100%; box-sizing: border-box; }
+   label { display: block; margin-bottom: 0.5rem; }
+   .form-grid { display: grid; grid-template-columns: 1fr 2fr; gap: 1rem; align-items: end; }
+   .form-group.full-width { grid-column: 1 / -1; }
+ </style>
 
 <Card>
   <h2>{$t('knowledge.title')}</h2>
@@ -267,11 +266,17 @@
   {#if activeTab === 'memory'}
     <div class="memory-section">
       <h3>{$t('knowledge.memory.title')}</h3>
+      <div class="search-bar">
+        <input type="text" bind:value={searchQuery} placeholder={$t('knowledge.memory.searchPlaceholder')}>
+      </div>
       <div class="item-list">
-        {#each memoryItems as item (item.id)}
-          <div class="item">
-            <div class="item-content">
-              {#if editingMemoryId === item.id}
+        {#if filteredMemoryItems.length === 0}
+          <p>{$t('knowledge.memory.noResults')}</p>
+        {:else}
+          {#each filteredMemoryItems as item (item.id)}
+            <div class="item">
+              <div class="item-content">
+                {#if editingMemoryId === item.id}
                 <textarea bind:value={editingMemoryContent} rows="2" class="edit-textarea"></textarea>
               {:else}
                 <span>{formatMemoryContent(item.content)}</span>
@@ -298,7 +303,8 @@
               {/if}
             </div>
           </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
       <div class="form-grid" style="grid-template-columns: 1fr 1fr 2fr; gap: 0.5rem 1rem;">
         <div class="form-group">
@@ -325,43 +331,80 @@
   {#if activeTab === 'worldbook'}
     <div class="worldbook-section">
       <h3>{$t('knowledge.worldBook.title')}</h3>
+      <div class="search-bar">
+        <input type="text" bind:value={worldBookSearchQuery} placeholder={$t('knowledge.worldBook.searchPlaceholder')}>
+      </div>
       <div class="item-list">
-        {#each worldBookItems as item (item.id)}
-          <div class="item">
-            <div class="item-content">
-              <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
-              <div>{item.content}</div>
-            </div>
-            <div class="actions">
-              <button class="small-btn" on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
+        {#if filteredWorldBookItems.length === 0}
+          <p>{$t('knowledge.worldBook.noResults')}</p>
+        {:else}
+          {#each filteredWorldBookItems as item (item.id)}
+            <div class="item">
+              <div class="item-content">
+                <div class="keywords">{$t('knowledge.worldBook.keywordsLabel')}: {item.keywords}</div>
+                <div style="white-space: pre-wrap;">{formatWorldBookContent(item.content)}</div>
+                {#if item.linked_user_id}
+                  <div class="meta" style="margin-top: 0.5em;">
+                    <span>{$t('knowledge.worldBook.linkedUserLabel')}: {getPersonaName(item.linked_user_id)}</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="actions">
+                <button class="small-btn" on:click={() => editWorldBookItem(item)}>{$t('knowledge.worldBook.edit')}</button>
               <button class="small-btn" on:click={() => handleDeleteWorldBookItem(item.id)}>{$t('knowledge.worldBook.delete')}</button>
             </div>
           </div>
-        {/each}
+          {/each}
+        {/if}
       </div>
       
       <Card extraClass="form-card">
         <h4>{editingWorldBookItem ? $t('knowledge.worldBook.editTitle') : $t('knowledge.worldBook.addTitle')}</h4>
-        {#if editingWorldBookItem}
-          <label>
-            {$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')}):
-            <input type="text" bind:value={editingWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}>
-          </label>
-          <label>
-            {$t('knowledge.worldBook.contentLabel')}:
-            <textarea rows="4" bind:value={editingWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea>
-          </label>
+        
+        <!-- Corrected Logic: Top-level check for mode, then inner check for edit/add -->
+        {#if $behaviorConfig.knowledge_source_mode === 'dynamic_learning'}
+            <!-- DYNAMIC MODE FORMS -->
+            {#if editingWorldBookItem}
+                <!-- Dynamic Editing -->
+                <label>{$t('knowledge.dynamic.linkedUserLabel')}<input type="text" bind:value={editingWorldBookItem.linked_user_id} placeholder={$t('knowledge.dynamic.userIdPlaceholder')}></label>
+                <label>{$t('knowledge.dynamic.aliasesLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={editingWorldBookItem.aliases} placeholder={$t('knowledge.dynamic.aliasesPlaceholder')}></label>
+                <label>{$t('knowledge.dynamic.triggersLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={editingWorldBookItem.triggers} placeholder={$t('knowledge.dynamic.triggersPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={editingWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.contentLabel')}<textarea rows="4" bind:value={editingWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea></label>
+            {:else}
+                <!-- Dynamic Adding -->
+                <label>{$t('knowledge.dynamic.linkedUserLabel')}<input type="text" bind:value={newWorldBookItem.linked_user_id} placeholder={$t('knowledge.dynamic.userIdPlaceholder')}></label>
+                <label>{$t('knowledge.dynamic.aliasesLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={newWorldBookItem.aliases} placeholder={$t('knowledge.dynamic.aliasesPlaceholder')}></label>
+                <label>{$t('knowledge.dynamic.triggersLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={newWorldBookItem.triggers} placeholder={$t('knowledge.dynamic.triggersPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={newWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.contentLabel')}<textarea rows="4" bind:value={newWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea></label>
+            {/if}
         {:else}
-          <label>
-            {$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')}):
-            <input type="text" bind:value={newWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}>
-          </label>
-          <label>
-            {$t('knowledge.worldBook.contentLabel')}:
-            <textarea rows="4" bind:value={newWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea>
-          </label>
+            <!-- STATIC MODE FORMS -->
+            {#if editingWorldBookItem}
+                <!-- Static Editing -->
+                <label>{$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={editingWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.contentLabel')}<textarea rows="4" bind:value={editingWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea></label>
+                <label>{$t('knowledge.worldBook.linkedUserLabel')}
+                    <select bind:value={editingWorldBookItem.linked_user_id}>
+                        <option value={null}>{$t('knowledge.worldBook.noLinkedUser')}</option>
+                        {#each $userPersonasArray as persona}<option value={persona.id}>{persona.nickname || `ID: ${persona.id}`}</option>{/each}
+                    </select>
+                </label>
+            {:else}
+                <!-- Static Adding -->
+                <label>{$t('knowledge.worldBook.keywordsLabel')} ({$t('knowledge.worldBook.keywordsHint')})<input type="text" bind:value={newWorldBookItem.keywords} placeholder={$t('knowledge.worldBook.keywordsPlaceholder')}></label>
+                <label>{$t('knowledge.worldBook.contentLabel')}<textarea rows="4" bind:value={newWorldBookItem.content} placeholder={$t('knowledge.worldBook.contentPlaceholder')}></textarea></label>
+                <label>{$t('knowledge.worldBook.linkedUserLabel')}
+                    <select bind:value={newWorldBookItem.linked_user_id}>
+                        <option value={null}>{$t('knowledge.worldBook.noLinkedUser')}</option>
+                        {#each $userPersonasArray as persona}<option value={persona.id}>{persona.nickname || `ID: ${persona.id}`}</option>{/each}
+                    </select>
+                </label>
+            {/if}
         {/if}
-          <button on:click={handleSaveWorldBookItem}>{editingWorldBookItem ? $t('knowledge.worldBook.save') : $t('knowledge.worldBook.add')}</button>
+
+        <button on:click={handleSaveWorldBookItem}>{editingWorldBookItem ? $t('knowledge.worldBook.save') : $t('knowledge.worldBook.add')}</button>
         {#if editingWorldBookItem}
           <button on:click={resetWorldBookForm}>{$t('knowledge.worldBook.cancelEdit')}</button>
         {/if}

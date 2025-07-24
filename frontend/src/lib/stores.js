@@ -1,7 +1,7 @@
 // src/lib/stores.js
 import { writable, derived, get } from 'svelte/store';
 import { get as t_get } from '../i18n.js';
-import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig } from './api.js';
+import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig, fetchLogs as apiFetchLogs } from './api.js';
 
 // --- Default State ---
 const defaultConfig = {
@@ -13,7 +13,8 @@ const defaultConfig = {
     system_prompt: '', 
     blocked_prompt_response: '',
     trigger_keywords: [],
-    stream_response: true, 
+    stream_response: true,
+    knowledge_source_mode: 'static_portrait',
     user_personas: {},
     role_based_config: {},
     scoped_prompts: { guilds: {}, channels: {} },
@@ -41,7 +42,8 @@ export const behaviorConfig = writable({
     system_prompt: '',
     blocked_prompt_response: '',
     trigger_keywords: [],
-    stream_response: true
+    stream_response: true,
+    knowledge_source_mode: 'static_portrait'
 });
 
 export const contextConfig = writable({
@@ -136,7 +138,8 @@ export async function fetchConfig() {
             system_prompt: mergedConfig.system_prompt,
             blocked_prompt_response: mergedConfig.blocked_prompt_response,
             trigger_keywords: mergedConfig.trigger_keywords,
-            stream_response: mergedConfig.stream_response
+            stream_response: mergedConfig.stream_response,
+            knowledge_source_mode: mergedConfig.knowledge_source_mode
         });
         contextConfig.set({
             context_mode: mergedConfig.context_mode,
@@ -205,5 +208,32 @@ export async function saveConfig() {
         showStatus(t_get('status.saveFailed', { error: e.message }), 'error');
     } finally {
         isLoading.set(false);
+    }
+}
+
+// --- Log Fetching Logic ---
+let logInterval;
+export function startLogPolling() {
+    if (logInterval) return; // Polling is already active
+    
+    const getLogs = async () => {
+        try {
+            const logsText = await apiFetchLogs();
+            rawLogs.set(logsText);
+        } catch(e) {
+            // Don't alert, just update the log viewer with the error
+            rawLogs.set(`Error fetching logs: ${e.message}`);
+            console.error(e);
+        }
+    };
+    
+    getLogs(); // Initial fetch
+    logInterval = setInterval(getLogs, 5000); // Poll every 5 seconds
+}
+
+export function stopLogPolling() {
+    if (logInterval) {
+        clearInterval(logInterval);
+        logInterval = null;
     }
 }

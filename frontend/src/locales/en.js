@@ -152,7 +152,32 @@ export default {
     userId: 'User ID',
     customNicknamePlaceholder: 'Custom nickname (optional)',
     personaPrompt: 'Describe this user\'s identity, characteristics, or relationship with the bot',
-    add: 'Add User Portrait'
+    add: 'Add User Portrait',
+    triggerKeywordsPlaceholder: 'Trigger Keywords (comma-separated)'
+  },
+  knowledgeSource: {
+    title: "Knowledge Source Mode",
+    modeSelection: "Mode Selection",
+    modes: {
+        static: {
+            title: "Static Portrait Mode",
+            description: "The AI will use a combination of your manually configured 'User Portraits' and its self-learned 'World Book'. This mode is stable and predictable, ideal for scenarios requiring a fixed core persona."
+        },
+        dynamic: {
+            title: "Dynamic Learning Mode",
+            description: "Warning: The AI will completely ignore 'User Portrait' configurations and gain full management permissions (add, delete, update) over the World Book. It will learn everything autonomously from conversations. This mode is highly automated but carries the risk of AI making mistakes."
+        }
+    },
+    migration: {
+      toDynamicButton: "Migrate Portraits to World Book",
+      toDynamicInfo: "This will convert all portraits configured below into structured World Book entries. This action does not delete the original portraits.",
+      confirmToDynamic: "Are you sure you want to migrate all user portraits to the World Book? Your existing portrait configurations will not be deleted.",
+      toStaticButton: "Flatten Portraits for Static Mode",
+      toStaticInfo: "This will convert all structured portraits in the World Book into plain text entries for compatibility with Static Mode. This action is not easily reversible.",
+      confirmToStatic: "Are you sure you want to flatten all structured portraits to plain text? This action cannot be easily undone.",
+      migrating: "Migrating...",
+      error: "Migration failed"
+    }
   },
   pluginManager: {
     title: 'Plugin Manager',
@@ -357,7 +382,13 @@ export default {
      by: 'By',
      at: 'At',
      source: 'Source',
-     contentLabel: 'Content'
+     contentLabel: 'Content',
+     userIdLabel: 'User ID',
+     timestampLabel: 'Timestamp (optional, your local time)',
+     byPlaceholder: 'e.g., WebUI or username',
+     userIdPlaceholder: 'e.g., 1234567890 (optional)',
+     searchPlaceholder: 'Search by recorder...',
+     noResults: 'No matching records found.'
    },
    worldBook: {
      title: 'World Book',
@@ -372,7 +403,19 @@ export default {
      save: 'Save Changes',
      edit: 'Edit',
      delete: 'Delete',
-     cancelEdit: 'Cancel Edit'
-   }
+     cancelEdit: 'Cancel Edit',
+     linkedUserLabel: 'Linked User',
+     noLinkedUser: 'None'
+   },
+   dynamic: {
+      linkedUserLabel: "Linked User ID (Dynamic Mode)",
+      userIdPlaceholder: "Enter User ID manually here",
+      aliasesLabel: "Aliases / Nicknames",
+      aliasesPlaceholder: "Other names for this user, comma-separated",
+      triggersLabel: "Dedicated Trigger Keywords",
+      triggersPlaceholder: "Keywords that also trigger this entry, comma-separated"
+   },
+   searchPlaceholder: 'Search by keywords...',
+   noResults: 'No matching entries found.'
  }
 };

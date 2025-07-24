@@ -81,7 +81,7 @@ export default {
       nonStream: '完整响应 (一次性发送)'
     }
   },
-knowledge: {
+  knowledge: {
     title: '知识库',
     confirmDeleteMemory: '确定要删除这条记忆吗？',
     confirmDeleteWorldBook: '确定要删除这个世界书条目吗？',
@@ -114,7 +114,9 @@ knowledge: {
       userIdLabel: '用户 ID',
       timestampLabel: '时间戳 (可选, 你的本地时间)',
       byPlaceholder: '例如 WebUI 或用户名',
-      userIdPlaceholder: '例如 1234567890 (可选)'
+      userIdPlaceholder: '例如 1234567890 (可选)',
+      searchPlaceholder: '按记录者搜索...',
+      noResults: '没有找到匹配的记录。'
     },
     worldBook: {
       title: '世界书',
@@ -129,7 +131,19 @@ knowledge: {
       keywordsHint: '用逗号分隔',
       keywordsPlaceholder: '例如：地点, 设定, 角色A',
       contentLabel: '内容',
-      contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。'
+      contentPlaceholder: '当关键词被提及时，这段内容将被注入到上下文中。',
+      searchPlaceholder: '按关键词搜索...',
+      noResults: '没有找到匹配的条目。',
+      linkedUserLabel: '关联用户',
+      noLinkedUser: '无'
+    },
+    dynamic: {
+      linkedUserLabel: "关联用户 ID (动态模式)",
+      userIdPlaceholder: "在此处手动输入用户ID",
+      aliasesLabel: "别名/昵称",
+      aliasesPlaceholder: "用户的其他称呼，用逗号分隔",
+      triggersLabel: "专用触发词",
+      triggersPlaceholder: "提及这些词也会关联到此用户，用逗号分隔"
     }
   },
   contextControl: {
@@ -203,7 +217,32 @@ knowledge: {
     userId: '用户 ID',
     customNicknamePlaceholder: '自定义昵称（可选）',
     personaPrompt: '描述这个用户的身份、特征或与机器人的关系',
-    add: '添加用户肖像'
+    add: '添加用户肖像',
+    triggerKeywordsPlaceholder: '触发关键词 (用英文逗号 , 分隔)'
+  },
+  knowledgeSource: {
+    title: "知识源模式",
+    modeSelection: "模式选择",
+    modes: {
+        static: {
+            title: "静态肖像模式",
+            description: "AI将结合使用您手动配置的“用户肖像”和它自己学习的“世界书”。此模式稳定可控，适合需要固定核心人设的场景。"
+        },
+        dynamic: {
+            title: "动态学习模式",
+            description: "警告：AI将完全忽略“用户肖像”配置，并获得世界书的完整管理权限（增、删、改）。它将从对话中自主学习一切。此模式高度自动化，但有AI犯错的风险。"
+        }
+    },
+    migration: {
+      toDynamicButton: "迁移用户肖像到世界书",
+      toDynamicInfo: "点击此按钮，会将您在下方“用户肖像”中配置的所有数据，转换为“世界书”中的结构化条目。此操作不会删除原有的用户肖像。",
+      confirmToDynamic: "您确定要将所有用户肖像迁移到世界书吗？这不会删除您现有的用户肖像配置。",
+      toStaticButton: "压平世界书画像以兼容静态模式",
+      toStaticInfo: "点击此按钮，会将世界书中所有结构化的画像条目“压平”为纯文本格式，以便在静态模式下使用。此操作不可逆。",
+      confirmToStatic: "您确定要将所有结构化画像“压平”为纯文本格式吗？此操作不可轻易撤销。",
+      migrating: "迁移中...",
+      error: "迁移失败"
+    }
   },
   pluginManager: {
     title: '插件管理器',
