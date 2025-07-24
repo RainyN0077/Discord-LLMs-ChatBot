@@ -154,9 +154,13 @@ async function resetFont() {
                 $coreConfig.api_key,
                 $coreConfig.base_url
             );
-            availableModels = result.models;
-            useManualInput = false;
-            showStatus(t_get('llmProvider.modelsLoaded'), 'success');
+            if (result && Array.isArray(result.models)) {
+                availableModels = result.models;
+                useManualInput = false;
+                showStatus(t_get('llmProvider.modelsLoaded'), 'success');
+            } else {
+                throw new Error(t_get('llmProvider.invalidResponse'));
+            }
         } catch (e) {
             showStatus(t_get('llmProvider.modelsLoadFailed') + e.message, 'error');
             availableModels = [];
@@ -182,10 +186,11 @@ async function resetFont() {
                 $coreConfig.model_name
             );
             testResult = result;
-            if (result.success) {
+            if (result && result.success) {
                 showStatus(t_get('llmProvider.testSuccess'), 'success');
             } else {
-                showStatus(t_get('llmProvider.testFailed') + result.error, 'error');
+                const errorMessage = result ? result.error : t_get('llmProvider.invalidResponse');
+                showStatus(t_get('llmProvider.testFailed') + errorMessage, 'error');
             }
         } catch (e) {
             showStatus(t_get('llmProvider.testError') + e.message, 'error');
@@ -310,9 +315,9 @@ async function resetFont() {
                     </div>
                     
                     {#if testResult}
-                        <div class="test-result {testResult.success ? 'success' : 'error'}">
+                        <div class="test-result {testResult && testResult.success ? 'success' : 'error'}">
                             <strong>{$t('llmProvider.testResult')}:</strong>
-                            {#if testResult.success}
+                            {#if testResult && testResult.success}
                                 <p>{$t('llmProvider.modelResponded')}: "{testResult.response}"</p>
                                 {#if testResult.model_info?.usage}
                                     <p class="usage-info">
@@ -321,8 +326,10 @@ async function resetFont() {
                                         Completion: {testResult.model_info.usage.completion_tokens})
                                     </p>
                                 {/if}
-                            {:else}
+                            {:else if testResult}
                                 <p>{testResult.error}</p>
+                            {:else}
+                                <p>{$t('llmProvider.testFailed')}</p>
                             {/if}
                         </div>
                     {/if}

@@ -196,12 +196,68 @@ async def clear_channel_memory(request: ClearMemoryRequest):
 
 @app.post("/api/models/list", dependencies=[Depends(get_api_key)])
 async def get_available_models(request: AvailableModelsRequest):
-    # ... (implementation unchanged)
-    pass
+    """Dynamically fetches available models from the specified provider."""
+    try:
+        if request.provider == "openai":
+            client = openai.AsyncOpenAI(api_key=request.api_key, base_url=request.base_url)
+            models = await client.models.list()
+            return {"models": sorted([model.id for model in models.data])}
+        elif request.provider == "google":
+            genai.configure(api_key=request.api_key)
+            models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            # We filter for a few common model name patterns to keep the list clean.
+            filtered_models = [m for m in models if 'gemini' in m]
+            return {"models": sorted(filtered_models)}
+        elif request.provider == "anthropic":
+            # Anthropic does not have a public model-listing API.
+            # We return a curated list of common models.
+            common_models = [
+                "claude-3-5-sonnet-20240620",
+                "claude-3-opus-20240229",
+                "claude-3-sonnet-20240229",
+                "claude-3-haiku-20240307",
+            ]
+            return {"models": common_models}
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported provider")
+    except Exception as e:
+        logger.error(f"Failed to fetch models for {request.provider}: {e}", exc_info=True)
+        # Check for specific authentication errors
+        if "authentication" in str(e).lower():
+            raise HTTPException(status_code=401, detail=f"Authentication error: {e}")
+        raise HTTPException(status_code=500, detail=f"An internal error occurred: {e}")
+
 @app.post("/api/models/test", dependencies=[Depends(get_api_key)])
 async def test_model_connection(request: ModelTestRequest):
-    # ... (implementation unchanged)
-    pass
+    """Tests the connection to the specified model."""
+    try:
+        if request.provider == "openai":
+            client = openai.AsyncOpenAI(api_key=request.api_key, base_url=request.base_url)
+            response = await client.chat.completions.create(
+                model=request.model_name,
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=20,
+                stream=False
+            )
+            return {"success": True, "response": response.choices[0].message.content, "model_info": response.dict()}
+        elif request.provider == "google":
+            genai.configure(api_key=request.api_key)
+            model = genai.GenerativeModel(request.model_name)
+            response = await model.generate_content_async("Hello")
+            return {"success": True, "response": response.text}
+        elif request.provider == "anthropic":
+            client = anthropic.AsyncAnthropic(api_key=request.api_key)
+            response = await client.messages.create(
+                model=request.model_name,
+                max_tokens=20,
+                messages=[{"role": "user", "content": "Hello"}]
+            )
+            return {"success": True, "response": response.content[0].text}
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported provider")
+    except Exception as e:
+        logger.error(f"Failed to test model {request.model_name}: {e}", exc_info=True)
+        return {"success": False, "error": f"Failed to connect: {e}"}
 @app.get("/api/logs", dependencies=[Depends(get_api_key)])
 async def get_logs():
     log_file_path = DATA_DIR / 'logs/bot.log'
