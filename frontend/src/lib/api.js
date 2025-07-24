@@ -247,13 +247,6 @@ export async function savePluginConfig(pluginName, configData) {
     return result;
 }
 
-export async function migrateKnowledge(direction) {
-    return apiFetch(`${BASE_URL}/knowledge/migrate`, {
-        method: 'POST',
-        body: JSON.stringify({ direction: direction }),
-    });
-}
-
 // --- Usage & Pricing API ---
 export async function fetchUsageStats(period, view) {
     const userTimezone = get(timezoneStore);

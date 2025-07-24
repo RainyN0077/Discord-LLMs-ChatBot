@@ -1,6 +1,5 @@
 <!-- src/pages/ControlPanel.svelte -->
 <script>
-    import { onMount } from 'svelte';
     import '../styles/lists.css';
     import { t, get as t_get } from '../i18n.js';
     import {
@@ -17,10 +16,9 @@
         userPersonasArray,
         customFontName,
         showStatus,
-        timezoneStore,
-        startLogPolling
+        timezoneStore
     } from '../lib/stores.js';
-    import { clearMemory, fetchAvailableModels, testModel, migrateKnowledge } from '../lib/api.js';
+    import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
@@ -200,28 +198,6 @@ async function resetFont() {
         testResult = null;
         useManualInput = false;
     }
-
-    async function handleMigration() {
-        const direction = $behaviorConfig.knowledge_source_mode === 'dynamic_learning' ? 'to_dynamic' : 'to_static';
-        const confirmMessage = direction === 'to_dynamic'
-            ? $t('knowledgeSource.migration.confirmToDynamic')
-            : $t('knowledgeSource.migration.confirmToStatic');
-
-        if (confirm(confirmMessage)) {
-            showStatus($t('knowledgeSource.migration.migrating'), 'loading-special');
-            try {
-                const result = await migrateKnowledge(direction);
-                showStatus(result.message, 'success');
-            } catch (e) {
-                showStatus(`${$t('knowledgeSource.migration.error')}: ${e.message}`, 'error');
-            }
-        }
-    }
-
-    onMount(() => {
-        // Start polling for logs as soon as the main control panel is mounted.
-        startLogPolling();
-    });
 </script>
 
 <div class="page-container">
@@ -355,47 +331,10 @@ async function resetFont() {
             </div>
 
             <div class="tab-content" class:hidden={activeTab !== 'directives'}>
-                <Card title={$t('knowledgeSource.title')}>
-                    <div class="group-label">{$t('knowledgeSource.modeSelection')}</div>
-                    <div class="radio-group">
-                        <label>
-                            <input type="radio" name="knowledge-mode" value='static_portrait' bind:group={$behaviorConfig.knowledge_source_mode}>
-                            {$t('knowledgeSource.modes.static.title')}
-                        </label>
-                        <label>
-                            <input type="radio" name="knowledge-mode" value='dynamic_learning' bind:group={$behaviorConfig.knowledge_source_mode}>
-                            {$t('knowledgeSource.modes.dynamic.title')}
-                        </label>
-                    </div>
-                    <div class="context-settings">
-                        {#if $behaviorConfig.knowledge_source_mode === 'static_portrait'}
-                            <p class="info">{$t('knowledgeSource.modes.static.description')}</p>
-                        {:else}
-                            <p class="info warning">{$t('knowledgeSource.modes.dynamic.description')}</p>
-                        {/if}
-                    </div>
-                    <div class="migration-section">
-                        <button class="action-btn-secondary" on:click={handleMigration}>
-                            {#if $behaviorConfig.knowledge_source_mode === 'dynamic_learning'}
-                                {$t('knowledgeSource.migration.toDynamicButton')}
-                            {:else}
-                                {$t('knowledgeSource.migration.toStaticButton')}
-                            {/if}
-                        </button>
-                        <p class="info">
-                            {#if $behaviorConfig.knowledge_source_mode === 'dynamic_learning'}
-                                {$t('knowledgeSource.migration.toDynamicInfo')}
-                            {:else}
-                                {$t('knowledgeSource.migration.toStaticInfo')}
-                            {/if}
-                        </p>
-                    </div>
-                </Card>
                 <KnowledgeEditor />
                 <Card title={$t('scopedPrompts.channels.title')}><ScopedPromptEditor type="channels" /></Card>
                 <Card title={$t('scopedPrompts.guilds.title')}><ScopedPromptEditor type="guilds" /></Card>
                 <RoleConfigEditor />
-                {#if $behaviorConfig.knowledge_source_mode === 'static_portrait'}
                 <Card title={$t('userPortrait.title')}>
                     <p class="info">{$t('userPortrait.info')}</p>
                     <div class="list-container">
@@ -413,7 +352,6 @@ async function resetFont() {
                     </div>
                     <button class="add-btn" on:click={addPersona}>{$t('userPortrait.add')}</button>
                 </Card>
-                {/if}
                 <Card title={$t('defaultBehavior.title')}>
                     <label for="bot-nickname">{$t('defaultBehavior.botNickname')}</label>
                     <input id="bot-nickname" type="text" placeholder={$t('defaultBehavior.botNicknamePlaceholder')} bind:value={$behaviorConfig.bot_nickname}>
@@ -700,19 +638,4 @@ async function resetFont() {
           margin-top: 2rem;
       }
     }
-.info.warning {
-    background-color: var(--warning-bg);
-    color: var(--warning-text);
-    padding: 0.75rem 1rem;
-    border-radius: 8px;
-    border: 1px solid var(--warning-border);
-}
-.migration-section {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-}
 </style>

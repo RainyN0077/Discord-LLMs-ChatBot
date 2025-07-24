@@ -329,7 +329,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 llm_provider = get_llm_provider(config)
                 try:
                     # First attempt: with tools
-                    tools = plugin_manager.get_all_tools(config)
+                    tools = plugin_manager.get_all_tools()
                     tool_functions = plugin_manager.get_all_tool_functions(message, config)
                     logger.info(f"Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
                     response_gen_with_tools = llm_provider.get_response_stream(

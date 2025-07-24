@@ -205,60 +205,36 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
 
     # --- New: Inject knowledge base content ---
     # 1. Inject World Book entries (Append Strategy)
-    behavior_config = bot_config.get("behavior", {})
-    knowledge_source_mode = behavior_config.get("knowledge_source_mode", "static_portrait")
-    
     all_wb_entries = []
     added_entry_ids = set()
 
-    # In dynamic mode, user-specific entries are already in the live portrait.
-    # So, we only fetch general, text-triggered entries here.
-    if knowledge_source_mode == 'dynamic_learning':
-        text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
-        for entry in text_triggered_entries:
-            # Only include entries NOT linked to a user to avoid redundancy
-            if not entry.get('linked_user_id'):
-                all_wb_entries.append(entry)
-                added_entry_ids.add(entry['id'])
-    else: # static_portrait mode keeps the original, comprehensive logic
-        # Gather all relevant user IDs: author, @mentions, and keyword mentions
-        relevant_user_ids = {str(message.author.id)}
-        for mentioned_user in message.mentions:
-            relevant_user_ids.add(str(mentioned_user.id))
-        
-        keyword_mentioned_ids = find_mentioned_users_by_keywords(final_text_content, user_personas)
-        relevant_user_ids.update(keyword_mentioned_ids)
+    # Gather all relevant user IDs: author, @mentions, and keyword mentions
+    relevant_user_ids = {str(message.author.id)}
+    for mentioned_user in message.mentions:
+        relevant_user_ids.add(str(mentioned_user.id))
+    
+    keyword_mentioned_ids = find_mentioned_users_by_keywords(final_text_content, user_personas)
+    relevant_user_ids.update(keyword_mentioned_ids)
 
-        # a. Load entries linked to users
-        for user_id in relevant_user_ids:
-            user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
-            for entry in user_entries:
-                if entry['id'] not in added_entry_ids:
-                    all_wb_entries.append(entry)
-                    added_entry_ids.add(entry['id'])
-
-        # b. Load entries triggered by keywords in the text
-        text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
-        for entry in text_triggered_entries:
+    # a. Load entries linked to users
+    for user_id in relevant_user_ids:
+        user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
+        for entry in user_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)
                 added_entry_ids.add(entry['id'])
 
+    # b. Load entries triggered by keywords in the text
+    text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+    for entry in text_triggered_entries:
+        # With knowledge_manager now returning full entries, this check is valid.
+        if entry['id'] not in added_entry_ids:
+            all_wb_entries.append(entry)
+            added_entry_ids.add(entry['id'])
+
     if all_wb_entries:
-        wb_lines = []
-        for entry in all_wb_entries:
-            try:
-                data = json.loads(entry['content'])
-                if isinstance(data, dict) and 'core_content' in data:
-                    wb_lines.append(f"- {data['core_content']} (Keywords: {entry['keywords']})")
-                else: # Is JSON but not our portrait format
-                    wb_lines.append(f"- {entry['content']} (Keywords: {entry['keywords']})")
-            except (json.JSONDecodeError, TypeError):
-                # Is plain text
-                wb_lines.append(f"- {entry['content']} (Keywords: {entry['keywords']})")
-        
-        if wb_lines:
-            request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data="\n".join(wb_lines)))
+        wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in all_wb_entries])
+        request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
 
     # --- End of new section ---
 

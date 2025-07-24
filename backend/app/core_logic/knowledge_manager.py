@@ -139,12 +139,12 @@ class KnowledgeManager:
             return cursor.rowcount > 0
  
      # World Book methods
-    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None, enabled: bool = True) -> int:
+    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None) -> int:
         with self.get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO world_book (keywords, content, linked_user_id, enabled) VALUES (?, ?, ?, ?)",
-                (keywords, content, linked_user_id, 1 if enabled else 0)
+                "INSERT INTO world_book (keywords, content, linked_user_id) VALUES (?, ?, ?)",
+                (keywords, content, linked_user_id)
             )
             conn.commit()
             return cursor.lastrowid
@@ -211,29 +211,6 @@ class KnowledgeManager:
                     break  # Move to the next entry once a keyword is matched
 
         return matched_entries
-
-    def find_user_ids_by_world_book_keyword(self, text: str) -> List[str]:
-        """
-        Finds all user IDs linked to world book entries whose keywords are present in the given text.
-        This is crucial for the 'Dynamic Learning Mode' to identify participants.
-        """
-        user_ids = set()
-        lower_text = text.lower()
-
-        with self.get_conn() as conn:
-            cursor = conn.cursor()
-            # Fetch entries that are enabled and have a linked user ID
-            cursor.execute("SELECT keywords, linked_user_id FROM world_book WHERE enabled = 1 AND linked_user_id IS NOT NULL")
-            entries = cursor.fetchall()
-
-        for entry in entries:
-            keywords = [k.strip().lower() for k in entry['keywords'].split(',') if k.strip()]
-            for keyword in keywords:
-                if keyword in lower_text:
-                    user_ids.add(entry['linked_user_id'])
-                    break # Move to the next entry
-        
-        return list(user_ids)
 
 # Singleton instance
 knowledge_manager = KnowledgeManager()
