@@ -139,12 +139,12 @@ class KnowledgeManager:
             return cursor.rowcount > 0
  
      # World Book methods
-    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None) -> int:
+    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None, source: Optional[str] = None) -> int:
         with self.get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO world_book (keywords, content, linked_user_id) VALUES (?, ?, ?)",
-                (keywords, content, linked_user_id)
+                "INSERT INTO world_book (keywords, content, linked_user_id, source) VALUES (?, ?, ?, ?)",
+                (keywords, content, linked_user_id, source)
             )
             conn.commit()
             return cursor.lastrowid

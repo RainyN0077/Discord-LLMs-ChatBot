@@ -94,7 +94,9 @@ class PluginManager:
                     functions['add_to_world_book'] = functools.partial(
                         original_func,
                         message=message,
-                        config=config
+                        config=config,
+                        user_id=str(message.author.id),
+                        user_name=message.author.name
                     )
             all_functions.update(functions)
         return all_functions

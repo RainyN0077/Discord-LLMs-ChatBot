@@ -93,7 +93,7 @@ class MemoryPlugin(BasePlugin):
                 
         return False
 
-    def add_to_memory(self, content: str, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
+    def add_to_memory(self, content: str, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None, **kwargs) -> str:
         """
         Adds a new piece of information to the long-term memory.
         """
@@ -131,7 +131,7 @@ class MemoryPlugin(BasePlugin):
             return [str(item).strip().lower() for item in data if str(item).strip()]
         return []
 
-    def add_to_world_book(self, keywords: str, content: str, subject_of_knowledge: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None) -> str:
+    def add_to_world_book(self, keywords: str, content: str, subject_of_knowledge: Optional[str] = None, message: Optional[discord.Message] = None, config: Optional[Dict[str, Any]] = None, user_id: Optional[str] = None, user_name: Optional[str] = None, **kwargs) -> str:
         """
         Adds a new entry to the world book, trying to link it to a user if a subject is provided.
         """
@@ -184,7 +184,8 @@ class MemoryPlugin(BasePlugin):
             entry_id = knowledge_manager.add_world_book_entry(
                 keywords=keywords,
                 content=content,
-                linked_user_id=linked_user_id
+                linked_user_id=linked_user_id,
+                source=f"由 {user_name} (ID: {user_id}) 添加" if user_id and user_name else "未知来源"
             )
             success_message = f"Successfully added to world book with ID: {entry_id}."
             final_message = f"{success_message} {user_search_log}".strip()

@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS world_book (
     keywords TEXT NOT NULL,
     content TEXT NOT NULL,
     enabled INTEGER NOT NULL DEFAULT 1,
-    linked_user_id TEXT
+    linked_user_id TEXT,
+    source TEXT
 );
 
 -- 2. 创建 memory 表
