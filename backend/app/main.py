@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from collections import deque
 import secrets
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 import discord
 from pathlib import Path
 
@@ -26,6 +26,7 @@ from .utils import _execute_http_request, _format_with_placeholders, setup_loggi
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from .core_logic.context_builder import format_user_message_for_llm
 from .core_logic.knowledge_manager import knowledge_manager
+from .llm_providers.factory import get_llm_provider
 
 logger = logging.getLogger(__name__)
 
@@ -317,8 +318,78 @@ async def trigger_plugin_endpoint(request: PluginTriggerRequest):
 @app.post("/api/debug/simulate", dependencies=[Depends(get_api_key)])
 async def simulate_debugger_run(request: DebuggerRequest):
     config = load_config()
-    # ... debugger logic ...
-    return {"message": "Debugger not fully implemented in this snippet."}
+
+    role_config = None
+    role_name = None
+    if request.role_id:
+        role_config = config.get("role_based_config", {}).get(request.role_id)
+        if role_config:
+            role_name = role_config.get("title")
+
+    active_directives_log: List[str] = []
+    specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(
+        config,
+        request.channel_id,
+        request.guild_id,
+        role_name,
+        role_config,
+    )
+
+    mock_author = MagicMock(spec=discord.Member)
+    mock_author.id = int(request.user_id)
+    mock_author.name = f"debug-user-{request.user_id}"
+    mock_author.display_name = mock_author.name
+    mock_author.roles = []
+
+    mock_channel = MagicMock(spec=discord.TextChannel)
+    mock_channel.id = int(request.channel_id)
+
+    mock_guild = None
+    if request.guild_id:
+        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild.id = int(request.guild_id)
+        mock_channel.guild = mock_guild
+
+    mock_message = MagicMock(spec=discord.Message)
+    mock_message.author = mock_author
+    mock_message.channel = mock_channel
+    mock_message.guild = mock_guild
+    mock_message.content = request.message_content
+    mock_message.clean_content = request.message_content
+    mock_message.mentions = []
+    mock_message.attachments = []
+    mock_message.reference = None
+
+    mock_bot = MagicMock(spec=discord.Client)
+    mock_bot.fetch_user = AsyncMock(return_value=mock_author)
+
+    system_prompt = await build_system_prompt(
+        mock_bot,
+        config,
+        specific_persona_prompt,
+        situational_prompt,
+        mock_message,
+        active_directives_log,
+    )
+    formatted_content = format_user_message_for_llm(mock_message, mock_bot, config, role_config)
+
+    llm_messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": formatted_content},
+    ]
+
+    llm_provider = get_llm_provider(config)
+    llm_response = ""
+    async for response_type, data in llm_provider.get_response_stream(llm_messages):
+        if response_type in ("partial", "final"):
+            llm_response = str(data)
+
+    return {
+        "generated_system_prompt": system_prompt,
+        "formatted_user_request": formatted_content,
+        "llm_response": llm_response,
+        "active_directives_log": active_directives_log,
+    }
 
 # --- Plugin-specific Endpoints ---
 
