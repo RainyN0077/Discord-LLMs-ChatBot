@@ -86,7 +86,7 @@
 
             <!-- 触发模式 -->
             <div class="form-group full-width">
-                <label id="trigger-mode-label">{$t('searchSettings.triggerMode.title')}</label>
+                <span id="trigger-mode-label" class="group-label">{$t('searchSettings.triggerMode.title')}</span>
                 <div class="radio-group" role="group" aria-labelledby="trigger-mode-label">
                     <label>
                         <input type="radio" value="command" bind:group={$searchConfig.trigger_mode} on:change={() => updatePlugin('trigger_mode', 'command')}>
@@ -202,6 +202,9 @@
         color: var(--text-light);
         font-weight: 500;
         margin-bottom: 0.5rem;
+    }
+    .group-label {
+        font-weight: 500;
     }
     .radio-group {
         display: flex;

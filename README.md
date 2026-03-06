@@ -77,6 +77,23 @@
     docker-compose up --build -d
     ```
 
+### ⚡ Windows One-Click Local Startup (PowerShell)
+
+If you prefer local development (without Docker), use the one-click scripts in `scripts/`:
+
+- Double-click: `scripts\start-dev.bat`
+- Or run in PowerShell:
+  ```powershell
+  ./scripts/start-dev.ps1
+  ```
+
+What it does automatically:
+- Creates `backend/.venv`
+- Installs backend dependencies from `backend/requirements.txt`
+- Installs frontend dependencies (if `frontend/node_modules` is missing)
+- Starts backend and frontend in separate PowerShell windows
+- Opens frontend URL in your browser (default: `http://localhost:5173`)
+
 3.  **Configure the bot:**
     - Open your web browser and navigate to `http://localhost:8080`.
     - Fill in all the required configurations, especially your **Discord Bot Token** and **LLM API Key**.
@@ -206,6 +223,23 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
     docker-compose up --build -d
     ```
     此命令会自动构建前后端镜像，并在后台启动服务。
+
+### ⚡ Windows 一键本地启动（PowerShell）
+
+如果你希望不使用 Docker，直接在本机一键启动前后端，可使用 `scripts/` 下的脚本：
+
+- 双击运行：`scripts\start-dev.bat`
+- 或在 PowerShell 执行：
+  ```powershell
+  ./scripts/start-dev.ps1
+  ```
+
+脚本会自动完成：
+- 创建 `backend/.venv` 虚拟环境
+- 安装后端依赖（`backend/requirements.txt`）
+- 自动安装前端依赖（当 `frontend/node_modules` 不存在时）
+- 分别在两个 PowerShell 窗口启动后端与前端
+- 自动打开前端地址（默认：`http://localhost:5173`），可直接进入管理界面
 
 3.  **配置机器人:**
     - 打开你的浏览器，访问 `http://localhost:8080`。
