@@ -163,6 +163,52 @@ def split_message(text: str, max_length: int = 2000) -> List[str]:
 def escape_content(text: str) -> str:
     return text.replace('[', '&#91;').replace(']', '&#93;')
 
+
+def matches_trigger_keywords(
+    message_content: str,
+    trigger_keywords: List[str],
+    match_mode: str = "contains",
+    case_sensitive: bool = False,
+) -> bool:
+    """
+    Returns whether the message content matches any configured trigger keyword.
+    Supported modes: contains, starts_with, exact, regex.
+    """
+    if not message_content or not trigger_keywords:
+        return False
+
+    mode = (match_mode or "contains").strip().lower()
+    content = message_content if case_sensitive else message_content.lower()
+
+    for keyword in trigger_keywords:
+        if not keyword:
+            continue
+        kw = str(keyword).strip()
+        if not kw:
+            continue
+
+        kw_for_match = kw if case_sensitive else kw.lower()
+
+        if mode == "starts_with":
+            if content.startswith(kw_for_match):
+                return True
+        elif mode == "exact":
+            if content == kw_for_match:
+                return True
+        elif mode == "regex":
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                if re.search(kw, message_content, flags=flags):
+                    return True
+            except re.error:
+                logger.warning("Invalid trigger keyword regex skipped: %s", kw)
+        else:
+            # Default mode: contains
+            if kw_for_match in content:
+                return True
+
+    return False
+
 async def download_image(url: str, max_size_mb: int = 100) -> bytes | None:
     """
     安全地下载一张图片，增加了超时和大小限制。

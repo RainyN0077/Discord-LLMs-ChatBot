@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
-from ..utils import escape_content
+from ..utils import escape_content, matches_trigger_keywords
 from .knowledge_manager import knowledge_manager
 
 # --- Constants for structured prompts ---
@@ -20,6 +20,8 @@ TOOL_CONTEXT_TPL = "[来自工具的额外上下文]\n<tool_output>\n{data}\n</t
 MEMORY_CONTEXT_TPL = "[长期记忆]\n<knowledge>\n{data}\n</knowledge>"
 WORLDBOOK_CONTEXT_TPL = "[相关世界设定]\n<knowledge>\n{data}\n</knowledge>"
 USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
+DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
+DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
 
 async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[int]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
@@ -43,6 +45,8 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
         fetched_history = [msg async for msg in message.channel.history(limit=min(msg_limit * 2, 100), before=message, after=cutoff_timestamp)]
     elif context_mode == 'memory':
         trigger_keywords = bot_config.get("trigger_keywords", [])
+        trigger_match_mode = bot_config.get("trigger_match_mode", "contains")
+        trigger_case_sensitive = bool(bot_config.get("trigger_case_sensitive", False))
         potential_history = [msg async for msg in message.channel.history(limit=max(msg_limit * 3, 50), before=message, after=cutoff_timestamp)]
         relevant_messages, processed_ids = [], set()
         for hist_msg in potential_history:
@@ -64,7 +68,12 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                     replies_to_bot = hist_msg.reference.resolved.author == client.user
             # --- [修复结束] ---
             
-            has_keyword = any(k.lower() in hist_msg.content.lower() for k in trigger_keywords)
+            has_keyword = matches_trigger_keywords(
+                hist_msg.content,
+                trigger_keywords,
+                match_mode=trigger_match_mode,
+                case_sensitive=trigger_case_sensitive
+            )
 
             if is_bot_msg or mentions_bot or replies_to_bot or has_keyword:
                 relevant_messages.append(hist_msg)
@@ -233,8 +242,25 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
             added_entry_ids.add(entry['id'])
 
     if all_wb_entries:
-        wb_content = "\n".join([f"- {entry['content']} (Keywords: {entry['keywords']})" for entry in all_wb_entries])
-        request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
+        max_entries = int(bot_config.get("world_book_context_max_entries", DEFAULT_WORLDBOOK_MAX_ENTRIES))
+        char_limit = int(bot_config.get("world_book_context_char_limit", DEFAULT_WORLDBOOK_CHAR_LIMIT))
+        if max_entries <= 0:
+            max_entries = DEFAULT_WORLDBOOK_MAX_ENTRIES
+        if char_limit <= 0:
+            char_limit = DEFAULT_WORLDBOOK_CHAR_LIMIT
+
+        lines = []
+        total_chars = 0
+        for entry in all_wb_entries[:max_entries]:
+            line = f"- {entry['content']} (Keywords: {entry['keywords']})"
+            if total_chars + len(line) > char_limit:
+                break
+            lines.append(line)
+            total_chars += len(line)
+
+        if lines:
+            wb_content = "\n".join(lines)
+            request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
 
     # --- End of new section ---
 

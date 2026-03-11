@@ -1,4 +1,5 @@
 # backend/plugins/search.py
+import asyncio
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 import discord
@@ -17,13 +18,16 @@ class SearchPlugin(BasePlugin):
         super().__init__(plugin_config, llm_provider_func)
         self.enabled = self.plugin_config.get("enabled", False)
         self.api_key = self.plugin_config.get("api_key")
+        self.api_url = self.plugin_config.get("api_url")
         
         if self.enabled and not self.api_key:
             logger.warning("SearchPlugin is enabled but Tavily API key is missing.")
             self.enabled = False
             return
-            
-        self.client = TavilyClient(api_key=self.api_key)
+
+        self.client = None
+        if self.enabled:
+            self.client = TavilyClient(api_key=self.api_key, api_base_url=self.api_url)
         
         # 新增：读取触发模式和对应的触发器
         self.trigger_mode = self.plugin_config.get("trigger_mode", "command")
@@ -31,7 +35,12 @@ class SearchPlugin(BasePlugin):
         self.keywords = self.plugin_config.get("keywords", [])
 
         self.search_depth = self.plugin_config.get("search_depth", "basic")
-        self.max_results = self.plugin_config.get("max_results", 3)
+        try:
+            self.max_results = max(1, int(self.plugin_config.get("max_results", 3)))
+        except (TypeError, ValueError):
+            self.max_results = 3
+        self.include_date = bool(self.plugin_config.get("include_date", True))
+        self.compression_strategy = self.plugin_config.get("compression_strategy", "none")
         self.include_domains = self.plugin_config.get("include_domains", [])
         self.exclude_domains = self.plugin_config.get("exclude_domains", [])
 
@@ -67,15 +76,14 @@ class SearchPlugin(BasePlugin):
 
         try:
             logger.info(f"Performing Tavily search for query: '{query}'")
-            # Using async client would be better if Tavily supported it in their python lib.
-            # For now, we run the sync search in a thread to avoid blocking.
-            search_result = await discord.utils.async_dispatch(
+            # Tavily client is sync; move it off the event loop.
+            search_result = await asyncio.to_thread(
                 self.client.search,
-                query,
+                query=query,
                 search_depth=self.search_depth,
                 max_results=self.max_results,
                 include_domains=self.include_domains,
-                exclude_domains=self.exclude_domains
+                exclude_domains=self.exclude_domains,
             )
         except Exception as e:
             logger.error(f"Tavily API error: {e}", exc_info=True)
@@ -98,8 +106,21 @@ class SearchPlugin(BasePlugin):
         """
         snippets = []
         for result in search_result.get("results", []):
-            snippet = f"- **{result.get('title', 'No Title')}** ([Source]({result.get('url', '#')}))\n" \
-                      f"  - Content: {result.get('content', 'No content available.')}"
+            content = result.get("content", "No content available.")
+
+            if self.compression_strategy == "truncate" and len(content) > 320:
+                content = content[:320].rstrip() + "..."
+
+            published = ""
+            if self.include_date:
+                published_raw = result.get("published_date") or result.get("date")
+                if published_raw:
+                    published = f"\n  - Date: {published_raw}"
+
+            snippet = (
+                f"- **{result.get('title', 'No Title')}** ([Source]({result.get('url', '#')}))\n"
+                f"  - Content: {content}{published}"
+            )
             snippets.append(snippet)
         
         if not snippets:

@@ -30,8 +30,10 @@
     function updatePlugin(field, value) {
         pluginsConfig.update(plugins => {
             const currentSearch = plugins.search || {};
-            plugins.search = { ...currentSearch, [field]: value };
-            return plugins;
+            return {
+                ...plugins,
+                search: { ...currentSearch, [field]: value }
+            };
         });
     }
 
@@ -56,9 +58,9 @@
     }
 </script>
 
-<fieldset disabled class="disabled-plugin-container">
+<fieldset class="search-plugin-container">
+  <div class="search-layout">
     <Card title={$t('Tavily API')} theme="dark-theme">
-        <p class="warning-message">该组件存在严重问题，现版本不可用</p>
         <div class="plugin-grid">
             <div class="form-group">
                 <label for="search-api-key">{$t('searchSettings.apiKey')}</label>
@@ -73,7 +75,6 @@
     </Card>
 
     <Card title={$t('searchSettings.config.title')} theme="dark-theme">
-        <p class="warning-message">该组件存在严重问题，现版本不可用</p>
         <div class="plugin-grid">
             <!-- 启用开关 -->
             <div class="form-group">
@@ -89,11 +90,11 @@
                 <span id="trigger-mode-label" class="group-label">{$t('searchSettings.triggerMode.title')}</span>
                 <div class="radio-group" role="group" aria-labelledby="trigger-mode-label">
                     <label>
-                        <input type="radio" value="command" bind:group={$searchConfig.trigger_mode} on:change={() => updatePlugin('trigger_mode', 'command')}>
+                        <input type="radio" value="command" checked={$searchConfig.trigger_mode === 'command'} on:change={() => updatePlugin('trigger_mode', 'command')}>
                         {$t('searchSettings.triggerMode.command')}
                     </label>
                     <label>
-                        <input type="radio" value="keyword" bind:group={$searchConfig.trigger_mode} on:change={() => updatePlugin('trigger_mode', 'keyword')}>
+                        <input type="radio" value="keyword" checked={$searchConfig.trigger_mode === 'keyword'} on:change={() => updatePlugin('trigger_mode', 'keyword')}>
                         {$t('searchSettings.triggerMode.keyword')}
                     </label>
                 </div>
@@ -135,7 +136,6 @@
     </Card>
 
     <Card title={$t('searchSettings.blacklist.title')} theme="dark-theme">
-        <p class="warning-message">该组件存在严重问题，现版本不可用</p>
         <div class="list-container">
             {#if $searchConfig.exclude_domains && $searchConfig.exclude_domains.length > 0}
                 <div class="list-header">
@@ -161,24 +161,25 @@
             <button class="add-btn" on:click={addDomain}>{$t('searchSettings.blacklist.add')}</button>
         </div>
     </Card>
+  </div>
 </fieldset>
 
 <style>
-    .disabled-plugin-container {
-        filter: grayscale(80%);
-        opacity: 0.6;
+    .search-plugin-container {
+        border: 0;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
     }
 
-    .warning-message {
-        color: #e53935; /* A strong red */
-        font-weight: 500;
-        text-align: center;
-        width: 100%;
-        margin-bottom: 1rem;
-        padding: 0.5rem;
-        background-color: rgba(229, 57, 53, 0.15);
-        border: 1px solid rgba(229, 57, 53, 0.3);
-        border-radius: 4px;
+    .search-layout {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .search-layout :global(.card:last-child) {
+        grid-column: 1 / -1;
     }
 
     .plugin-grid {
@@ -254,5 +255,11 @@
         margin-top: 1.5rem;
         border-top: 1px solid #444654;
         padding-top: 1.5rem;
+    }
+
+    @media (max-width: 1000px) {
+        .search-layout {
+            grid-template-columns: 1fr;
+        }
     }
 </style>

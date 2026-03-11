@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 import discord
 from discord.ext import commands
 
-from .utils import TokenCalculator, download_image, split_message, transform_memories_for_prompt
+from .utils import TokenCalculator, download_image, split_message, transform_memories_for_prompt, matches_trigger_keywords
 from .usage_tracker import usage_tracker
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt, get_highest_configured_role
 from .core_logic.context_builder import build_context_history, format_user_message_for_llm
@@ -190,6 +190,92 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     plugin_manager = PluginManager(config.get("plugins", {}), get_llm_response)
     knowledge_manager.init_db() # Ensure DB is ready
     usage_manager = UsageManager(token_calculator)
+    auto_message_counts: Dict[int, int] = {}
+    repeat_streaks: Dict[int, Dict[str, Any]] = {}
+
+    def _reset_channel_automation_state(channel_id: int) -> None:
+        auto_message_counts[channel_id] = 0
+        repeat_streaks.pop(channel_id, None)
+
+    def _track_auto_interject(message: discord.Message, bot_config: Dict[str, Any]) -> bool:
+        if not bot_config.get("auto_interject_enabled", False):
+            return False
+
+        try:
+            interval = max(1, int(bot_config.get("auto_interject_interval", 20)))
+            min_length = max(0, int(bot_config.get("auto_interject_min_length", 0)))
+        except (TypeError, ValueError):
+            interval = 20
+            min_length = 0
+
+        content = (message.content or "").strip()
+        if len(content) < min_length:
+            return False
+
+        channel_id = message.channel.id
+        auto_message_counts[channel_id] = auto_message_counts.get(channel_id, 0) + 1
+        return auto_message_counts[channel_id] >= interval
+
+    def _normalize_repeat_content(message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, str]]:
+        raw_content = message.content or ""
+        trim_whitespace = bool(bot_config.get("repeat_parrot_trim_whitespace", True))
+        case_sensitive = bool(bot_config.get("repeat_parrot_case_sensitive", False))
+
+        try:
+            min_length = max(0, int(bot_config.get("repeat_parrot_min_length", 2)))
+        except (TypeError, ValueError):
+            min_length = 2
+
+        comparable_content = raw_content.strip() if trim_whitespace else raw_content
+        if len(comparable_content) < min_length:
+            return None
+
+        normalized = comparable_content if case_sensitive else comparable_content.lower()
+        if not normalized:
+            return None
+
+        return comparable_content, normalized
+
+    def _track_repeat_parrot(message: discord.Message, bot_config: Dict[str, Any]) -> Optional[str]:
+        if not bot_config.get("repeat_parrot_enabled", False):
+            return None
+
+        normalized_content = _normalize_repeat_content(message, bot_config)
+        channel_id = message.channel.id
+        if not normalized_content:
+            repeat_streaks.pop(channel_id, None)
+            return None
+
+        display_content, comparable_content = normalized_content
+        previous_state = repeat_streaks.get(channel_id)
+
+        if previous_state and previous_state.get("normalized") == comparable_content:
+            previous_state["count"] += 1
+            previous_state["user_ids"].add(str(message.author.id))
+            state = previous_state
+        else:
+            state = {
+                "normalized": comparable_content,
+                "content": display_content,
+                "count": 1,
+                "user_ids": {str(message.author.id)},
+                "parroted": False,
+            }
+            repeat_streaks[channel_id] = state
+
+        try:
+            threshold = max(2, int(bot_config.get("repeat_parrot_threshold", 3)))
+        except (TypeError, ValueError):
+            threshold = 3
+
+        require_multiple_users = bool(bot_config.get("repeat_parrot_require_multiple_users", True))
+        has_required_users = len(state["user_ids"]) >= 2 if require_multiple_users else True
+
+        if not state["parroted"] and state["count"] >= threshold and has_required_users:
+            state["parroted"] = True
+            return state["content"]
+
+        return None
 
     @bot.event
     async def on_ready():
@@ -203,6 +289,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         # --- [BUG修复] 将配置加载移到函数顶部 ---
         # 确保在任何需要配置的操作之前加载它
         config = load_bot_config()
+        auto_interject_triggered = _track_auto_interject(message, config)
+        repeat_parrot_content = _track_repeat_parrot(message, config)
         
         # 插件处理
         plugin_result = await plugin_manager.process_message(message, config)
@@ -215,15 +303,32 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
         # --- [逻辑修正] 先检查触发条件，再获取锁 ---
         trigger_keywords = config.get("trigger_keywords", [])
+        trigger_match_mode = config.get("trigger_match_mode", "contains")
+        trigger_case_sensitive = bool(config.get("trigger_case_sensitive", False))
         is_mentioned = bot.user in message.mentions
         is_reply_to_bot = (message.reference and
                            isinstance(message.reference.resolved, discord.Message) and
                            message.reference.resolved.author == bot.user)
-        has_trigger_keyword = any(keyword.lower() in message.content.lower() for keyword in trigger_keywords)
+        has_trigger_keyword = matches_trigger_keywords(
+            message.content,
+            trigger_keywords,
+            match_mode=trigger_match_mode,
+            case_sensitive=trigger_case_sensitive
+        )
+        normal_triggered = is_mentioned or is_reply_to_bot or has_trigger_keyword
+
+        if not normal_triggered and repeat_parrot_content:
+            await message.channel.send(repeat_parrot_content)
+            logger.info(f"Repeat parrot triggered in channel {message.channel.id} after repeated content.")
+            _reset_channel_automation_state(message.channel.id)
+            return
 
         # 如果不是触发消息，则直接忽略
-        if not (is_mentioned or is_reply_to_bot or has_trigger_keyword):
+        if not (normal_triggered or auto_interject_triggered):
             return
+
+        if auto_interject_triggered and not normal_triggered:
+            logger.info(f"Auto interject triggered in channel {message.channel.id} after configured interval.")
 
         # --- 分布式锁逻辑 ---
         # 只有在确认消息是发给bot时，才进行加锁操作
@@ -290,6 +395,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
             quota_error = await usage_manager.check_pre_request_quota(message.author.id, role_config, user_usage, estimated_input_tokens)
             if quota_error:
+                _reset_channel_automation_state(message.channel.id)
                 await message.reply(quota_error, mention_author=False)
                 return
 
@@ -361,6 +467,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     logger.error(f"Response error for user '{message.author.name}': {error_reason}")
                     error_msg_template = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
                     final_error_msg = error_msg_template.format(reason=error_reason)
+                    _reset_channel_automation_state(message.channel.id)
                     if response_message:
                         await response_message.edit(content=final_error_msg)
                     else:
@@ -381,6 +488,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                             await message.reply(chunk, mention_author=False)
                         elif i > 0:
                             await message.channel.send(chunk)
+
+                _reset_channel_automation_state(message.channel.id)
 
             # --- Token Calculation and Usage Recording ---
             if usage_data:
@@ -416,6 +525,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             # [SECURITY] Do not leak detailed exception info to the user.
             # The {reason} placeholder is now only populated for known, safe error types.
             error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
+            _reset_channel_automation_state(message.channel.id)
             await message.reply(error_msg, mention_author=False)
     
     try:

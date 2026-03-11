@@ -85,6 +85,8 @@ class PluginManager:
                     original_func = functions['add_to_memory']
                     functions['add_to_memory'] = functools.partial(
                         original_func,
+                        message=message,
+                        config=config,
                         user_id=str(message.author.id),
                         user_name=message.author.name
                     )

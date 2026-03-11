@@ -9,10 +9,23 @@ const defaultConfig = {
     llm_provider: 'openai', 
     api_key: '', 
     base_url: '', 
+    openai_base_url: '',
+    anthropic_base_url: '',
     model_name: 'gpt-4o', 
     system_prompt: '', 
     blocked_prompt_response: '',
     trigger_keywords: [],
+    trigger_match_mode: 'contains',
+    trigger_case_sensitive: false,
+    auto_interject_enabled: false,
+    auto_interject_interval: 20,
+    auto_interject_min_length: 0,
+    repeat_parrot_enabled: false,
+    repeat_parrot_threshold: 3,
+    repeat_parrot_case_sensitive: false,
+    repeat_parrot_trim_whitespace: true,
+    repeat_parrot_min_length: 2,
+    repeat_parrot_require_multiple_users: true,
     stream_response: true, 
     user_personas: {},
     role_based_config: {},
@@ -32,6 +45,8 @@ export const coreConfig = writable({
     llm_provider: 'openai',
     api_key: '',
     base_url: '',
+    openai_base_url: '',
+    anthropic_base_url: '',
     model_name: 'gpt-4o',
     api_secret_key: ''
 });
@@ -41,6 +56,17 @@ export const behaviorConfig = writable({
     system_prompt: '',
     blocked_prompt_response: '',
     trigger_keywords: [],
+    trigger_match_mode: 'contains',
+    trigger_case_sensitive: false,
+    auto_interject_enabled: false,
+    auto_interject_interval: 20,
+    auto_interject_min_length: 0,
+    repeat_parrot_enabled: false,
+    repeat_parrot_threshold: 3,
+    repeat_parrot_case_sensitive: false,
+    repeat_parrot_trim_whitespace: true,
+    repeat_parrot_min_length: 2,
+    repeat_parrot_require_multiple_users: true,
     stream_response: true,
     memory_dedup_threshold: 0.0,
     world_book_dedup_threshold: 0.0
@@ -130,6 +156,8 @@ export async function fetchConfig() {
             llm_provider: mergedConfig.llm_provider,
             api_key: mergedConfig.api_key,
             base_url: mergedConfig.base_url,
+            openai_base_url: mergedConfig.openai_base_url || mergedConfig.base_url || '',
+            anthropic_base_url: mergedConfig.anthropic_base_url || '',
             model_name: mergedConfig.model_name,
             api_secret_key: mergedConfig.api_secret_key
         });
@@ -138,6 +166,17 @@ export async function fetchConfig() {
             system_prompt: mergedConfig.system_prompt,
             blocked_prompt_response: mergedConfig.blocked_prompt_response,
             trigger_keywords: mergedConfig.trigger_keywords,
+            trigger_match_mode: mergedConfig.trigger_match_mode || 'contains',
+            trigger_case_sensitive: !!mergedConfig.trigger_case_sensitive,
+            auto_interject_enabled: !!mergedConfig.auto_interject_enabled,
+            auto_interject_interval: mergedConfig.auto_interject_interval ?? 20,
+            auto_interject_min_length: mergedConfig.auto_interject_min_length ?? 0,
+            repeat_parrot_enabled: !!mergedConfig.repeat_parrot_enabled,
+            repeat_parrot_threshold: mergedConfig.repeat_parrot_threshold ?? 3,
+            repeat_parrot_case_sensitive: !!mergedConfig.repeat_parrot_case_sensitive,
+            repeat_parrot_trim_whitespace: mergedConfig.repeat_parrot_trim_whitespace !== false,
+            repeat_parrot_min_length: mergedConfig.repeat_parrot_min_length ?? 2,
+            repeat_parrot_require_multiple_users: mergedConfig.repeat_parrot_require_multiple_users !== false,
             stream_response: mergedConfig.stream_response,
             memory_dedup_threshold: mergedConfig.memory_dedup_threshold || 0.0,
             world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold || 0.0
@@ -182,6 +221,9 @@ export async function saveConfig() {
             return { ...p, value };
         })
     };
+
+    // Backward compatibility: keep legacy base_url aligned with OpenAI custom endpoint.
+    finalConfig.base_url = finalConfig.openai_base_url || '';
 
     // Process user_personas to convert trigger_keywords from string to array
     if (finalConfig.user_personas) {

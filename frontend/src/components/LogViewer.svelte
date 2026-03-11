@@ -8,9 +8,12 @@
 
     let logLevelFilter = 'ALL';
     const logLevels = ['ALL', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'];
+    const LOG_LINE_LIMIT_OPTIONS = [200, 500, 1000, 2000];
     let autoScroll = true;
     let logOutputElement;
     let logInterval;
+    let renderedLogLimit = 1000;
+    let hiddenLogCount = 0;
     
     // The 'sv-SE' locale is a trick to get the YYYY-MM-DD format easily.
     const formatTimestamp = (utcString, timeZone) => {
@@ -34,7 +37,11 @@
     };
     
     $: parsedLogs = (($rawLogs, $timezoneStore), () => {
-        return ($rawLogs || '').split('\n').filter(line => line.trim() !== '').map(line => {
+        const allLines = ($rawLogs || '').split('\n').filter(line => line.trim() !== '');
+        hiddenLogCount = Math.max(0, allLines.length - renderedLogLimit);
+        const visibleLines = hiddenLogCount > 0 ? allLines.slice(-renderedLogLimit) : allLines;
+
+        return visibleLines.map(line => {
             // Regex for ISO 8601 format: 2025-07-21T06:46:12.067Z
             const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
             const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
@@ -62,6 +69,15 @@
     $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
 
     onMount(() => {
+        try {
+            const savedLimit = Number(localStorage.getItem('logViewer.maxLines'));
+            if (LOG_LINE_LIMIT_OPTIONS.includes(savedLimit)) {
+                renderedLogLimit = savedLimit;
+            }
+        } catch (e) {
+            console.warn('Failed to restore logViewer.maxLines from localStorage', e);
+        }
+
         const getLogs = async () => {
             try {
                 const logsText = await fetchLogs();
@@ -74,6 +90,10 @@
         getLogs();
         logInterval = setInterval(getLogs, 5000);
     });
+
+    $: if (typeof window !== 'undefined' && LOG_LINE_LIMIT_OPTIONS.includes(renderedLogLimit)) {
+        localStorage.setItem('logViewer.maxLines', String(renderedLogLimit));
+    }
 
     onDestroy(() => {
         if (logInterval) clearInterval(logInterval);
@@ -102,7 +122,28 @@
                 <input type="checkbox" bind:checked={autoScroll}>
                 <span class="slider"></span>{$t('logViewer.autoscroll')}
             </label>
+            <label class="line-limit-control">
+                <span>{$t('logViewer.maxLines')}:</span>
+                <select
+                    value={renderedLogLimit}
+                    on:change={(e) => {
+                        const next = Number(e.target.value);
+                        if (LOG_LINE_LIMIT_OPTIONS.includes(next)) {
+                            renderedLogLimit = next;
+                        }
+                    }}
+                >
+                    {#each LOG_LINE_LIMIT_OPTIONS as option}
+                        <option value={option}>{option}</option>
+                    {/each}
+                </select>
+            </label>
         </div>
+        {#if hiddenLogCount > 0}
+            <div class="log-limit-note">
+                {$t('logViewer.limitNotice', { limit: renderedLogLimit, hidden: hiddenLogCount })}
+            </div>
+        {/if}
         <div class="log-output-wrapper">
             <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.originalLine + i)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{'\n'}{/each}</code></pre>
         </div>
@@ -117,22 +158,28 @@
     .right-panel {
         display: flex;
         flex-direction: column;
-        height: 100%;
-        gap: 2rem;
+        height: clamp(620px, 82vh, 920px);
+        max-height: calc(100vh - 2rem);
+        gap: 1rem;
     }
     
     .log-section {
-        height: 60vh;
+        min-height: 320px;
         display: flex;
+        flex: 1 1 auto;
         flex-direction: column;
-        background-color: var(--card-bg);
-        border-radius: 12px;
-        padding: 1rem 1.5rem;
+        background:
+            linear-gradient(160deg, rgba(31, 139, 214, .06), transparent 36%),
+            var(--card-bg);
+        border-radius: 14px;
+        padding: 1rem 1.15rem;
         box-shadow: var(--shadow);
+        border: 1px solid rgba(15, 23, 42, .06);
     }
     
     .usage-section {
-        height: 40vh;
+        flex: 1 1 40%;
+        min-height: 260px;
     }
     
     h2 {
@@ -154,6 +201,10 @@
         display: flex;
         gap: 0.5rem;
         align-items: center;
+        background: rgba(15, 23, 42, .04);
+        border: 1px solid rgba(15, 23, 42, .08);
+        border-radius: 12px;
+        padding: .35rem .45rem;
     }
     
     .log-filter-group span {
@@ -162,15 +213,16 @@
     }
     
     .log-filter-group button {
-        background: #f0f2f5;
+        background: transparent;
         color: #555;
-        padding: 0.3rem 0.8rem;
+        padding: 0.35rem 0.75rem;
         font-size: 0.85rem;
-        border: 1px solid var(--border-color);
+        border: 1px solid transparent;
+        box-shadow: none;
     }
     
     .log-filter-group button.active {
-        background-color: var(--primary-color);
+        background: linear-gradient(135deg, var(--primary-color), #166ea9);
         color: #fff;
         border-color: var(--primary-color);
     }
@@ -182,6 +234,26 @@
         background-color: #1e1e1e;
         border-radius: 8px;
         position: relative;
+    }
+
+    .log-limit-note {
+        color: var(--text-light);
+        font-size: 0.82rem;
+        margin: -.2rem 0 .6rem 0;
+    }
+
+    .line-limit-control {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        color: var(--text-light);
+        font-size: .9rem;
+    }
+
+    .line-limit-control select {
+        min-width: 92px;
+        padding: .25rem .45rem;
+        font-size: .85rem;
     }
     
     .log-output-wrapper pre {
@@ -230,11 +302,29 @@
     
     @media (max-width: 1400px) {
         .right-panel {
-            flex-direction: column;
+            height: clamp(520px, 72vh, 760px);
+            max-height: calc(100vh - 3rem);
         }
-        
+    }
+
+    @media (max-width: 900px) {
+        .right-panel {
+            height: clamp(420px, 60vh, 620px);
+            max-height: calc(100vh - 4rem);
+            gap: .75rem;
+        }
+
+        .log-section {
+            min-height: 240px;
+            padding: .8rem .85rem;
+        }
+
         .usage-section {
-            flex: 0 0 300px;
+            min-height: 180px;
+        }
+
+        .log-controls {
+            margin-bottom: .6rem;
         }
     }
 </style>

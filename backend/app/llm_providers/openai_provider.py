@@ -15,7 +15,8 @@ class OpenAIProvider(LLMProvider):
     """
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.client = openai.AsyncOpenAI(api_key=self.api_key, base_url=self.base_url)
+        base_url = config.get("openai_base_url") or self.base_url
+        self.client = openai.AsyncOpenAI(api_key=self.api_key, base_url=base_url)
 
     def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Dict[str, Any]]:
         """

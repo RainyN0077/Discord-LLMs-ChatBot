@@ -1,6 +1,7 @@
 import sqlite3
 import os
 import glob
+import re
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
@@ -187,28 +188,88 @@ class KnowledgeManager:
 
     def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
         """
-        Finds all world book entries whose keywords are present in the given text.
-        This implementation iterates through all enabled entries and performs a case-insensitive check for each keyword.
+        Finds enabled world book entries whose keywords are present in the given text.
+        Query strategy:
+        1) Use FTS5 to pre-filter candidates quickly.
+        2) Verify each candidate by case-insensitive substring match on configured keywords.
+        3) Fallback to full scan if FTS fails.
         """
-        matched_entries = []
-        added_entry_ids = set()  # To prevent adding the same entry multiple times
+        lower_text = (text or "").lower()
+        if not lower_text.strip():
+            return []
 
+        query_tokens = self._extract_search_tokens(lower_text)
+        if not query_tokens:
+            return []
+
+        try:
+            candidates = self._find_world_book_candidates_via_fts(query_tokens)
+        except sqlite3.Error:
+            candidates = self._find_world_book_candidates_full_scan()
+
+        return self._filter_keyword_matches(candidates, lower_text)
+
+    def _extract_search_tokens(self, text: str) -> List[str]:
+        """
+        Extract search tokens for FTS query from user text.
+        Keep CJK and latin word-like chunks. Ignore very short tokens to reduce noise.
+        """
+        raw_tokens = re.findall(r"[0-9A-Za-z_\u4e00-\u9fff]+", text)
+        deduped = []
+        seen = set()
+        for token in raw_tokens:
+            t = token.strip().lower()
+            if not t:
+                continue
+            if len(t) < 2:
+                continue
+            if t in seen:
+                continue
+            seen.add(t)
+            deduped.append(t)
+            if len(deduped) >= 12:
+                break
+        return deduped
+
+    def _find_world_book_candidates_via_fts(self, query_tokens: List[str]) -> List[Dict[str, Any]]:
+        if not query_tokens:
+            return []
+
+        # Quote each token and OR them to broaden recall.
+        # Example: "tokyo" OR "japan" OR "travel"
+        match_query = " OR ".join(f'"{token}"' for token in query_tokens)
+        with self.get_conn() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT wb.id, wb.keywords, wb.content
+                FROM world_book wb
+                JOIN world_book_fts fts ON wb.id = fts.rowid
+                WHERE wb.enabled = 1
+                  AND world_book_fts MATCH ?
+                """,
+                (match_query,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def _find_world_book_candidates_full_scan(self) -> List[Dict[str, Any]]:
         with self.get_conn() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id, keywords, content FROM world_book WHERE enabled = 1")
-            enabled_entries = [dict(row) for row in cursor.fetchall()]
+            return [dict(row) for row in cursor.fetchall()]
 
-        lower_text = text.lower()
+    def _filter_keyword_matches(self, entries: List[Dict[str, Any]], lower_text: str) -> List[Dict[str, Any]]:
+        matched_entries = []
+        added_entry_ids = set()
 
-        for entry in enabled_entries:
-            keywords = [k.strip().lower() for k in entry['keywords'].split(',') if k.strip()]
+        for entry in entries:
+            keywords = [k.strip().lower() for k in entry.get("keywords", "").split(",") if k.strip()]
             for keyword in keywords:
                 if keyword in lower_text:
-                    if entry['id'] not in added_entry_ids:
-                        # Return the full entry object to ensure the 'id' is available downstream.
+                    if entry["id"] not in added_entry_ids:
                         matched_entries.append(entry)
-                        added_entry_ids.add(entry['id'])
-                    break  # Move to the next entry once a keyword is matched
+                        added_entry_ids.add(entry["id"])
+                    break
 
         return matched_entries
 

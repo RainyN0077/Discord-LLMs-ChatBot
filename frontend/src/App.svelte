@@ -65,24 +65,29 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
 
     .lang-switcher {
         position: fixed;
-        top: 1rem;
-        right: 1rem;
+        top: .9rem;
+        right: .9rem;
         display: flex;
         gap: .5rem;
-        background-color: var(--card-bg);
-        padding: .5rem;
-        border-radius: 8px;
+        background-color: rgba(255, 255, 255, .86);
+        padding: .4rem;
+        border-radius: 12px;
         box-shadow: var(--shadow);
+        border: 1px solid rgba(15, 23, 42, .08);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
         z-index: 1000;
     }
     .lang-switcher button {
         background-color: transparent;
         color: var(--text-light);
         padding: .5rem 1rem;
+        box-shadow: none;
     }
     .lang-switcher button.active {
-        color: var(--primary-color);
+        color: #fff;
         font-weight: 700;
+        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
     }
 
     .save-footer {
@@ -94,8 +99,8 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
         justify-content: flex-end;
         align-items: center;
         gap: 1.5rem;
-        padding: 1rem 2rem;
-        background: rgba(255, 255, 255, 0.8);
+        padding: .85rem clamp(1rem, 2.4vw, 2rem);
+        background: rgba(255, 255, 255, 0.86);
         -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
         border-top: 1px solid var(--border-color);
@@ -116,29 +121,63 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
         margin: 0;
         padding: 0.75rem 1.25rem;
         text-align: left;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        box-shadow: var(--shadow-soft);
     }
 
     .status.success {
         background-color: var(--success-bg);
         color: var(--success-text);
+        border-color: rgba(0, 121, 107, .18);
     }
     .status.error {
         background-color: var(--error-bg);
         color: var(--error-text);
+        border-color: rgba(194, 24, 91, .18);
     }
     .status.info,
     .status.loading-special {
         background-color: var(--info-bg);
         color: var(--info-text);
+        border-color: rgba(2, 119, 189, .18);
     }
 
     .save-button {
         font-size: 1.1rem;
-        padding: 0.8rem 2rem;
-        background-color: var(--save-color);
+        padding: .72rem 1.4rem;
+        background: linear-gradient(135deg, var(--save-color), #1a9156);
         color: #fff;
     }
     .save-button:hover:not(:disabled) {
         background-color: var(--save-hover);
+    }
+
+    @media (max-width: 880px) {
+        .lang-switcher {
+            top: .65rem;
+            right: .65rem;
+        }
+
+        .lang-switcher button {
+            padding: .45rem .75rem;
+            font-size: .9rem;
+        }
+
+        .save-footer {
+            justify-content: space-between;
+            gap: .75rem;
+            padding: .7rem 1rem;
+        }
+
+        .status {
+            font-size: .88rem;
+            padding: .6rem .85rem;
+        }
+
+        .save-button {
+            font-size: .95rem;
+            white-space: nowrap;
+        }
     }
 </style>

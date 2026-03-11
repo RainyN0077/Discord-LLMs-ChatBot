@@ -4,6 +4,7 @@ export default {
   tabs: {
     core: 'Core Settings',
     directives: 'Identity Directives',
+    automation: 'Automation',
     advanced: 'Advanced Tools'
   },
   buttons: {
@@ -75,11 +76,37 @@ export default {
     blockedResponseInfo: 'Message sent when content is blocked by filter. Use {reason} to insert the block reason.',
     triggerKeywords: 'Trigger Keywords',
     triggerKeywordsPlaceholder: 'Enter keywords, separated by commas',
+    triggerMatchMode: 'Trigger Match Mode',
+    triggerMatchModes: {
+      contains: 'Contains',
+      startsWith: 'Starts With',
+      exact: 'Exact Match',
+      regex: 'Regex'
+    },
+    triggerCaseSensitive: 'Case Sensitive Matching',
     responseMode: 'Response Mode',
     modes: {
       stream: 'Stream Response (show typing)',
       nonStream: 'Complete Response (send at once)'
     }
+  },
+  automation: {
+    title: 'Automation',
+    description: 'Configure passive speaking behaviors that do not require mentions or trigger keywords.',
+    autoInterjectTitle: 'Auto Interject',
+    autoInterjectInfo: 'After every N user messages in a channel, the bot reads the current context and speaks once.',
+    autoInterjectEnabled: 'Enable auto interject',
+    autoInterjectInterval: 'Speak every N messages',
+    autoInterjectMinLength: 'Ignore messages shorter than',
+    autoInterjectMinLengthHint: 'characters',
+    repeatParrotTitle: 'Repeat Parrot',
+    repeatParrotInfo: 'If the channel turns into a repeater, the bot can join once by sending the same message locally without calling the LLM API.',
+    repeatParrotEnabled: 'Enable repeat parrot',
+    repeatParrotThreshold: 'Repeat after N consecutive same messages',
+    repeatParrotMinLength: 'Minimum repeated message length',
+    repeatParrotCaseSensitive: 'Case-sensitive repeat detection',
+    repeatParrotTrimWhitespace: 'Trim leading and trailing whitespace before comparing',
+    repeatParrotRequireMultipleUsers: 'Require at least two different users in the streak'
   },
   contextControl: {
     title: 'Context Control',
@@ -236,7 +263,9 @@ export default {
   logViewer: {
     title: 'Live Logs',
     filterLevel: 'Filter Level',
-    autoscroll: 'Auto-scroll'
+    autoscroll: 'Auto-scroll',
+    maxLines: 'Max Lines',
+    limitNotice: 'Showing latest {limit} lines. {hidden} older lines hidden.'
   },
   debugger: {
     title: 'Debugger',
@@ -340,7 +369,7 @@ export default {
      title: 'Deduplication Settings',
      memoryDedupThreshold: 'Memory Deduplication Threshold',
      worldBookDedupThreshold: 'World Book Deduplication Threshold',
-     dedupDescription: 'Set the deduplication threshold. 0% will prevent almost all new entries, while 100% will only block identical content. Recommended: 80-90%.',
+      dedupDescription: 'Set the deduplication threshold. 0% disables deduplication, while 100% blocks only exact duplicates. Recommended: 80-90%.',
      save: 'Save Deduplication Settings'
    },
    confirmDeleteMemory: 'Are you sure you want to delete this memory item?',

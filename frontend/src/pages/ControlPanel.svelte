@@ -55,6 +55,12 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
       'Asia/Tokyo'
     ];
 
+    function getProviderBaseUrl() {
+        if ($coreConfig.llm_provider === 'openai') return $coreConfig.openai_base_url || '';
+        if ($coreConfig.llm_provider === 'anthropic') return $coreConfig.anthropic_base_url || '';
+        return '';
+    }
+
     function addPersona() { userPersonas.update(up => { const newKey = `new-user-${Date.now()}`; up[newKey] = { id: '', nickname: '', prompt: '' }; return up; }); }
     function removePersona(key) { userPersonas.update(up => { delete up[key]; return up; }); }
     function addParameter() { customParameters.update(cp => { cp.push({ name: '', type: 'text', value: '' }); return cp; }); }
@@ -150,7 +156,7 @@ async function resetFont() {
             const result = await fetchAvailableModels(
                 $coreConfig.llm_provider,
                 $coreConfig.api_key,
-                $coreConfig.base_url
+                getProviderBaseUrl()
             );
             availableModels = result.models;
             useManualInput = false;
@@ -176,7 +182,7 @@ async function resetFont() {
             const result = await testModel(
                 $coreConfig.llm_provider,
                 $coreConfig.api_key,
-                $coreConfig.base_url,
+                getProviderBaseUrl(),
                 $coreConfig.model_name
             );
             testResult = result;
@@ -207,6 +213,7 @@ async function resetFont() {
         <div class="tabs">
             <button class:active={activeTab === 'core'} on:click={() => activeTab = 'core'}>{$t('tabs.core')}</button>
             <button class:active={activeTab === 'directives'} on:click={() => activeTab = 'directives'}>{$t('tabs.directives')}</button>
+            <button class:active={activeTab === 'automation'} on:click={() => activeTab = 'automation'}>{$t('tabs.automation')}</button>
             <button class:active={activeTab === 'advanced'} on:click={() => activeTab = 'advanced'}>{$t('tabs.advanced')}</button>
         </div>
 
@@ -223,15 +230,29 @@ async function resetFont() {
                     <p class="info">{$t('globalConfig.apiKeyInfo')}</p>
                 </Card>
                 <Card title={$t('llmProvider.title')}>
-                    <label for="llm-provider">{$t('llmProvider.select')}</label>
-                    <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
-                        <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
-                    </select>
-                    <label for="api-key">{$t('llmProvider.apiKey')}</label>
-                    <input id="api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.api_key}>
+                    <div class="provider-top-grid">
+                        <div>
+                            <label for="llm-provider">{$t('llmProvider.select')}</label>
+                            <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
+                                <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="api-key">{$t('llmProvider.apiKey')}</label>
+                            <input id="api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.api_key}>
+                        </div>
+                    </div>
+
                     {#if $coreConfig.llm_provider === 'openai'}
-                        <label for="base-url">{$t('llmProvider.baseUrl')}</label>
-                        <input id="base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.base_url}>
+                        <div class="provider-extra-row">
+                            <label for="openai-base-url">{$t('llmProvider.baseUrl')} (OpenAI)</label>
+                            <input id="openai-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.openai_base_url}>
+                        </div>
+                    {:else if $coreConfig.llm_provider === 'anthropic'}
+                        <div class="provider-extra-row">
+                            <label for="anthropic-base-url">{$t('llmProvider.baseUrl')} (Anthropic)</label>
+                            <input id="anthropic-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.anthropic_base_url}>
+                        </div>
                     {/if}
                     
                     <div class="model-selector-group">
@@ -362,6 +383,17 @@ async function resetFont() {
                     <p class="info">{$t('defaultBehavior.blockedResponseInfo')}</p>
                     <label for="trigger-keywords">{$t('defaultBehavior.triggerKeywords')}</label>
                     <input id="trigger-keywords" type="text" placeholder={$t('defaultBehavior.triggerKeywordsPlaceholder')} value={$keywordsInput} on:input={e => setKeywords(e.target.value)}>
+                    <label for="trigger-match-mode">{$t('defaultBehavior.triggerMatchMode')}</label>
+                    <select id="trigger-match-mode" bind:value={$behaviorConfig.trigger_match_mode}>
+                        <option value="contains">{$t('defaultBehavior.triggerMatchModes.contains')}</option>
+                        <option value="starts_with">{$t('defaultBehavior.triggerMatchModes.startsWith')}</option>
+                        <option value="exact">{$t('defaultBehavior.triggerMatchModes.exact')}</option>
+                        <option value="regex">{$t('defaultBehavior.triggerMatchModes.regex')}</option>
+                    </select>
+                    <label>
+                        <input type="checkbox" bind:checked={$behaviorConfig.trigger_case_sensitive}>
+                        {$t('defaultBehavior.triggerCaseSensitive')}
+                    </label>
                     <div class="group-label">{$t('defaultBehavior.responseMode')}</div>
                     <div class="radio-group">
                         <label><input type="radio" name="stream-mode" value={true} bind:group={$behaviorConfig.stream_response}> {$t('defaultBehavior.modes.stream')}</label>
@@ -411,6 +443,53 @@ async function resetFont() {
                     </div>
                 </Card>
             </div>
+
+            <div class="tab-content" class:hidden={activeTab !== 'automation'}>
+                <Card title={$t('automation.title')}>
+                    <p class="info">{$t('automation.description')}</p>
+
+                    <div class="automation-section">
+                        <h3>{$t('automation.autoInterjectTitle')}</h3>
+                        <p class="info">{$t('automation.autoInterjectInfo')}</p>
+                        <label>
+                            <input type="checkbox" bind:checked={$behaviorConfig.auto_interject_enabled}>
+                            {$t('automation.autoInterjectEnabled')}
+                        </label>
+                        <label for="auto-interject-interval">{$t('automation.autoInterjectInterval')}</label>
+                        <input id="auto-interject-interval" type="number" min="1" step="1" bind:value={$behaviorConfig.auto_interject_interval}>
+                        <label for="auto-interject-min-length">{$t('automation.autoInterjectMinLength')}</label>
+                        <div class="inline-input">
+                            <input id="auto-interject-min-length" type="number" min="0" step="1" bind:value={$behaviorConfig.auto_interject_min_length}>
+                            <span>{$t('automation.autoInterjectMinLengthHint')}</span>
+                        </div>
+                    </div>
+
+                    <div class="automation-section">
+                        <h3>{$t('automation.repeatParrotTitle')}</h3>
+                        <p class="info">{$t('automation.repeatParrotInfo')}</p>
+                        <label>
+                            <input type="checkbox" bind:checked={$behaviorConfig.repeat_parrot_enabled}>
+                            {$t('automation.repeatParrotEnabled')}
+                        </label>
+                        <label for="repeat-parrot-threshold">{$t('automation.repeatParrotThreshold')}</label>
+                        <input id="repeat-parrot-threshold" type="number" min="2" step="1" bind:value={$behaviorConfig.repeat_parrot_threshold}>
+                        <label for="repeat-parrot-min-length">{$t('automation.repeatParrotMinLength')}</label>
+                        <input id="repeat-parrot-min-length" type="number" min="0" step="1" bind:value={$behaviorConfig.repeat_parrot_min_length}>
+                        <label>
+                            <input type="checkbox" bind:checked={$behaviorConfig.repeat_parrot_case_sensitive}>
+                            {$t('automation.repeatParrotCaseSensitive')}
+                        </label>
+                        <label>
+                            <input type="checkbox" bind:checked={$behaviorConfig.repeat_parrot_trim_whitespace}>
+                            {$t('automation.repeatParrotTrimWhitespace')}
+                        </label>
+                        <label>
+                            <input type="checkbox" bind:checked={$behaviorConfig.repeat_parrot_require_multiple_users}>
+                            {$t('automation.repeatParrotRequireMultipleUsers')}
+                        </label>
+                    </div>
+                </Card>
+            </div>
         {/if}
     </main>
     <aside class="log-viewer">
@@ -422,11 +501,20 @@ async function resetFont() {
 .tab-content {
         display: flex;
         flex-direction: column;
-        gap: 2rem;
+        gap: 1.35rem;
     }
     .tab-content.hidden {
         display: none;
     }
+    main h1 {
+        margin-top: .2rem;
+        padding: .85rem 1rem;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(31, 139, 214, .1), rgba(24, 138, 81, .08));
+        border: 1px solid rgba(15, 23, 42, .08);
+        box-shadow: var(--shadow-soft);
+    }
+
     .group-label {
         font-weight: 500;
         margin-bottom: 0.5rem;
@@ -449,9 +537,65 @@ async function resetFont() {
         background-color: var(--input-bg);
         color: var(--text-color);
     }
-    .tabs { display: flex; background: var(--card-bg); border-radius: 12px; padding: .5rem; box-shadow: var(--shadow); margin-top: 2rem; }
-    .tabs button { flex: 1; padding: .75rem; border: none; background: transparent; font-size: 1rem; font-weight: 500; border-radius: 8px; cursor: pointer; color: var(--text-light); transition: all 0.2s ease-in-out; }
-    .tabs button.active { background: var(--primary-color); color: #fff; box-shadow: 0 2px 5px rgba(52,152,219,.2); }
+    .tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        background: rgba(255, 255, 255, .86);
+        border-radius: 14px;
+        padding: .4rem;
+        box-shadow: var(--shadow);
+        margin-top: .85rem;
+        margin-bottom: .2rem;
+        position: sticky;
+        top: .75rem;
+        z-index: 20;
+        border: 1px solid rgba(15, 23, 42, .08);
+        -webkit-backdrop-filter: blur(10px);
+        backdrop-filter: blur(10px);
+    }
+    .tabs button {
+        flex: 1;
+        padding: .65rem .5rem;
+        border: none;
+        background: transparent;
+        font-size: .97rem;
+        font-weight: 600;
+        border-radius: 10px;
+        cursor: pointer;
+        color: var(--text-light);
+        transition: all 0.2s ease-in-out;
+    }
+    .tabs button:hover {
+        color: var(--text-color);
+        background: rgba(15, 23, 42, .05);
+    }
+    .tabs button.active {
+        background: linear-gradient(135deg, var(--primary-color), #1d81bf);
+        color: #fff;
+        box-shadow: 0 4px 14px rgba(52, 152, 219, .28);
+    }
+    .automation-section {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-color);
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+    }
+    .automation-section:first-of-type {
+        margin-top: .5rem;
+    }
+    .automation-section h3 {
+        margin: 0;
+    }
+    .inline-input {
+        display: flex;
+        align-items: center;
+        gap: .75rem;
+    }
+    .inline-input input {
+        max-width: 180px;
+    }
     
     /* 新增的模型选择器样式 */
     .model-controls {
@@ -467,6 +611,7 @@ async function resetFont() {
     .model-buttons {
         display: flex;
         gap: 0.5rem;
+        align-items: center;
     }
     
     .model-buttons button:first-child {
@@ -478,6 +623,7 @@ async function resetFont() {
         padding: 1rem;
         border-radius: 8px;
         font-size: 0.9rem;
+        border: 1px solid rgba(15, 23, 42, .08);
     }
     
     .test-result.success {
@@ -494,6 +640,58 @@ async function resetFont() {
         font-size: 0.85rem;
         opacity: 0.8;
         margin-top: 0.5rem;
+    }
+
+    .provider-top-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .9rem;
+    }
+
+    .provider-extra-row {
+        display: flex;
+        flex-direction: column;
+        gap: .45rem;
+        padding: .7rem .8rem;
+        border: 1px solid rgba(15, 23, 42, .08);
+        border-radius: 12px;
+        background: rgba(248, 251, 255, .65);
+    }
+
+    .api-key-container {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: .5rem;
+        align-items: center;
+    }
+
+    .api-key-container button {
+        padding: .65rem .8rem;
+        background: rgba(15, 23, 42, .06);
+        color: var(--text-color);
+        border: 1px solid rgba(15, 23, 42, .1);
+    }
+
+    .action-btn {
+        background: linear-gradient(135deg, var(--primary-color), #1b73b0);
+        color: #fff;
+        border: 1px solid transparent;
+    }
+
+    .action-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 20px rgba(31, 139, 214, .24);
+    }
+
+    .action-btn-secondary {
+        background: rgba(15, 23, 42, .06);
+        color: var(--text-color);
+        border: 1px solid rgba(15, 23, 42, .12);
+    }
+
+    .action-btn-secondary:hover:not(:disabled) {
+        background: rgba(15, 23, 42, .1);
+        transform: translateY(-1px);
     }
     
     @media (min-width: 768px) {
@@ -515,19 +713,19 @@ async function resetFont() {
     }
     
     .page-container {
-        display: flex;
-        align-items: flex-start;
-        gap: 2rem;
-        max-width: 1600px;
+        display: grid;
+        grid-template-columns: minmax(0, 1.85fr) minmax(360px, 1fr);
+        align-items: start;
+        gap: clamp(1rem, 2vw, 1.65rem);
+        max-width: 1700px;
         margin: 0 auto;
     }
 
     main {
-        flex: 1;
-        min-width: 600px;
         display: flex;
         flex-direction: column;
-        gap: 3.5rem;
+        min-width: 0;
+        gap: 1.35rem;
     }
     
     .radio-group {
@@ -543,6 +741,7 @@ async function resetFont() {
         font-weight: 400;
         color: var(--text-color);
         cursor: pointer;
+        white-space: nowrap;
     }
 
     .control-grid {
@@ -578,7 +777,7 @@ async function resetFont() {
     .param-item {
         display: grid;
         grid-template-columns: 1.5fr 1fr 2fr auto;
-        gap: 1rem;
+        gap: .7rem;
         align-items: center;
     }
 
@@ -611,31 +810,86 @@ async function resetFont() {
 
     .action-container {
         display: flex;
-        gap: 1rem;
+        gap: .7rem;
         align-items: center;
+        flex-wrap: wrap;
     }
 
     .log-viewer {
-        width: 600px;
-        flex-shrink: 0;
         position: sticky;
-        top: 2rem;
+        top: .75rem;
+        min-width: 0;
     }
 
-    @media (max-width:1400px){
+    @media (max-width: 1280px) {
       .page-container {
-          flex-direction: column;
-          align-items: stretch;
+          grid-template-columns: 1fr;
       }
-      main {
-          min-width: unset;
-      }
+
       .log-viewer {
-          width: auto;
           position: relative;
           top: 0;
-          height: 70vh;
-          margin-top: 2rem;
+          margin-top: .2rem;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .provider-top-grid {
+          grid-template-columns: 1fr;
+      }
+
+      .tabs {
+          top: .5rem;
+      }
+
+      .tabs button {
+          font-size: .9rem;
+          padding: .55rem .4rem;
+      }
+
+      .radio-group {
+          gap: 1rem;
+      }
+
+      .control-grid {
+          grid-template-columns: 1fr;
+          gap: .6rem;
+      }
+
+      .slider-container {
+          flex-direction: column;
+          align-items: stretch;
+          gap: .4rem;
+      }
+
+      .slider-container span {
+          min-width: 0;
+          text-align: left;
+      }
+
+      .param-item {
+          grid-template-columns: 1fr;
+      }
+
+      .param-item > .remove-btn {
+          justify-self: start;
+      }
+
+      .list-item {
+          flex-direction: column;
+      }
+
+      .list-item-main {
+          grid-template-areas:
+              "id"
+              "nickname"
+              "prompt"
+              "keywords";
+          grid-template-columns: 1fr;
+      }
+
+      .action-container > * {
+          width: 100%;
       }
     }
 </style>

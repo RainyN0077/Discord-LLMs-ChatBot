@@ -15,7 +15,8 @@ class AnthropicProvider(LLMProvider):
     """
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        self.client = anthropic.AsyncAnthropic(api_key=self.api_key)
+        base_url = config.get("anthropic_base_url") or self.base_url
+        self.client = anthropic.AsyncAnthropic(api_key=self.api_key, base_url=base_url)
         # Anthropic's API requires max_tokens, so we set a default if not provided.
         if "max_tokens" not in self.custom_params:
             self.custom_params["max_tokens"] = 4096
