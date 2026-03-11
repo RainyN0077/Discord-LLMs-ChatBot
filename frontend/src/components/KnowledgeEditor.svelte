@@ -4,13 +4,15 @@
   import { t } from '../i18n.js';
   import {
     fetchMemoryItems, addMemoryItem, deleteMemoryItem, updateMemoryItem,
-    fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem
+    fetchWorldBookItems, addWorldBookItem, updateWorldBookItem, deleteWorldBookItem,
+    fetchMemoryCandidates, promoteMemoryCandidate, deleteMemoryCandidate
   } from '../lib/api.js';
   import { userPersonasArray, behaviorConfig, saveConfig } from '../lib/stores.js';
   import Card from './Card.svelte';
 
   let activeTab = 'worldbook';
   let memoryItems = [];
+  let memoryCandidates = [];
   let worldBookItems = [];
   let newMemoryContent = '';
   let newMemoryUserName = 'WebUI';
@@ -25,9 +27,11 @@
   let editingMemoryId = null;
   let editingMemoryContent = '';
   let intervalId = null;
+  let includePromotedCandidates = false;
 
   onMount(async () => {
     loadMemoryItems();
+    loadMemoryCandidates();
     loadWorldBookItems();
     intervalId = setInterval(loadMemoryItems, 5000); // Poll for new memories
   });
@@ -43,6 +47,14 @@
       memoryItems = await fetchMemoryItems();
     } catch (e) {
       alert(`${$t('knowledge.error.loadMemory')}: ${e.message}`);
+    }
+  }
+
+  async function loadMemoryCandidates() {
+    try {
+      memoryCandidates = await fetchMemoryCandidates(includePromotedCandidates, 200);
+    } catch (e) {
+      alert(`${$t('knowledge.error.loadMemoryCandidates')}: ${e.message}`);
     }
   }
 
@@ -81,6 +93,27 @@
         loadMemoryItems();
       } catch (e) {
         alert(`${$t('knowledge.error.deleteMemory')}: ${e.message}`);
+      }
+    }
+  }
+
+  async function handlePromoteCandidate(id) {
+    try {
+      await promoteMemoryCandidate(id);
+      await loadMemoryCandidates();
+      await loadMemoryItems();
+    } catch (e) {
+      alert(`${$t('knowledge.error.promoteMemoryCandidate')}: ${e.message}`);
+    }
+  }
+
+  async function handleDeleteMemoryCandidate(id) {
+    if (confirm($t('knowledge.confirmDeleteMemoryCandidate'))) {
+      try {
+        await deleteMemoryCandidate(id);
+        await loadMemoryCandidates();
+      } catch (e) {
+        alert(`${$t('knowledge.error.deleteMemoryCandidate')}: ${e.message}`);
       }
     }
   }
@@ -296,6 +329,9 @@
     <button class="tab" class:active={activeTab === 'memory'} on:click={() => activeTab = 'memory'}>
       {$t('knowledge.tabs.memory')}
     </button>
+    <button class="tab" class:active={activeTab === 'candidates'} on:click={() => { activeTab = 'candidates'; loadMemoryCandidates(); }}>
+      {$t('knowledge.tabs.candidates')}
+    </button>
   </div>
 
   {#if activeTab === 'settings'}
@@ -332,6 +368,61 @@
           bind:value={$behaviorConfig.world_book_dedup_threshold}
         />
         <p class="setting-description">{$t('knowledge.settings.dedupDescription')}</p>
+      </div>
+
+      <div class="setting-item">
+        <label for="auto-memory-enabled">{$t('knowledge.settings.autoMemoryEnabled')}</label>
+        <input id="auto-memory-enabled" type="checkbox" bind:checked={$behaviorConfig.auto_memory_enabled}>
+      </div>
+
+      <div class="form-grid" style="grid-template-columns: 1fr 1fr; gap: 0.75rem 1rem;">
+        <div class="setting-item">
+          <label for="auto-memory-min-length">{$t('knowledge.settings.autoMemoryMinLength')}</label>
+          <input id="auto-memory-min-length" type="number" min="0" max="500" bind:value={$behaviorConfig.auto_memory_min_length}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-cooldown">{$t('knowledge.settings.autoMemoryCooldown')}</label>
+          <input id="auto-memory-cooldown" type="number" min="0" max="3600" bind:value={$behaviorConfig.auto_memory_cooldown_seconds}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-promote-observations">{$t('knowledge.settings.autoMemoryPromoteObservations')}</label>
+          <input id="auto-memory-promote-observations" type="number" min="1" max="50" bind:value={$behaviorConfig.auto_memory_promote_min_observations}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-promote-users">{$t('knowledge.settings.autoMemoryPromoteDistinctUsers')}</label>
+          <input id="auto-memory-promote-users" type="number" min="1" max="50" bind:value={$behaviorConfig.auto_memory_promote_min_distinct_users}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-recall-top-k">{$t('knowledge.settings.autoMemoryRecallTopK')}</label>
+          <input id="auto-memory-recall-top-k" type="number" min="1" max="50" bind:value={$behaviorConfig.auto_memory_recall_top_k}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-recall-char-limit">{$t('knowledge.settings.autoMemoryRecallCharLimit')}</label>
+          <input id="auto-memory-recall-char-limit" type="number" min="300" max="20000" bind:value={$behaviorConfig.auto_memory_recall_char_limit}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-recall-age-days">{$t('knowledge.settings.autoMemoryRecallMaxAgeDays')}</label>
+          <input id="auto-memory-recall-age-days" type="number" min="1" max="3650" bind:value={$behaviorConfig.auto_memory_recall_max_age_days}>
+        </div>
+        <div class="setting-item">
+          <label for="auto-memory-quality-threshold">
+            {$t('knowledge.settings.autoMemoryQualityThreshold')}
+            <span class="threshold-value">{Math.round(($behaviorConfig.auto_memory_quality_threshold || 0) * 100)}%</span>
+          </label>
+          <input
+            id="auto-memory-quality-threshold"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            bind:value={$behaviorConfig.auto_memory_quality_threshold}
+          />
+        </div>
+      </div>
+
+      <div class="setting-item">
+        <label for="auto-memory-direct-promote-ai-tag">{$t('knowledge.settings.autoMemoryDirectPromoteAiTag')}</label>
+        <input id="auto-memory-direct-promote-ai-tag" type="checkbox" bind:checked={$behaviorConfig.auto_memory_direct_promote_ai_tag}>
       </div>
 
       <button on:click={saveConfig}>{$t('knowledge.settings.save')}</button>
@@ -400,6 +491,44 @@
         </div>
       </div>
       <button on:click={handleAddMemory}>{$t('knowledge.memory.add')}</button>
+    </div>
+  {/if}
+
+  {#if activeTab === 'candidates'}
+    <div class="memory-section">
+      <h3>{$t('knowledge.candidates.title')}</h3>
+      <div class="actions" style="justify-content: flex-start; margin-bottom: 0.75rem;">
+        <label style="display: inline-flex; align-items: center; gap: 0.35rem; margin: 0 0.75rem 0 0;">
+          <input type="checkbox" bind:checked={includePromotedCandidates} on:change={loadMemoryCandidates}>
+          {$t('knowledge.candidates.showPromoted')}
+        </label>
+        <button class="small-btn" on:click={loadMemoryCandidates}>{$t('knowledge.candidates.refresh')}</button>
+      </div>
+      <div class="item-list">
+        {#if memoryCandidates.length === 0}
+          <p>{$t('knowledge.candidates.noResults')}</p>
+        {:else}
+          {#each memoryCandidates as item (item.id)}
+            <div class="item">
+              <div class="item-content">
+                <span>{item.content_sample}</span>
+                <div class="meta">
+                  <span>{$t('knowledge.candidates.seenCount')}: {item.seen_count}</span>
+                  <span>{$t('knowledge.candidates.distinctUsers')}: {item.distinct_user_count}</span>
+                  <span>{$t('knowledge.candidates.lastSeen')}: {new Date(item.last_seen).toLocaleString()}</span>
+                  <span>{$t('knowledge.candidates.status')}: {item.promoted ? $t('knowledge.candidates.promoted') : $t('knowledge.candidates.staged')}</span>
+                </div>
+              </div>
+              <div class="actions">
+                {#if !item.promoted}
+                  <button class="small-btn" on:click={() => handlePromoteCandidate(item.id)}>{$t('knowledge.candidates.promote')}</button>
+                {/if}
+                <button class="small-btn" on:click={() => handleDeleteMemoryCandidate(item.id)}>{$t('knowledge.candidates.delete')}</button>
+              </div>
+            </div>
+          {/each}
+        {/if}
+      </div>
     </div>
   {/if}
 

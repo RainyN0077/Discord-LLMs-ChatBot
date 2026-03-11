@@ -212,6 +212,22 @@ export async function updateMemoryItem(itemId, content) {
     });
 }
 
+export async function fetchMemoryCandidates(includePromoted = false, limit = 200) {
+    return apiFetch(`${BASE_URL}/memory/candidates?include_promoted=${includePromoted ? 'true' : 'false'}&limit=${limit}`);
+}
+
+export async function promoteMemoryCandidate(candidateId) {
+    return apiFetch(`${BASE_URL}/memory/candidates/${candidateId}/promote`, {
+        method: 'POST',
+    });
+}
+
+export async function deleteMemoryCandidate(candidateId) {
+    return apiFetch(`${BASE_URL}/memory/candidates/${candidateId}`, {
+        method: 'DELETE',
+    });
+}
+
 // World Book Functions
 export async function fetchWorldBookItems() {
     return apiFetch(`${BASE_URL}/worldbook`);

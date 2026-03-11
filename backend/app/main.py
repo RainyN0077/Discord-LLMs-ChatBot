@@ -259,6 +259,25 @@ class WorldBookItem(BaseModel):
 class UpdateMemoryRequest(BaseModel):
     content: str
 
+class MemoryCandidateItem(BaseModel):
+    id: int
+    content_sample: str
+    first_seen: str
+    last_seen: str
+    seen_count: int
+    distinct_user_count: int
+    promoted: int
+    promoted_memory_id: Optional[int] = None
+    promoted_at: Optional[str] = None
+    last_reason: Optional[str] = None
+    user_ids: List[str] = Field(default_factory=list)
+    channel_ids: List[str] = Field(default_factory=list)
+    source_types: List[str] = Field(default_factory=list)
+
+class PromoteCandidateResponse(BaseModel):
+    candidate_id: int
+    memory_id: int
+
 # --- API Endpoints ---
 API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
@@ -707,6 +726,24 @@ async def update_memory_item(item_id: int, item: UpdateMemoryRequest):
     success = knowledge_manager.update_memory(item_id, item.content)
     if not success:
         raise HTTPException(status_code=404, detail="Memory item not found or failed to update")
+    return Response(status_code=204)
+
+@app.get("/api/memory/candidates", response_model=List[MemoryCandidateItem], dependencies=[Depends(get_api_key)])
+async def get_memory_candidates(include_promoted: bool = False, limit: int = 200):
+    return knowledge_manager.get_memory_candidates(include_promoted=include_promoted, limit=limit)
+
+@app.post("/api/memory/candidates/{candidate_id}/promote", response_model=PromoteCandidateResponse, dependencies=[Depends(get_api_key)])
+async def promote_memory_candidate(candidate_id: int):
+    memory_id = knowledge_manager.promote_memory_candidate(candidate_id)
+    if not memory_id:
+        raise HTTPException(status_code=404, detail="Memory candidate not found or failed to promote")
+    return {"candidate_id": candidate_id, "memory_id": memory_id}
+
+@app.delete("/api/memory/candidates/{candidate_id}", status_code=204, dependencies=[Depends(get_api_key)])
+async def delete_memory_candidate(candidate_id: int):
+    success = knowledge_manager.delete_memory_candidate(candidate_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Memory candidate not found")
     return Response(status_code=204)
 
 # World Book Endpoints

@@ -27,6 +27,16 @@ const defaultConfig = {
     repeat_parrot_min_length: 2,
     repeat_parrot_require_multiple_users: true,
     stream_response: true, 
+    auto_memory_enabled: true,
+    auto_memory_min_length: 8,
+    auto_memory_cooldown_seconds: 45,
+    auto_memory_promote_min_observations: 2,
+    auto_memory_promote_min_distinct_users: 1,
+    auto_memory_quality_threshold: 0.55,
+    auto_memory_direct_promote_ai_tag: false,
+    auto_memory_recall_top_k: 12,
+    auto_memory_recall_char_limit: 2200,
+    auto_memory_recall_max_age_days: 365,
     user_personas: {},
     role_based_config: {},
     scoped_prompts: { guilds: {}, channels: {} },
@@ -69,7 +79,17 @@ export const behaviorConfig = writable({
     repeat_parrot_require_multiple_users: true,
     stream_response: true,
     memory_dedup_threshold: 0.0,
-    world_book_dedup_threshold: 0.0
+    world_book_dedup_threshold: 0.0,
+    auto_memory_enabled: true,
+    auto_memory_min_length: 8,
+    auto_memory_cooldown_seconds: 45,
+    auto_memory_promote_min_observations: 2,
+    auto_memory_promote_min_distinct_users: 1,
+    auto_memory_quality_threshold: 0.55,
+    auto_memory_direct_promote_ai_tag: false,
+    auto_memory_recall_top_k: 12,
+    auto_memory_recall_char_limit: 2200,
+    auto_memory_recall_max_age_days: 365
 });
 
 export const contextConfig = writable({
@@ -178,8 +198,18 @@ export async function fetchConfig() {
             repeat_parrot_min_length: mergedConfig.repeat_parrot_min_length ?? 2,
             repeat_parrot_require_multiple_users: mergedConfig.repeat_parrot_require_multiple_users !== false,
             stream_response: mergedConfig.stream_response,
-            memory_dedup_threshold: mergedConfig.memory_dedup_threshold || 0.0,
-            world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold || 0.0
+            memory_dedup_threshold: mergedConfig.memory_dedup_threshold ?? 0.0,
+            world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold ?? 0.0,
+            auto_memory_enabled: mergedConfig.auto_memory_enabled !== false,
+            auto_memory_min_length: mergedConfig.auto_memory_min_length ?? 8,
+            auto_memory_cooldown_seconds: mergedConfig.auto_memory_cooldown_seconds ?? 45,
+            auto_memory_promote_min_observations: mergedConfig.auto_memory_promote_min_observations ?? 2,
+            auto_memory_promote_min_distinct_users: mergedConfig.auto_memory_promote_min_distinct_users ?? 1,
+            auto_memory_quality_threshold: mergedConfig.auto_memory_quality_threshold ?? 0.55,
+            auto_memory_direct_promote_ai_tag: !!mergedConfig.auto_memory_direct_promote_ai_tag,
+            auto_memory_recall_top_k: mergedConfig.auto_memory_recall_top_k ?? 12,
+            auto_memory_recall_char_limit: mergedConfig.auto_memory_recall_char_limit ?? 2200,
+            auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365
         });
         contextConfig.set({
             context_mode: mergedConfig.context_mode,

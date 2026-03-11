@@ -105,7 +105,7 @@ def collect_image_urls(msg: discord.Message) -> List[str]:
 
 
 
-def process_memory_tags(message: discord.Message, text: str) -> str:
+def process_memory_tags(message: discord.Message, text: str, bot_config: Dict[str, Any]) -> str:
     """
     Finds <memory> tags in the text, saves the content with metadata to long-term memory,
     and returns the text with the tags removed.
@@ -126,17 +126,41 @@ def process_memory_tags(message: discord.Message, text: str) -> str:
             user_name = message.author.name
             
             try:
-                memory_id = knowledge_manager.add_memory(
+                ingest_result = knowledge_manager.ingest_memory_candidate(
                     content=stripped_content,
                     timestamp=timestamp,
                     user_id=user_id,
                     user_name=user_name,
-                    source='ai'
+                    source='ai_tag',
+                    config=bot_config,
+                    channel_id=str(message.channel.id),
                 )
-                if memory_id:
-                    logger.info(f"Added new memory from tag by '{user_name}' with ID: {memory_id}")
+                status = ingest_result.get("status")
+                if status == "promoted":
+                    logger.info(
+                        "Promoted memory candidate from <memory> tag by '%s' as memory ID: %s",
+                        user_name,
+                        ingest_result.get("memory_id"),
+                    )
+                elif status == "staged":
+                    logger.info(
+                        "Staged memory candidate from <memory> tag by '%s' (candidate ID: %s).",
+                        user_name,
+                        ingest_result.get("candidate_id"),
+                    )
+                elif status == "duplicate_existing":
+                    logger.info(
+                        "Memory tag by '%s' matched existing memory ID: %s",
+                        user_name,
+                        ingest_result.get("memory_id"),
+                    )
                 else:
-                    logger.info(f"Memory from tag by '{user_name}' already exists, skipping: '{stripped_content[:50]}...'")
+                    logger.info(
+                        "Memory tag by '%s' skipped with status '%s': '%s...'",
+                        user_name,
+                        status,
+                        stripped_content[:50],
+                    )
             except Exception as e:
                 logger.error(f"Error adding memory from tag by '{user_name}': {e}", exc_info=True)
 
@@ -369,18 +393,40 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
         
         # --- [NEW] Memory Retrieval and Injection ---
-        all_memories = knowledge_manager.get_all_memories()
-        if all_memories:
+        try:
+            recall_top_k = max(1, min(50, int(config.get("auto_memory_recall_top_k", 12))))
+        except (TypeError, ValueError):
+            recall_top_k = 12
+        try:
+            recall_char_limit = max(300, min(20000, int(config.get("auto_memory_recall_char_limit", 2200))))
+        except (TypeError, ValueError):
+            recall_char_limit = 2200
+        try:
+            recall_max_age_days = max(1, min(3650, int(config.get("auto_memory_recall_max_age_days", 365))))
+        except (TypeError, ValueError):
+            recall_max_age_days = 365
+        relevant_memories = knowledge_manager.get_relevant_memories(
+            query_text=message.content or "",
+            top_k=recall_top_k,
+            char_limit=recall_char_limit,
+            max_age_days=recall_max_age_days,
+        )
+        if relevant_memories:
             # We don't know the Discord user's timezone, so we transform using UTC as a neutral default.
             # The important part is that manually added memories with specific times are preserved correctly.
-            transformed_memories = transform_memories_for_prompt(all_memories, target_timezone_str='UTC')
+            transformed_memories = transform_memories_for_prompt(relevant_memories, target_timezone_str='UTC')
             
             # Combine memories into a single block for the system prompt
             memory_knowledge = "\n".join(transformed_memories)
             
             # Prepend to the system prompt inside a <knowledge> tag
             system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
-            logger.info(f"Injected {len(transformed_memories)} memories into the system prompt.")
+            logger.info(
+                "Injected %s relevant memories into the system prompt (top_k=%s, char_limit=%s).",
+                len(transformed_memories),
+                recall_top_k,
+                recall_char_limit,
+            )
         # --- End of Memory Injection ---
 
         if role_config:
@@ -474,7 +520,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         await message.reply(final_error_msg, mention_author=False)
                     return
 
-                cleaned_response = process_memory_tags(message, full_response)
+                cleaned_response = process_memory_tags(message, full_response, config)
 
                 if response_message:
                     final_chunks = split_message(cleaned_response, 2000)

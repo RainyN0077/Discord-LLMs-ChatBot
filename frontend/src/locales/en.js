@@ -363,22 +363,37 @@ export default {
    tabs: {
      worldBook: 'World Book',
      memory: 'Memory',
-     settings: 'Deduplication Settings'
+     settings: 'Deduplication Settings',
+     candidates: 'Memory Candidates'
    },
    settings: {
      title: 'Deduplication Settings',
      memoryDedupThreshold: 'Memory Deduplication Threshold',
      worldBookDedupThreshold: 'World Book Deduplication Threshold',
       dedupDescription: 'Set the deduplication threshold. 0% disables deduplication, while 100% blocks only exact duplicates. Recommended: 80-90%.',
+      autoMemoryEnabled: 'Enable Automatic Memory Staging',
+      autoMemoryMinLength: 'Minimum content length',
+      autoMemoryCooldown: 'Same-user cooldown (seconds)',
+      autoMemoryPromoteObservations: 'Promote after N observations',
+      autoMemoryPromoteDistinctUsers: 'Promote after N distinct users',
+      autoMemoryQualityThreshold: 'Auto-promotion quality threshold',
+      autoMemoryDirectPromoteAiTag: 'Directly promote <memory> tags from model output',
+      autoMemoryRecallTopK: 'Memory recall top K',
+      autoMemoryRecallCharLimit: 'Memory recall character budget',
+      autoMemoryRecallMaxAgeDays: 'Memory max age (days)',
      save: 'Save Deduplication Settings'
    },
    confirmDeleteMemory: 'Are you sure you want to delete this memory item?',
+   confirmDeleteMemoryCandidate: 'Are you sure you want to delete this memory candidate?',
    confirmDeleteWorldBook: 'Are you sure you want to delete this entry?',
    error: {
      loadMemory: 'Failed to load memory',
      addMemory: 'Failed to add memory item',
      deleteMemory: 'Failed to delete memory item',
      updateMemory: 'Failed to update memory item',
+     loadMemoryCandidates: 'Failed to load memory candidates',
+     promoteMemoryCandidate: 'Failed to promote memory candidate',
+     deleteMemoryCandidate: 'Failed to delete memory candidate',
      loadWorldBook: 'Failed to load World Book',
      emptyFields: 'Keywords and content cannot be empty',
      saveWorldBook: 'Failed to save World Book entry',
@@ -402,6 +417,20 @@ export default {
      userIdPlaceholder: 'e.g., 1234567890 (optional)',
      searchPlaceholder: 'Search by recorder...',
      noResults: 'No matching records found.'
+   },
+   candidates: {
+     title: 'Memory Candidates',
+     showPromoted: 'Show promoted candidates',
+     refresh: 'Refresh',
+     noResults: 'No candidate records.',
+     seenCount: 'Seen',
+     distinctUsers: 'Users',
+     lastSeen: 'Last seen',
+     status: 'Status',
+     promoted: 'Promoted',
+     staged: 'Staged',
+     promote: 'Promote',
+     delete: 'Delete'
    },
    worldBook: {
      title: 'World Book',

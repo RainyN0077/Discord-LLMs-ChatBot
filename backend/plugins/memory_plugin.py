@@ -161,14 +161,51 @@ class MemoryPlugin(BasePlugin):
                     return json.dumps({"status": "duplicate_found", "message": "A similar memory entry already exists."})
 
             timestamp = datetime.now(timezone.utc).isoformat()
-            memory_id = knowledge_manager.add_memory(
+            ingest_result = knowledge_manager.ingest_memory_candidate(
                 content=content,
                 timestamp=timestamp,
                 user_id=str(message.author.id),
                 user_name=message.author.display_name,
-                source="conversation",
+                source="tool",
+                config=config,
+                channel_id=str(message.channel.id),
             )
-            return json.dumps({"status": "success", "id": memory_id, "message": f"Successfully added to memory with ID: {memory_id}."})
+            status = ingest_result.get("status")
+            if status in {"promoted", "duplicate_existing"}:
+                memory_id = ingest_result.get("memory_id")
+                return json.dumps(
+                    {
+                        "status": "success",
+                        "id": memory_id,
+                        "message": f"Memory accepted with ID: {memory_id}.",
+                        "detail": ingest_result,
+                    }
+                )
+            if status == "staged":
+                return json.dumps(
+                    {
+                        "status": "staged",
+                        "candidate_id": ingest_result.get("candidate_id"),
+                        "message": "Memory staged in candidate pool and will auto-promote after enough evidence.",
+                        "detail": ingest_result,
+                    }
+                )
+            if status == "cooldown":
+                return json.dumps(
+                    {
+                        "status": "cooldown",
+                        "candidate_id": ingest_result.get("candidate_id"),
+                        "message": "Memory candidate ignored due to cooldown (same user repeated too quickly).",
+                        "detail": ingest_result,
+                    }
+                )
+            return json.dumps(
+                {
+                    "status": status or "skipped",
+                    "message": "Memory was not accepted by quality policy.",
+                    "detail": ingest_result,
+                }
+            )
         except Exception as e:
             logger.error(f"Error in add_to_memory tool: {e}", exc_info=True)
             return json.dumps({"status": "error", "message": str(e)})
