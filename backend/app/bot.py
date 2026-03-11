@@ -5,6 +5,8 @@ import logging
 import os
 import re
 import redis
+import socket
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
 
@@ -22,6 +24,8 @@ from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
 
+INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
+
 # --- [增强] 更健壮的Redis连接逻辑 ---
 redis_client = None
 try:
@@ -32,13 +36,13 @@ try:
     _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
     _redis_client.ping()
     redis_client = _redis_client
-    logger.info(f"Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+    logger.info(f"[instance={INSTANCE_ID}] Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
 
 except redis.exceptions.ConnectionError as e:
-    logger.error(f"Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
+    logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
     # 检查环境变量，决定是“快速失败”还是“静默退化”
     if os.getenv('FAIL_ON_REDIS_ERROR', 'false').lower() == 'true':
-        logger.critical("FAIL_ON_REDIS_ERROR is true. Terminating application.")
+        logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
         # 抛出一个明确的异常，这将阻止 bot.start() 的执行
         raise ConnectionAbortedError("Failed to connect to Redis. Aborting.")
     else:
@@ -46,7 +50,7 @@ except redis.exceptions.ConnectionError as e:
         class MockRedis:
             def set(self, *args, **kwargs): return True
         redis_client = MockRedis()
-        logger.warning("FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client. CONCURRENCY PROTECTION IS DISABLED.")
+        logger.warning(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client. CONCURRENCY PROTECTION IS DISABLED.")
 
 
 from pathlib import Path
@@ -171,6 +175,7 @@ def process_memory_tags(message: discord.Message, text: str, bot_config: Dict[st
 
 async def run_bot(memory_cutoffs: Dict[int, datetime]):
     global bot_instance
+    logger.info(f"[instance={INSTANCE_ID}] run_bot starting.")
     
     config = load_bot_config()
     discord_token = config.get("discord_token")
@@ -192,7 +197,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         """
         An inner helper function to get a non-streaming LLM response for plugins.
         """
-        logger.info(f"Plugin triggered LLM call with {len(messages)} messages.")
+        logger.info(f"[instance={INSTANCE_ID}] Plugin triggered LLM call with {len(messages)} messages.")
         # Use the existing llm_provider instance from the current bot session
         llm_provider = get_llm_provider(config)
         
@@ -208,7 +213,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             logger.error(f"Error getting LLM response for plugin: {e}", exc_info=True)
             return f"LLM_PROVIDER_ERROR: {e}"
 
-        logger.info(f"LLM response for plugin: {full_response[:100]}...")
+        logger.info(f"[instance={INSTANCE_ID}] LLM response for plugin: {full_response[:100]}...")
         return full_response
 
     plugin_manager = PluginManager(config.get("plugins", {}), get_llm_response)
@@ -303,7 +308,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
     @bot.event
     async def on_ready():
-        logger.info(f'{bot.user} has connected to Discord!')
+        logger.info(f"[instance={INSTANCE_ID}] {bot.user} has connected to Discord!")
     
     @bot.event
     async def on_message(message):
@@ -343,7 +348,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
         if not normal_triggered and repeat_parrot_content:
             await message.channel.send(repeat_parrot_content)
-            logger.info(f"Repeat parrot triggered in channel {message.channel.id} after repeated content.")
+            logger.info(f"[instance={INSTANCE_ID}] Repeat parrot triggered in channel {message.channel.id} after repeated content.")
             _reset_channel_automation_state(message.channel.id)
             return
 
@@ -352,7 +357,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             return
 
         if auto_interject_triggered and not normal_triggered:
-            logger.info(f"Auto interject triggered in channel {message.channel.id} after configured interval.")
+            logger.info(f"[instance={INSTANCE_ID}] Auto interject triggered in channel {message.channel.id} after configured interval.")
 
         # --- 分布式锁逻辑 ---
         # 只有在确认消息是发给bot时，才进行加锁操作
@@ -360,10 +365,10 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
         
         if not is_lock_acquired:
-            logger.info(f"Triggering message {message.id} is already being processed. Skipping.")
+            logger.info(f"[instance={INSTANCE_ID}] Triggering message {message.id} is already being processed. Skipping.")
             return
         
-        logger.info(f"Acquired lock for triggering message {message.id}. Processing...")
+        logger.info(f"[instance={INSTANCE_ID}] Acquired lock for triggering message {message.id}. Processing...")
         
         # 图片收集
         image_urls = collect_image_urls(message)
@@ -372,14 +377,14 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             replied_images = collect_image_urls(replied_msg)
             image_urls.extend(replied_images)
             if replied_images:
-                logger.info(f"Found {len(replied_images)} images in replied message from {replied_msg.author}")
+                logger.info(f"[instance={INSTANCE_ID}] Found {len(replied_images)} images in replied message from {replied_msg.author}")
         images = []
         unique_image_urls = list(dict.fromkeys(image_urls))
         for url in unique_image_urls:
             img_data = await download_image(url)
             if img_data:
                 images.append(img_data)
-                logger.info(f"Successfully downloaded image from {url}")
+                logger.info(f"[instance={INSTANCE_ID}] Successfully downloaded image from {url}")
         
         # 核心逻辑：上下文、人设、配额
         role_name, role_config = (None, None); 
@@ -422,7 +427,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             # Prepend to the system prompt inside a <knowledge> tag
             system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
             logger.info(
-                "Injected %s relevant memories into the system prompt (top_k=%s, char_limit=%s).",
+                "[instance=%s] Injected %s relevant memories into the system prompt (top_k=%s, char_limit=%s).",
+                INSTANCE_ID,
                 len(transformed_memories),
                 recall_top_k,
                 recall_char_limit,
@@ -483,7 +489,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     # First attempt: with tools
                     tools = plugin_manager.get_all_tools()
                     tool_functions = plugin_manager.get_all_tool_functions(message, config)
-                    logger.info(f"Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
+                    logger.info(f"[instance={INSTANCE_ID}] Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
                     response_gen_with_tools = llm_provider.get_response_stream(
                         llm_messages, images, tools=tools, tool_functions=tool_functions
                     )
@@ -541,7 +547,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             if usage_data:
                 input_tokens = usage_data.get("input_tokens", 0)
                 output_tokens = usage_data.get("output_tokens", 0)
-                logger.info(f"Using official usage data: Input={input_tokens}, Output={output_tokens}")
+                logger.info(f"[instance={INSTANCE_ID}] Using official usage data: Input={input_tokens}, Output={output_tokens}")
             else:
                 provider, model = config.get("llm_provider"), config.get("model_name")
                 input_tokens = token_calculator.get_token_count_for_messages(llm_messages, provider, model)
@@ -577,11 +583,11 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     try:
         await bot.start(discord_token)
     except ValueError as e: # 捕获我们自己抛出的异常
-        logger.critical(f"Terminating due to configuration error: {e}")
+        logger.critical(f"[instance={INSTANCE_ID}] Terminating due to configuration error: {e}")
     except discord.errors.LoginFailure:
-        logger.critical("FATAL: Login failed. The provided Discord token is incorrect. Please check your config.json.")
+        logger.critical(f"[instance={INSTANCE_ID}] FATAL: Login failed. The provided Discord token is incorrect. Please check your config.json.")
     except Exception as e:
-        logger.error(f"Bot failed to start: {e}", exc_info=True)
+        logger.error(f"[instance={INSTANCE_ID}] Bot failed to start: {e}", exc_info=True)
     finally:
         if not bot.is_closed():
             await bot.close()
