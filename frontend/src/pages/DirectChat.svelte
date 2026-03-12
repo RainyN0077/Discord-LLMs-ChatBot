@@ -327,6 +327,18 @@
                         <div class="debug-label">{$t('directChat.captureFormattedInput')}</div>
                         <pre>{selectedCapture.formatted_user_request}</pre>
                     </div>
+                    {#if selectedCapture.plugin_outputs?.length}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.capturePluginOutputs')}</div>
+                            <pre>{selectedCapture.plugin_outputs.join('\n\n')}</pre>
+                        </div>
+                    {/if}
+                    {#if selectedCapture.intermediate_llm_responses?.length}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.captureIntermediateOutputs')}</div>
+                            <pre>{selectedCapture.intermediate_llm_responses.join('\n\n---\n\n')}</pre>
+                        </div>
+                    {/if}
                     <div class="debug-input">
                         <div class="debug-label">{$t('directChat.captureRawOutput')}</div>
                         <pre>{selectedCapture.raw_llm_response}</pre>

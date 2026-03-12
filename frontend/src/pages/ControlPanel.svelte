@@ -65,6 +65,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     const advancedProviderOptions = [
         { value: 'openai', labelKey: 'modelProviders.openai' },
+        { value: 'grok', labelKey: 'modelProviders.grok' },
         { value: 'openai_compatible', labelKey: 'modelProviders.openaiCompatible' },
         { value: 'gemini', labelKey: 'modelProviders.gemini' },
         { value: 'anthropic', labelKey: 'modelProviders.anthropic' },
@@ -73,6 +74,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     function getProviderBaseUrl() {
         if ($coreConfig.llm_provider === 'openai') return $coreConfig.openai_base_url || '';
+        if ($coreConfig.llm_provider === 'grok') return $coreConfig.grok_base_url || '';
         if ($coreConfig.llm_provider === 'anthropic') return $coreConfig.anthropic_base_url || '';
         return '';
     }
@@ -120,6 +122,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     function providerForPlaceholder(provider) {
         if (provider === 'openai' || provider === 'openai_compatible') return 'openai';
+        if (provider === 'grok') return 'grok';
         if (provider === 'gemini') return 'google';
         return 'anthropic';
     }
@@ -418,7 +421,7 @@ async function resetFont() {
                         <div>
                             <label for="llm-provider">{$t('llmProvider.select')}</label>
                             <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
-                                <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
+                                <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="grok">{$t('llmProvider.providers.grok')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
                             </select>
                         </div>
                         <div>
@@ -431,6 +434,11 @@ async function resetFont() {
                         <div class="provider-extra-row">
                             <label for="openai-base-url">{$t('llmProvider.baseUrl')} (OpenAI)</label>
                             <input id="openai-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.openai_base_url}>
+                        </div>
+                    {:else if $coreConfig.llm_provider === 'grok'}
+                        <div class="provider-extra-row">
+                            <label for="grok-base-url">{$t('llmProvider.baseUrl')} (Grok)</label>
+                            <input id="grok-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.grok_base_url}>
                         </div>
                     {:else if $coreConfig.llm_provider === 'anthropic'}
                         <div class="provider-extra-row">

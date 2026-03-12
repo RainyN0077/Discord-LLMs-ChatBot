@@ -10,6 +10,28 @@ $targets = @()
 
 # 1) Match by command line patterns (preferred)
 $targets += @(Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -eq "powershell.exe" -and $_.CommandLine -and (
+        $_.CommandLine -like "*uvicorn app.main:app*" -or
+        $_.CommandLine -like "*npm run dev -- --host 0.0.0.0 --port 8094*"
+    ) -and (
+        $_.CommandLine -like "*$backendDir*" -or
+        $_.CommandLine -like "*$frontendDir*" -or
+        $_.CommandLine -like "*Discord-LLMs-ChatBot*"
+    )
+})
+
+$targets += @(Get-CimInstance Win32_Process | Where-Object {
+    $_.Name -eq "cmd.exe" -and $_.CommandLine -and (
+        $_.CommandLine -like "*run-backend-local.bat*" -or
+        $_.CommandLine -like "*npm run dev -- --host 0.0.0.0 --port 8094*"
+    ) -and (
+        $_.CommandLine -like "*$backendDir*" -or
+        $_.CommandLine -like "*$frontendDir*" -or
+        $_.CommandLine -like "*Discord-LLMs-ChatBot*"
+    )
+})
+
+$targets += @(Get-CimInstance Win32_Process | Where-Object {
     $_.Name -eq "python.exe" -and $_.CommandLine -and (
         $_.CommandLine -like "*uvicorn app.main:app*" -or
         $_.CommandLine -like "*uvicorn app.portrait_service:app*"

@@ -43,6 +43,7 @@ export default {
     select: 'Select Provider',
     providers: {
       openai: 'OpenAI',
+      grok: 'Grok (xAI)',
       google: 'Google Gemini',
       anthropic: 'Anthropic Claude'
     },
@@ -73,6 +74,7 @@ export default {
   },
   modelProviders: {
     openai: 'OpenAI',
+    grok: 'Grok (xAI)',
     openaiCompatible: 'OpenAI Compatible',
     gemini: 'Gemini',
     anthropic: 'Anthropic',
@@ -113,6 +115,7 @@ export default {
     modelName: 'Model Name',
     modelPlaceholders: {
       openai: 'e.g., gpt-4o, gpt-3.5-turbo',
+      grok: 'e.g., grok-4, grok-3-mini',
       google: 'e.g., gemini-1.5-flash, gemini-1.5-pro',
       anthropic: 'e.g., claude-3-opus-20240229'
     },
@@ -394,6 +397,8 @@ export default {
     captureUseInput: 'Use raw input',
     captureRawInput: 'Raw trigger input (unmodified)',
     captureFormattedInput: 'Formatted input sent to model',
+    capturePluginOutputs: 'Plugin-injected context',
+    captureIntermediateOutputs: 'Intermediate model outputs',
     captureRawOutput: 'Raw model output (unmodified)',
     captureCleanedOutput: 'Output after bot cleanup',
     captureSystemPrompt: 'System prompt used',

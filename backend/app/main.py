@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ValidationError, ConfigDict
 import openai
 from google import genai
 import anthropic
+from xai_sdk.chat import user as xai_user
 from PIL import Image, ImageDraw
 
 from .bot import run_bot, strip_dsml_tool_blocks, strip_thinking_sections
@@ -32,6 +33,13 @@ from .core_logic.knowledge_manager import knowledge_manager
 from .debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from .llm_providers.factory import get_llm_provider
 from .ocr_service import extract_ocr_text, DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS, has_ocr_model_config, is_multimodal_llm
+from .xai_sdk_utils import (
+    create_xai_sync_client,
+    list_xai_embedding_model_names,
+    list_xai_language_model_names,
+    probe_xai_embedding,
+    xai_sampling_usage_to_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +60,7 @@ def load_config():
     """加载配置，并为新字段设置默认值，增加错误日志。"""
     default_config = {
         'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
-        'openai_base_url': None, 'anthropic_base_url': None,
+        'openai_base_url': None, 'anthropic_base_url': None, 'grok_base_url': None,
         'model_name': 'gpt-4o',
         'llm_is_multimodal': True,
         'ocr_provider': 'openai',
@@ -211,6 +219,7 @@ class Config(BaseModel):
     base_url: Optional[str] = None
     openai_base_url: Optional[str] = None
     anthropic_base_url: Optional[str] = None
+    grok_base_url: Optional[str] = None
     model_name: str
     llm_is_multimodal: bool = True
     ocr_provider: str = "openai"
@@ -268,7 +277,18 @@ def _normalize_provider(provider: str) -> str:
         return "google"
     if normalized in {"anthropic_compatible", "anthropic-compatible"}:
         return "anthropic"
+    if normalized in {"xai", "grok", "x.ai"}:
+        return "grok"
     return normalized
+
+
+def _list_xai_models_for_task(client: Any, task: str) -> List[str]:
+    normalized_task = (task or "chat").strip().lower()
+    if normalized_task == "embedding":
+        return list_xai_embedding_model_names(client)
+    if normalized_task == "ocr":
+        return list_xai_language_model_names(client, image_capable_only=True)
+    return list_xai_language_model_names(client)
 
 
 def _build_ocr_test_image_bytes() -> bytes:
@@ -403,10 +423,12 @@ class DebugCaptureSummary(BaseModel):
 
 
 class DebugCaptureDetail(DebugCaptureSummary):
+    plugin_outputs: List[str] = Field(default_factory=list)
     formatted_user_request: str = ""
     system_prompt: str = ""
     history_for_llm: List[Dict[str, Any]] = Field(default_factory=list)
     llm_messages: List[Dict[str, Any]] = Field(default_factory=list)
+    intermediate_llm_responses: List[str] = Field(default_factory=list)
     raw_llm_response: str = ""
     cleaned_llm_response: str = ""
     usage: Optional[Dict[str, Any]] = None
@@ -1052,10 +1074,12 @@ async def get_debug_capture_detail(capture_id: str):
         "raw_user_message": _safe_text(row.get("raw_user_message", "")),
         "provider": _safe_text(row.get("provider", "")),
         "model": _safe_text(row.get("model", "")),
+        "plugin_outputs": _safe_str_list(row.get("plugin_outputs")),
         "formatted_user_request": _safe_text(row.get("formatted_user_request", "")),
         "system_prompt": _safe_text(row.get("system_prompt", "")),
         "history_for_llm": safe_history,
         "llm_messages": safe_messages,
+        "intermediate_llm_responses": _safe_str_list(row.get("intermediate_llm_responses")),
         "raw_llm_response": _safe_text(row.get("raw_llm_response", "")),
         "cleaned_llm_response": _safe_text(row.get("cleaned_llm_response", "")),
         "usage": safe_usage if isinstance(safe_usage, dict) else None,
@@ -1125,6 +1149,10 @@ async def get_available_models(request: AvailableModelsRequest):
             elif task == "chat":
                 model_ids = [m for m in model_ids if "gpt" in m.lower() or "chat" in m.lower()]
             return {"models": sorted(model_ids, reverse=True)}
+
+        elif provider == "grok":
+            client = create_xai_sync_client(request.api_key, request.base_url)
+            return {"models": _list_xai_models_for_task(client, task)}
             
         elif provider == "google":
             client = genai.Client(api_key=request.api_key)
@@ -1227,6 +1255,48 @@ async def test_model_connection(request: ModelTestRequest):
                     "id": response.model,
                     "usage": response.usage.dict() if response.usage else None
                 }
+            }
+
+        elif provider == "grok":
+            client = create_xai_sync_client(request.api_key, request.base_url)
+            available_models = set(_list_xai_models_for_task(client, task))
+
+            if task == "rerank":
+                if request.model_name in available_models:
+                    return {
+                        "success": True,
+                        "response": "Model is available and can be used in the rerank slot.",
+                        "model_info": {"id": request.model_name},
+                    }
+                return {
+                    "success": False,
+                    "error": f"Model '{request.model_name}' was not found on this xAI account."
+                }
+
+            if task == "embedding":
+                vector_count, usage = probe_xai_embedding(client, request.model_name, "connection test")
+                return {
+                    "success": True,
+                    "response": f"Embedding generated successfully (dimension={vector_count}).",
+                    "model_info": {
+                        "id": request.model_name,
+                        "usage": usage,
+                    },
+                }
+
+            chat = client.chat.create(
+                model=request.model_name,
+                messages=[xai_user(test_message)],
+                max_tokens=10,
+            )
+            response = chat.sample()
+            return {
+                "success": True,
+                "response": response.content,
+                "model_info": {
+                    "id": request.model_name,
+                    "usage": xai_sampling_usage_to_dict(response.usage),
+                },
             }
             
         elif provider == "google":

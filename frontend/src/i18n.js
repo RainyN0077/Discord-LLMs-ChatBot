@@ -34,15 +34,24 @@ const zhOverrides = {
     },
     modelProviders: {
         openai: 'OpenAI',
+        grok: 'Grok (xAI)',
         openaiCompatible: 'OpenAI 兼容',
         gemini: 'Gemini',
         anthropic: 'Anthropic',
         anthropicCompatible: 'Anthropic 兼容',
     },
     llmProvider: {
+        providers: {
+            grok: 'Grok (xAI)',
+        },
         multimodalLabel: '当前主模型支持多模态',
         multimodalInfo: '开启后，主模型会直接读取图片；关闭后，图片会先交给单独的 OCR 模型转成文本，再送给主模型。',
         ocrHiddenHint: '由于主模型会直接读取图片，OCR 设置已隐藏。',
+    },
+    defaultBehavior: {
+        modelPlaceholders: {
+            grok: '例如：grok-4、grok-3-mini',
+        },
     },
     embeddingSettings: {
         title: 'Embedding 设置',
@@ -132,6 +141,8 @@ const zhOverrides = {
         captureUseInput: '使用原始输入',
         captureRawInput: '触发原始输入（未修饰）',
         captureFormattedInput: '发送给模型的修饰输入',
+        capturePluginOutputs: '插件注入上下文',
+        captureIntermediateOutputs: '中间阶段模型输出',
         captureRawOutput: '模型原始输出（未修饰）',
         captureCleanedOutput: 'Bot 清洗后的输出',
         captureSystemPrompt: '本次系统提示词',

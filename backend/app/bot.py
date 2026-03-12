@@ -8,7 +8,7 @@ import redis
 import socket
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple, AsyncGenerator
+from typing import Any, Dict, List, Optional, TextIO, Tuple, AsyncGenerator
 
 import discord
 from discord.ext import commands
@@ -25,6 +25,16 @@ from .ocr_service import extract_ocr_text, has_ocr_model_config, is_multimodal_l
 from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
+
+try:
+    import fcntl  # type: ignore[attr-defined]
+except ImportError:
+    fcntl = None
+
+try:
+    import msvcrt  # type: ignore[attr-defined]
+except ImportError:
+    msvcrt = None
 
 INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
@@ -60,9 +70,64 @@ from pathlib import Path
 # --- [鏍稿績淇敼] 鍜?main.py 淇濇寔涓€鑷? 鎸囧悜鏂扮殑 data 鐩綍 ---
 DATA_DIR = Path.cwd() / "data"
 CONFIG_FILE = DATA_DIR / "config.json"
+BOT_PROCESS_LOCK_FILE = DATA_DIR / "discord_bot.lock"
 bot_instance = None
 current_config = {}
 token_calculator = TokenCalculator()
+
+
+def _try_acquire_bot_process_lock() -> Optional[TextIO]:
+    BOT_PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(BOT_PROCESS_LOCK_FILE, "a+", encoding="utf-8")
+    try:
+        handle.seek(0)
+        if not handle.read(1):
+            handle.write(" ")
+            handle.flush()
+        handle.seek(0)
+
+        if os.name == "nt":
+            if msvcrt is None:
+                raise RuntimeError("msvcrt is required to guard the Discord bot process on Windows.")
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        elif fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        else:
+            raise RuntimeError("No supported file locking primitive is available for Discord bot startup.")
+
+        handle.seek(0)
+        handle.truncate()
+        handle.write(str(os.getpid()))
+        handle.flush()
+        return handle
+    except OSError:
+        handle.close()
+        return None
+    except Exception:
+        handle.close()
+        raise
+
+
+def _release_bot_process_lock(handle: Optional[TextIO]) -> None:
+    if not handle:
+        return
+
+    try:
+        handle.seek(0)
+        handle.truncate()
+        handle.write("")
+        handle.flush()
+        handle.seek(0)
+
+        if os.name == "nt":
+            if msvcrt is not None:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        elif fcntl is not None:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        logger.warning("Failed to release Discord bot process lock cleanly.", exc_info=True)
+    finally:
+        handle.close()
 
 def load_bot_config():
     global current_config
@@ -250,6 +315,31 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         logger.critical("FATAL: Discord token is missing, invalid, or too short in config.json. Bot cannot start.")
         # 鍦ㄥ紓姝ヤ笂涓嬫枃涓紝鎶涘嚭寮傚父鏄粓姝㈠惎鍔ㄧ殑鏄庣‘鏂瑰紡
         raise ValueError("Invalid Discord token provided.")
+
+    if os.getenv("DISCORD_BOT_AUTOSTART", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        logger.info(f"[instance={INSTANCE_ID}] DISCORD_BOT_AUTOSTART is disabled. Skipping Discord bot startup.")
+        return
+
+    bot_process_lock: Optional[TextIO] = None
+    for attempt in range(15):
+        bot_process_lock = _try_acquire_bot_process_lock()
+        if bot_process_lock is not None:
+            logger.info(f"[instance={INSTANCE_ID}] Acquired Discord bot process lock on attempt {attempt + 1}.")
+            break
+
+        if attempt == 0:
+            logger.warning(
+                f"[instance={INSTANCE_ID}] Another app.main process is already holding the Discord bot lock. "
+                "Waiting briefly before giving up."
+            )
+        await asyncio.sleep(1)
+
+    if bot_process_lock is None:
+        logger.warning(
+            f"[instance={INSTANCE_ID}] Could not acquire the Discord bot process lock after retries. "
+            "This process will keep the API server alive but will not connect a second Discord bot instance."
+        )
+        return
     
     intents = discord.Intents.default()
     intents.message_content = True
@@ -412,11 +502,13 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if plugin_result is True:
             return
 
+        plugin_append_blocks: List[str] = []
         injected_data = None
         plugin_append_triggered = False
         if isinstance(plugin_result, tuple) and plugin_result[0] == 'append':
-            injected_data = "\n".join(plugin_result[1])
-            plugin_append_triggered = bool(plugin_result[1])
+            plugin_append_blocks = [str(item) for item in plugin_result[1] if str(item).strip()]
+            injected_data = "\n".join(plugin_append_blocks)
+            plugin_append_triggered = bool(plugin_append_blocks)
 
         if not normal_triggered and repeat_parrot_content:
             await message.channel.send(repeat_parrot_content)
@@ -605,15 +697,19 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         try:
             full_response = ""
             usage_data = None
+            final_response_stages: List[str] = []
             
             async with message.channel.typing():
                 response_message = None
 
                 # Helper function to render the response stream to avoid code duplication
-                async def _render_llm_response(response_generator: AsyncGenerator[Tuple[str, Any], None]) -> Tuple[str, Optional[Dict[str, int]]]:
+                async def _render_llm_response(
+                    response_generator: AsyncGenerator[Tuple[str, Any], None]
+                ) -> Tuple[str, Optional[Dict[str, int]], List[str]]:
                     nonlocal response_message
                     _full_response = ""
                     _usage_data = None
+                    _final_responses: List[str] = []
                     async for response_type, data in response_generator:
                         if response_type == "partial":
                             content_chunks = split_message(data, 2000)
@@ -625,10 +721,11 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                                     await response_message.edit(content=current_chunk)
                                 except discord.errors.HTTPException: pass
                         elif response_type == "final":
-                            _full_response = data
+                            _full_response = str(data or "")
+                            _final_responses.append(_full_response)
                         elif response_type == "usage":
                             _usage_data = data
-                    return _full_response, _usage_data
+                    return _full_response, _usage_data, _final_responses
 
                 llm_provider = get_llm_provider(config)
                 tools = plugin_manager.get_all_tools()
@@ -640,7 +737,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     response_gen_with_tools = llm_provider.get_response_stream(
                         llm_messages, llm_images if is_multimodal_llm(config) else None, tools=tools, tool_functions=tool_functions
                     )
-                    full_response, usage_data = await _render_llm_response(response_gen_with_tools)
+                    full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_with_tools)
                     used_tools_in_attempt = bool(tools)
                 except Exception as e:
                     error_str = str(e).lower()
@@ -651,7 +748,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         response_gen_no_tools = llm_provider.get_response_stream(
                             llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                         )
-                        full_response, usage_data = await _render_llm_response(response_gen_no_tools)
+                        full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
                     else:
                         # It's a different error, re-raise it to be caught by the main handler
                         raise e
@@ -663,7 +760,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     response_gen_no_tools = llm_provider.get_response_stream(
                         llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                     )
-                    full_response, usage_data = await _render_llm_response(response_gen_no_tools)
+                    full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
 
                 # --- Response Validation and Finalization ---
                 error_reason = None
@@ -695,11 +792,13 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     "user_name": message.author.name,
                     "user_display_name": getattr(message.author, "display_name", message.author.name),
                     "trigger_sources": trigger_sources,
+                    "plugin_outputs": plugin_append_blocks,
                     "raw_user_message": str(message.content or ""),
                     "formatted_user_request": final_formatted_content,
                     "system_prompt": system_prompt,
                     "history_for_llm": history_for_llm,
                     "llm_messages": llm_messages,
+                    "intermediate_llm_responses": final_response_stages[:-1],
                     "raw_llm_response": full_response,
                     "cleaned_llm_response": cleaned_response,
                     "usage": usage_data,
@@ -761,6 +860,9 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     
     try:
         await bot.start(discord_token)
+    except asyncio.CancelledError:
+        logger.info(f"[instance={INSTANCE_ID}] Discord bot task cancelled.")
+        raise
     except ValueError as e: # 鎹曡幏鎴戜滑鑷繁鎶涘嚭鐨勫紓甯?
         logger.critical(f"[instance={INSTANCE_ID}] Terminating due to configuration error: {e}")
     except discord.errors.LoginFailure:
@@ -770,5 +872,6 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     finally:
         if not bot.is_closed():
             await bot.close()
+        _release_bot_process_lock(bot_process_lock)
 
 

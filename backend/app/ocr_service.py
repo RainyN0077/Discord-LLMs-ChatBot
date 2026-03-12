@@ -37,6 +37,8 @@ def _normalize_provider(provider: str) -> str:
         return "google"
     if normalized in {"anthropic_compatible", "anthropic-compatible"}:
         return "anthropic"
+    if normalized in {"xai", "grok", "x.ai"}:
+        return "grok"
     return normalized
 
 
@@ -58,6 +60,8 @@ def _fallback_base_url(config: Dict[str, Any], normalized_provider: str) -> Opti
         return config.get("openai_base_url") or config.get("base_url")
     if normalized_provider == "anthropic":
         return config.get("anthropic_base_url") or config.get("base_url")
+    if normalized_provider == "grok":
+        return config.get("grok_base_url") or config.get("base_url")
     return None
 
 
@@ -74,6 +78,7 @@ def build_ocr_runtime_config(config: Dict[str, Any]) -> Dict[str, Any]:
         "base_url": endpoint,
         "openai_base_url": endpoint if normalized_provider == "openai" else None,
         "anthropic_base_url": endpoint if normalized_provider == "anthropic" else None,
+        "grok_base_url": endpoint if normalized_provider == "grok" else None,
         "model_name": str(config.get("ocr_model_name") or "").strip(),
         "stream_response": False,
         "custom_parameters": [],

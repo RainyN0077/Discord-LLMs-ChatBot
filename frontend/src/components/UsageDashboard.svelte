@@ -30,6 +30,7 @@
     
     const providerOptions = [
         { value: 'openai', label: 'OpenAI' },
+        { value: 'grok', label: 'Grok (xAI)' },
         { value: 'google', label: 'Google' },
         { value: 'anthropic', label: 'Anthropic' }
     ];

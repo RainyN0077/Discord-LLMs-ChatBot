@@ -108,7 +108,7 @@ class TokenCalculator:
             
         total_tokens = 0
         try:
-            if provider == "openai":
+            if provider in {"openai", "grok"}:
                 tokenizer = self._get_openai_tokenizer(model)
                 for message in messages:
                     # Based on OpenAI's cookbook for token counting
@@ -140,7 +140,7 @@ class TokenCalculator:
         # This function remains for simple text, like counting the final response.
         if not text: return 0
         try:
-            if provider == "openai": return len(self._get_openai_tokenizer(model).encode(text))
+            if provider in {"openai", "grok"}: return len(self._get_openai_tokenizer(model).encode(text))
             elif provider == "anthropic" and self._anthropic_client: return self._anthropic_client.count_tokens(text)
             elif provider == "google": return max(1, int(len(text) / 3.5))
             else: return len(text)
