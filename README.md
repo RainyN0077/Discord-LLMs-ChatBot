@@ -1,4 +1,4 @@
-# Discord-LLMs-ChatBot
+﻿# Discord-LLMs-ChatBot
 
 A highly customizable Discord chatbot with multi-provider LLM support, a web control panel, persistent knowledge features, and plugin-based automation.
 
@@ -21,7 +21,7 @@ A highly customizable Discord chatbot with multi-provider LLM support, a web con
 - Usage dashboard with token stats and model pricing
 - Secure plugin system with external trigger endpoint
 - Quota management (`!myquota`)
-- Docker deployment and Windows local dev scripts
+- Docker deployment and Windows/Linux local dev scripts
 
 ---
 
@@ -55,25 +55,25 @@ Services:
 PowerShell:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-local.ps1
 ```
 
 CMD:
 
 ```bat
-.\scripts\start-local.bat
+.\scripts\windows\start-local.bat
 ```
 
 Stop local processes:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stop-local.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-local.ps1
 ```
 
 or
 
 ```bat
-.\scripts\stop-local.bat
+.\scripts\windows\stop-local.bat
 ```
 
 What local scripts do:
@@ -81,6 +81,32 @@ What local scripts do:
 - Install backend dependencies from `backend/requirements.txt`
 - Install frontend dependencies (`npm install`) if npm is available
 - Start backend on `8093` and frontend dev server on `8094`
+
+### Linux local (non-Docker)
+
+Foreground mode (easy debugging):
+
+```bash
+bash ./scripts/linux/start-local-foreground.sh
+```
+
+Background mode (`nohup`, with logs/PID files):
+
+```bash
+bash ./scripts/linux/start-local-nohup.sh
+```
+
+`tmux` mode (separate windows for backend/frontend):
+
+```bash
+bash ./scripts/linux/start-local-tmux.sh
+```
+
+Stop local processes:
+
+```bash
+bash ./scripts/linux/stop-local.sh
+```
 
 ---
 
@@ -192,9 +218,14 @@ python -m pip install -r requirements.txt
 - Updated model listing/testing logic for Google provider
 - Cleaned backend requirements and removed duplicate dependency entries
 - Improved Windows local startup scripts:
-  - Added `scripts/run-backend-local.bat`
-  - Refined `start-local.bat` process launch and command checks
-  - Refactored `stop-local.bat` to call `stop-local.ps1`
+  - Added `scripts/windows/run-backend-local.bat`
+  - Refined `scripts/windows/start-local.bat` process launch and command checks
+  - Refactored `scripts/windows/stop-local.bat` to call `scripts/windows/stop-local.ps1`
+- Added Linux local startup scripts:
+  - `scripts/linux/start-local-foreground.sh`
+  - `scripts/linux/start-local-nohup.sh`
+  - `scripts/linux/start-local-tmux.sh`
+  - `scripts/linux/stop-local.sh`
 
 ---
 
@@ -229,77 +260,64 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## 11. Chinese Guide (中文版)
+## 11. Chinese Guide (涓枃鐗?
 
-### 项目简介
+### 椤圭洰绠€浠?
+杩欐槸涓€涓敮鎸佸妯″瀷鏈嶅姟鍟嗙殑 Discord 鏈哄櫒浜洪」鐩紝鎻愪緵 Web 鎺у埗闈㈡澘銆佺煡璇嗗簱锛堜笘鐣屼功 + 闀挎湡璁板繂锛夈€佹彃浠剁郴缁熴€佺敤閲忕粺璁″拰閰嶉鎺у埗銆?
+### 涓昏鍔熻兘
 
-这是一个支持多模型服务商的 Discord 机器人项目，提供 Web 控制面板、知识库（世界书 + 长期记忆）、插件系统、用量统计和配额控制。
-
-### 主要功能
-
-- 多服务商支持：OpenAI、Google Gemini（`google-genai`）、Anthropic
-- 可视化控制面板：在线修改配置并重启机器人
-- 分层人设：频道/服务器指令、用户画像、身份组配置
-- 知识增强：世界书关键词注入、长期记忆候选提升
-- 插件系统：支持外部接口触发 `POST /api/plugins/trigger`
-- 用量统计与价格面板：追踪 token 和成本
-
-### 快速启动（Docker）
-
+- 澶氭湇鍔″晢鏀寔锛歄penAI銆丟oogle Gemini锛坄google-genai`锛夈€丄nthropic
+- 鍙鍖栨帶鍒堕潰鏉匡細鍦ㄧ嚎淇敼閰嶇疆骞堕噸鍚満鍣ㄤ汉
+- 鍒嗗眰浜鸿锛氶閬?鏈嶅姟鍣ㄦ寚浠ゃ€佺敤鎴风敾鍍忋€佽韩浠界粍閰嶇疆
+- 鐭ヨ瘑澧炲己锛氫笘鐣屼功鍏抽敭璇嶆敞鍏ャ€侀暱鏈熻蹇嗗€欓€夋彁鍗?- 鎻掍欢绯荤粺锛氭敮鎸佸閮ㄦ帴鍙ｈЕ鍙?`POST /api/plugins/trigger`
+- 鐢ㄩ噺缁熻涓庝环鏍奸潰鏉匡細杩借釜 token 鍜屾垚鏈?
+### 蹇€熷惎鍔紙Docker锛?
 ```bash
 docker compose up --build -d
 ```
 
-启动后访问：
+鍚姩鍚庤闂細
 
-- 前端：`http://localhost:8094`
-- 后端：`http://localhost:8093`
+- 鍓嶇锛歚http://localhost:8094`
+- 鍚庣锛歚http://localhost:8093`
 
-### Windows 本地开发（非 Docker）
-
-PowerShell 启动：
-
+### Windows 鏈湴寮€鍙戯紙闈?Docker锛?
+PowerShell 鍚姩锛?
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\start-local.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-local.ps1
 ```
 
-CMD 启动：
+CMD 鍚姩锛?
+```bat
+.\scripts\windows\start-local.bat
+```
+
+鍋滄鏈湴杩涚▼锛?
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-local.ps1
+```
+
+鎴栵細
 
 ```bat
-.\scripts\start-local.bat
+.\scripts\windows\stop-local.bat
 ```
 
-停止本地进程：
+### 鍏抽敭閰嶇疆椤?
+- `discord_token`锛欴iscord 鏈哄櫒浜?Token
+- `llm_provider`锛歚openai` / `google` / `anthropic`
+- `api_key`锛氬搴旀湇鍔″晢 API Key
+- `model_name`锛氭ā鍨嬪悕绉?- `api_secret_key`锛氬悗绔?API 閴存潈瀵嗛挜锛堣姹傚ご `X-API-Key`锛?
+### Google 杩佺Щ璇存槑
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\stop-local.ps1
-```
+褰撳墠 Google 璺緞宸茬粺涓€鍒?`google-genai`锛?
+- `backend/requirements.txt` 浣跨敤 `google-genai`
+- `backend/app/main.py` 浣跨敤 `from google import genai`
+- `backend/app/llm_providers/google_provider.py` 宸茶縼绉诲埌鏂?SDK 瀹炵幇
 
-或：
-
-```bat
-.\scripts\stop-local.bat
-```
-
-### 关键配置项
-
-- `discord_token`：Discord 机器人 Token
-- `llm_provider`：`openai` / `google` / `anthropic`
-- `api_key`：对应服务商 API Key
-- `model_name`：模型名称
-- `api_secret_key`：后端 API 鉴权密钥（请求头 `X-API-Key`）
-
-### Google 迁移说明
-
-当前 Google 路径已统一到 `google-genai`：
-
-- `backend/requirements.txt` 使用 `google-genai`
-- `backend/app/main.py` 使用 `from google import genai`
-- `backend/app/llm_providers/google_provider.py` 已迁移到新 SDK 实现
-
-如果你本地环境还停留在旧包，建议重新安装依赖：
-
+濡傛灉浣犳湰鍦扮幆澧冭繕鍋滅暀鍦ㄦ棫鍖咃紝寤鸿閲嶆柊瀹夎渚濊禆锛?
 ```bash
-# 在 backend 目录执行
+# 鍦?backend 鐩綍鎵ц
 python -m pip install -r requirements.txt
 ```
+

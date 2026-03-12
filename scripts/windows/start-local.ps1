@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$rootDir = Split-Path -Parent $PSScriptRoot
+$rootDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $backendDir = Join-Path $rootDir "backend"
 $frontendDir = Join-Path $rootDir "frontend"
 $venvDir = Join-Path $backendDir ".venv"
