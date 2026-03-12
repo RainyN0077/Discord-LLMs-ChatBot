@@ -26,6 +26,7 @@ from .utils import _execute_http_request, _format_with_placeholders, setup_loggi
 from .core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from .core_logic.context_builder import format_user_message_for_llm
 from .core_logic.knowledge_manager import knowledge_manager
+from .debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from .llm_providers.factory import get_llm_provider
 
 logger = logging.getLogger(__name__)
@@ -281,9 +282,17 @@ class DirectChatMessage(BaseModel):
     role: str
     content: str
 
+class DirectChatDebugContext(BaseModel):
+    user_id: str = "100000000000000001"
+    channel_id: str = "100000000000000002"
+    guild_id: Optional[str] = None
+    role_id: Optional[str] = None
+
 class DirectChatRequest(BaseModel):
     messages: List[DirectChatMessage] = Field(default_factory=list)
     include_system_prompt: bool = True
+    debug_mode: bool = False
+    debug_context: Optional[DirectChatDebugContext] = None
 
 class DirectChatResponse(BaseModel):
     success: bool
@@ -291,6 +300,33 @@ class DirectChatResponse(BaseModel):
     usage: Optional[Dict[str, int]] = None
     provider: str
     model: str
+    debug_mode: bool = False
+    formatted_user_messages: Optional[List[str]] = None
+
+
+class DebugCaptureSummary(BaseModel):
+    id: str
+    captured_at: str
+    trigger_message_id: str
+    channel_id: str
+    guild_id: Optional[str] = None
+    user_id: str
+    user_name: str
+    user_display_name: str
+    trigger_sources: List[str] = Field(default_factory=list)
+    raw_user_message: str
+    provider: str = ""
+    model: str = ""
+
+
+class DebugCaptureDetail(DebugCaptureSummary):
+    formatted_user_request: str = ""
+    system_prompt: str = ""
+    history_for_llm: List[Dict[str, Any]] = Field(default_factory=list)
+    llm_messages: List[Dict[str, Any]] = Field(default_factory=list)
+    raw_llm_response: str = ""
+    cleaned_llm_response: str = ""
+    usage: Optional[Dict[str, int]] = None
 
 # --- Knowledge Base Models ---
 class MemoryItem(BaseModel):
@@ -497,16 +533,111 @@ async def direct_chat(request: DirectChatRequest):
 
     config = load_config()
     llm_messages: List[Dict[str, str]] = []
+    formatted_user_messages: Optional[List[str]] = None
 
-    has_custom_system = any((msg.role or "").lower().strip() == "system" for msg in request.messages)
-    if request.include_system_prompt and not has_custom_system and config.get("system_prompt"):
-        llm_messages.append({"role": "system", "content": str(config.get("system_prompt", ""))})
+    if request.debug_mode:
+        debug_context = request.debug_context or DirectChatDebugContext()
+        try:
+            user_id_int = int(debug_context.user_id)
+            channel_id_int = int(debug_context.channel_id)
+            guild_id_int = int(debug_context.guild_id) if debug_context.guild_id else None
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="debug_context user_id/channel_id/guild_id must be numeric strings.")
 
-    for msg in request.messages:
-        role = (msg.role or "").lower().strip()
-        if role not in {"system", "user", "assistant"}:
-            raise HTTPException(status_code=400, detail=f"Invalid role '{msg.role}'.")
-        llm_messages.append({"role": role, "content": str(msg.content or "")})
+        role_config = None
+        role_name = None
+        if debug_context.role_id:
+            role_config = config.get("role_based_config", {}).get(debug_context.role_id)
+            if role_config:
+                role_name = role_config.get("title")
+
+        mock_author = MagicMock(spec=discord.Member)
+        mock_author.id = user_id_int
+        mock_author.name = f"debug-user-{debug_context.user_id}"
+        mock_author.display_name = mock_author.name
+        mock_author.bot = False
+        mock_author.roles = []
+
+        mock_channel = MagicMock(spec=discord.TextChannel)
+        mock_channel.id = channel_id_int
+
+        mock_guild = None
+        if guild_id_int is not None:
+            mock_guild = MagicMock(spec=discord.Guild)
+            mock_guild.id = guild_id_int
+            mock_guild.get_member = MagicMock(return_value=None)
+            mock_channel.guild = mock_guild
+
+        mock_bot = MagicMock(spec=discord.Client)
+        mock_bot.user = MagicMock()
+        mock_bot.user.id = 999999999999999999
+        mock_bot.fetch_user = AsyncMock(return_value=mock_author)
+
+        active_directives_log: List[str] = []
+        specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(
+            config,
+            str(channel_id_int),
+            str(guild_id_int) if guild_id_int is not None else None,
+            role_name,
+            role_config,
+        )
+
+        latest_user_message = next(
+            (msg for msg in reversed(request.messages) if (msg.role or "").lower().strip() == "user"),
+            request.messages[-1],
+        )
+        prompt_message = MagicMock(spec=discord.Message)
+        prompt_message.author = mock_author
+        prompt_message.channel = mock_channel
+        prompt_message.guild = mock_guild
+        prompt_message.content = str(latest_user_message.content or "")
+        prompt_message.clean_content = str(latest_user_message.content or "")
+        prompt_message.mentions = []
+        prompt_message.attachments = []
+        prompt_message.reference = None
+
+        system_prompt = await build_system_prompt(
+            mock_bot,
+            config,
+            specific_persona_prompt,
+            situational_prompt,
+            prompt_message,
+            active_directives_log,
+        )
+        llm_messages.append({"role": "system", "content": system_prompt})
+
+        formatted_user_messages = []
+        for msg in request.messages:
+            role = (msg.role or "").lower().strip()
+            if role not in {"user", "assistant"}:
+                raise HTTPException(status_code=400, detail=f"Invalid role '{msg.role}' for debug_mode. Allowed roles: user, assistant.")
+            if role == "assistant":
+                llm_messages.append({"role": "assistant", "content": str(msg.content or "")})
+                continue
+
+            mock_user_message = MagicMock(spec=discord.Message)
+            mock_user_message.author = mock_author
+            mock_user_message.channel = mock_channel
+            mock_user_message.guild = mock_guild
+            mock_user_message.content = str(msg.content or "")
+            mock_user_message.clean_content = str(msg.content or "")
+            mock_user_message.mentions = []
+            mock_user_message.attachments = []
+            mock_user_message.reference = None
+
+            formatted_content = format_user_message_for_llm(mock_user_message, mock_bot, config, role_config)
+            formatted_user_messages.append(formatted_content)
+            llm_messages.append({"role": "user", "content": formatted_content})
+    else:
+        has_custom_system = any((msg.role or "").lower().strip() == "system" for msg in request.messages)
+        if request.include_system_prompt and not has_custom_system and config.get("system_prompt"):
+            llm_messages.append({"role": "system", "content": str(config.get("system_prompt", ""))})
+
+        for msg in request.messages:
+            role = (msg.role or "").lower().strip()
+            if role not in {"system", "user", "assistant"}:
+                raise HTTPException(status_code=400, detail=f"Invalid role '{msg.role}'.")
+            llm_messages.append({"role": role, "content": str(msg.content or "")})
 
     runtime_config = dict(config)
     runtime_config["stream_response"] = False
@@ -530,12 +661,64 @@ async def direct_chat(request: DirectChatRequest):
             "usage": usage_data,
             "provider": str(config.get("llm_provider", "openai")),
             "model": str(config.get("model_name", "")),
+            "debug_mode": bool(request.debug_mode),
+            "formatted_user_messages": formatted_user_messages if request.debug_mode else None,
         }
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Direct chat failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Direct chat failed. Check backend logs for details.")
+
+
+@app.get("/api/debug/captures", dependencies=[Depends(get_api_key)], response_model=List[DebugCaptureSummary])
+async def get_debug_captures(limit: int = 20, channel_id: Optional[str] = None):
+    rows = list_debug_captures(limit=limit, channel_id=channel_id)
+    return [
+        {
+            "id": str(row.get("id", "")),
+            "captured_at": str(row.get("captured_at", "")),
+            "trigger_message_id": str(row.get("trigger_message_id", "")),
+            "channel_id": str(row.get("channel_id", "")),
+            "guild_id": row.get("guild_id"),
+            "user_id": str(row.get("user_id", "")),
+            "user_name": str(row.get("user_name", "")),
+            "user_display_name": str(row.get("user_display_name", "")),
+            "trigger_sources": [str(x) for x in row.get("trigger_sources", [])],
+            "raw_user_message": str(row.get("raw_user_message", "")),
+            "provider": str(row.get("provider", "")),
+            "model": str(row.get("model", "")),
+        }
+        for row in rows
+    ]
+
+
+@app.get("/api/debug/captures/{capture_id}", dependencies=[Depends(get_api_key)], response_model=DebugCaptureDetail)
+async def get_debug_capture_detail(capture_id: str):
+    row = get_debug_capture(capture_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Capture not found.")
+    return {
+        "id": str(row.get("id", "")),
+        "captured_at": str(row.get("captured_at", "")),
+        "trigger_message_id": str(row.get("trigger_message_id", "")),
+        "channel_id": str(row.get("channel_id", "")),
+        "guild_id": row.get("guild_id"),
+        "user_id": str(row.get("user_id", "")),
+        "user_name": str(row.get("user_name", "")),
+        "user_display_name": str(row.get("user_display_name", "")),
+        "trigger_sources": [str(x) for x in row.get("trigger_sources", [])],
+        "raw_user_message": str(row.get("raw_user_message", "")),
+        "provider": str(row.get("provider", "")),
+        "model": str(row.get("model", "")),
+        "formatted_user_request": str(row.get("formatted_user_request", "")),
+        "system_prompt": str(row.get("system_prompt", "")),
+        "history_for_llm": row.get("history_for_llm", []) if isinstance(row.get("history_for_llm", []), list) else [],
+        "llm_messages": row.get("llm_messages", []) if isinstance(row.get("llm_messages", []), list) else [],
+        "raw_llm_response": str(row.get("raw_llm_response", "")),
+        "cleaned_llm_response": str(row.get("cleaned_llm_response", "")),
+        "usage": row.get("usage") if isinstance(row.get("usage"), dict) else None,
+    }
 
 # --- Plugin-specific Endpoints ---
 

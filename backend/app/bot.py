@@ -19,6 +19,7 @@ from .core_logic.persona_manager import determine_bot_persona, build_system_prom
 from .core_logic.context_builder import build_context_history, format_user_message_for_llm
 from .core_logic.usage_manager import UsageManager
 from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
+from .debug_capture_store import add_capture
 from .llm_providers.factory import get_llm_provider
 from plugins.manager import PluginManager
 
@@ -401,6 +402,14 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if auto_interject_triggered and not normal_triggered:
             logger.info(f"[instance={INSTANCE_ID}] Auto interject triggered in channel {message.channel.id} after configured interval.")
 
+        trigger_sources: List[str] = []
+        if normal_triggered:
+            trigger_sources.append("normal")
+        if auto_interject_triggered:
+            trigger_sources.append("auto_interject")
+        if plugin_append_triggered:
+            trigger_sources.append("plugin_append")
+
         # --- 鍒嗗竷寮忛攣閫昏緫 ---
         # 鍙湁鍦ㄧ‘璁ゆ秷鎭槸鍙戠粰bot鏃讹紝鎵嶈繘琛屽姞閿佹搷浣?
         lock_key = f"discord:message_lock:{message.id}"
@@ -582,6 +591,26 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 cleaned_response = process_memory_tags(message, full_response, config)
                 cleaned_response = strip_dsml_tool_blocks(cleaned_response)
                 cleaned_response = strip_thinking_sections(cleaned_response)
+
+                add_capture({
+                    "trigger_message_id": str(message.id),
+                    "channel_id": str(message.channel.id),
+                    "guild_id": str(message.guild.id) if message.guild else None,
+                    "user_id": str(message.author.id),
+                    "user_name": message.author.name,
+                    "user_display_name": getattr(message.author, "display_name", message.author.name),
+                    "trigger_sources": trigger_sources,
+                    "raw_user_message": str(message.content or ""),
+                    "formatted_user_request": final_formatted_content,
+                    "system_prompt": system_prompt,
+                    "history_for_llm": history_for_llm,
+                    "llm_messages": llm_messages,
+                    "raw_llm_response": full_response,
+                    "cleaned_llm_response": cleaned_response,
+                    "usage": usage_data,
+                    "provider": str(config.get("llm_provider", "")),
+                    "model": str(config.get("model_name", "")),
+                })
 
                 if response_message:
                     final_chunks = split_message(cleaned_response, 2000)

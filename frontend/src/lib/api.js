@@ -155,6 +155,19 @@ export async function simulateDebug(payload) {
     });
 }
 
+export async function fetchDebugCaptures(limit = 30, channelId = '') {
+    const params = new URLSearchParams();
+    params.set('limit', String(limit));
+    if (channelId && String(channelId).trim()) {
+        params.set('channel_id', String(channelId).trim());
+    }
+    return apiFetch(`${BASE_URL}/debug/captures?${params.toString()}`);
+}
+
+export async function fetchDebugCaptureDetail(captureId) {
+    return apiFetch(`${BASE_URL}/debug/captures/${captureId}`);
+}
+
 export async function fetchAvailableModels(provider, apiKey, baseUrl, task = 'chat') {
     return apiFetch(`${BASE_URL}/models/list`, {
         method: 'POST',
@@ -213,12 +226,14 @@ export async function updateMemoryItem(itemId, content) {
     });
 }
 
-export async function directChat(messages, includeSystemPrompt = true) {
+export async function directChat(messages, includeSystemPrompt = true, debugMode = false, debugContext = null) {
     return apiFetch(`${BASE_URL}/chat/direct`, {
         method: 'POST',
         body: JSON.stringify({
             messages,
-            include_system_prompt: includeSystemPrompt
+            include_system_prompt: includeSystemPrompt,
+            debug_mode: debugMode,
+            debug_context: debugContext
         }),
     });
 }
