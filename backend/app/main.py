@@ -18,7 +18,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field, ValidationError, ConfigDict
 
 import openai
-import google.generativeai as genai
+from google import genai
 import anthropic
 
 from .bot import run_bot
@@ -485,11 +485,16 @@ async def get_available_models(request: AvailableModelsRequest):
             return {"models": sorted(chat_models, reverse=True)}
             
         elif request.provider == "google":
-            genai.configure(api_key=request.api_key)
-            models = genai.list_models()
+            client = genai.Client(api_key=request.api_key)
+            models = client.models.list()
             chat_models = []
             for model in models:
-                if 'generateContent' in model.supported_generation_methods:
+                supported_actions = getattr(model, "supported_actions", None) or []
+                supports_generate = any(
+                    str(action) in {"generateContent", "generate_content"}
+                    for action in supported_actions
+                )
+                if supports_generate and getattr(model, "name", None):
                     name = model.name.replace('models/', '')
                     chat_models.append(name)
             return {"models": sorted(chat_models)}
@@ -544,12 +549,19 @@ async def test_model_connection(request: ModelTestRequest):
             }
             
         elif request.provider == "google":
-            genai.configure(api_key=request.api_key)
-            model = genai.GenerativeModel(request.model_name)
-            response = model.generate_content(test_message)
+            client = genai.Client(api_key=request.api_key)
+            response = client.models.generate_content(
+                model=request.model_name,
+                contents=test_message,
+            )
+            response_text = response.text or ""
+            if not response_text and response.candidates:
+                candidate = response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    response_text = "".join(part.text or "" for part in candidate.content.parts)
             return {
                 "success": True,
-                "response": response.text,
+                "response": response_text,
                 "model_info": {"id": request.model_name}
             }
             

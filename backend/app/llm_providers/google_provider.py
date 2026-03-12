@@ -1,273 +1,293 @@
 # backend/app/llm_providers/google_provider.py
-import google.generativeai as genai
-import PIL.Image
-import io
 import json
 import logging
-from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
+
+from google import genai
+from google.genai import types
 
 from .base import LLMProvider
-import google.generativeai.types as genai_types
-from google.ai.generativelanguage import Part, FunctionResponse, Type
 
 logger = logging.getLogger(__name__)
 
+
 class GoogleProvider(LLMProvider):
     """
-    LLMProvider implementation for Google's Gemini API.
+    LLMProvider implementation for Google's Gemini API via google-genai SDK.
     """
+
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
-        genai.configure(api_key=self.api_key)
-        self.model_instance = genai.GenerativeModel(self.model)
+        self.client = genai.Client(api_key=self.api_key)
 
-    def _prepare_request_params(self) -> Dict[str, Any]:
-        """
-        Maps standard parameters to Google-specific generation config.
-        """
-        generation_config_params = {}
-        if "max_tokens" in self.custom_params:
-            generation_config_params["max_output_tokens"] = self.custom_params.pop("max_tokens")
-        if "temperature" in self.custom_params:
-            generation_config_params["temperature"] = self.custom_params.pop("temperature")
-        if "top_p" in self.custom_params:
-            generation_config_params["top_p"] = self.custom_params.pop("top_p")
-        # Google's API uses 'candidate_count' instead of 'n', and 'top_k' is supported.
-        # We will map them if they exist in custom_params.
-        if "top_k" in self.custom_params:
-             generation_config_params["top_k"] = self.custom_params.pop("top_k")
-        
-        api_kwargs = {}
-        if generation_config_params:
-            api_kwargs['generation_config'] = genai.types.GenerationConfig(**generation_config_params)
-        
-        # Add any remaining custom params that might be supported directly
-        api_kwargs.update(self.custom_params)
-        return api_kwargs
+    @staticmethod
+    def _extract_text_from_response(response: Any) -> str:
+        try:
+            text = response.text
+            if text:
+                return text
+        except Exception:
+            pass
 
-    def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Any]:
-        """
-        Formats messages for the Gemini API, handling multi-modal content.
-        The format is a list containing strings and PIL.Image objects.
-        """
-        # Google's format is a flat list of content parts.
-        # We will simulate the conversation history as a single prompt block.
-        prompt_parts = []
+        output_chunks: List[str] = []
+        candidates = getattr(response, "candidates", None) or []
+        for candidate in candidates:
+            content = getattr(candidate, "content", None)
+            parts = getattr(content, "parts", None) or []
+            for part in parts:
+                part_text = getattr(part, "text", None)
+                if part_text:
+                    output_chunks.append(part_text)
+        return "".join(output_chunks)
+
+    @staticmethod
+    def _extract_usage(response: Any) -> Optional[Dict[str, int]]:
+        usage = getattr(response, "usage_metadata", None)
+        if not usage:
+            return None
+        input_tokens = getattr(usage, "prompt_token_count", None)
+        output_tokens = getattr(usage, "candidates_token_count", None)
+        if input_tokens is None and output_tokens is None:
+            return None
+        return {
+            "input_tokens": int(input_tokens or 0),
+            "output_tokens": int(output_tokens or 0),
+        }
+
+    @staticmethod
+    def _stringify_content(content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    item_text = item.get("text") or item.get("content")
+                    if item_text:
+                        text_parts.append(str(item_text))
+                else:
+                    text_parts.append(str(item))
+            return "\n".join(text_parts)
+        return str(content)
+
+    def _prepare_messages(
+        self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]
+    ) -> Tuple[Optional[str], List[types.Content]]:
+        system_prompt: Optional[str] = None
+        content_list: List[types.Content] = []
+
         for msg in messages:
-            # The 'system' role is not explicitly supported in the same way. 
-            # It's usually prepended to the user's first message.
-            # For simplicity, we treat system, user, and assistant messages as part of a continuous conversation script.
-            role_prefix = f"{msg['role'].capitalize()}: "
-            prompt_parts.append(f"{role_prefix}{msg['content']}")
-        
-        prompt = "\n\n".join(prompt_parts)
-        
-        generation_input = [prompt]
+            role = msg.get("role")
+            if role == "system":
+                system_prompt = self._stringify_content(msg.get("content", ""))
+                continue
+
+            message_role = "model" if role == "assistant" else "user"
+            text = self._stringify_content(msg.get("content", ""))
+            parts = [types.Part.from_text(text=text)] if text else []
+            content_list.append(types.Content(role=message_role, parts=parts))
+
         if images:
-            for img_bytes in images:
-                img = PIL.Image.open(io.BytesIO(img_bytes))
-                generation_input.append(img)
-                
-        return generation_input
+            image_parts = [types.Part.from_bytes(data=img, mime_type="image/jpeg") for img in images]
+            if content_list and content_list[-1].role == "user":
+                content_list[-1].parts = (content_list[-1].parts or []) + image_parts
+            else:
+                content_list.append(types.Content(role="user", parts=image_parts))
+
+        return system_prompt, content_list
+
+    @staticmethod
+    def _prepare_tools(tools: Optional[List[Dict[str, Any]]]) -> Optional[List[types.Tool]]:
+        if not tools:
+            return None
+
+        declarations: List[types.FunctionDeclaration] = []
+        for tool in tools:
+            declaration = tool.get("function", tool)
+            name = declaration.get("name")
+            if not name:
+                continue
+            declarations.append(
+                types.FunctionDeclaration(
+                    name=name,
+                    description=declaration.get("description"),
+                    parameters_json_schema=declaration.get("parameters"),
+                )
+            )
+
+        if not declarations:
+            return None
+
+        return [types.Tool(function_declarations=declarations)]
+
+    def _prepare_generation_config(
+        self,
+        system_prompt: Optional[str],
+        genai_tools: Optional[List[types.Tool]],
+    ) -> types.GenerateContentConfig:
+        custom = dict(self.custom_params)
+        mapped = {
+            "max_tokens": "max_output_tokens",
+            "temperature": "temperature",
+            "top_p": "top_p",
+            "top_k": "top_k",
+            "n": "candidate_count",
+        }
+        config_kwargs: Dict[str, Any] = {}
+
+        for src_key, target_key in mapped.items():
+            if src_key in custom:
+                config_kwargs[target_key] = custom.pop(src_key)
+
+        config_kwargs.update(custom)
+
+        if system_prompt:
+            config_kwargs["system_instruction"] = system_prompt
+        if genai_tools:
+            config_kwargs["tools"] = genai_tools
+            config_kwargs["automatic_function_calling"] = types.AutomaticFunctionCallingConfig(disable=True)
+
+        return types.GenerateContentConfig(**config_kwargs)
+
+    @staticmethod
+    def _extract_function_calls(response: Any) -> List[Any]:
+        function_calls = getattr(response, "function_calls", None)
+        return list(function_calls or [])
+
+    def _append_tool_call_turns(
+        self, contents: List[types.Content], function_calls: List[Any], tool_functions: Dict[str, callable]
+    ) -> List[types.Content]:
+        model_parts: List[types.Part] = []
+        tool_parts: List[types.Part] = []
+
+        for function_call in function_calls:
+            fn_name = getattr(function_call, "name", None)
+            fn_args = dict(getattr(function_call, "args", {}) or {})
+            if not fn_name:
+                continue
+
+            model_parts.append(types.Part.from_function_call(name=fn_name, args=fn_args))
+
+            function_to_call = tool_functions.get(fn_name)
+            if function_to_call:
+                try:
+                    logger.info("Executing tool '%s' with args: %s", fn_name, fn_args)
+                    function_result = function_to_call(**fn_args)
+                    parsed_result: Any = function_result
+                    if isinstance(function_result, str):
+                        try:
+                            parsed_result = json.loads(function_result)
+                        except Exception:
+                            parsed_result = {"result": function_result}
+                    elif not isinstance(function_result, dict):
+                        parsed_result = {"result": function_result}
+
+                    tool_parts.append(
+                        types.Part.from_function_response(name=fn_name, response=parsed_result)
+                    )
+                except Exception as tool_error:
+                    logger.error("Error executing tool %s: %s", fn_name, tool_error)
+                    tool_parts.append(
+                        types.Part.from_function_response(
+                            name=fn_name, response={"error": str(tool_error)}
+                        )
+                    )
+            else:
+                tool_parts.append(
+                    types.Part.from_function_response(
+                        name=fn_name, response={"error": f"Tool '{fn_name}' not found."}
+                    )
+                )
+
+        updated_contents = list(contents)
+        if model_parts:
+            updated_contents.append(types.Content(role="model", parts=model_parts))
+        if tool_parts:
+            updated_contents.append(types.Content(role="user", parts=tool_parts))
+        return updated_contents
+
+    async def _generate_non_stream(self, model: str, contents: List[types.Content], config: types.GenerateContentConfig) -> Any:
+        return await self.client.aio.models.generate_content(model=model, contents=contents, config=config)
+
+    async def _generate_stream(self, model: str, contents: List[types.Content], config: types.GenerateContentConfig) -> AsyncGenerator[Any, None]:
+        async for chunk in self.client.aio.models.generate_content_stream(
+            model=model,
+            contents=contents,
+            config=config,
+        ):
+            yield chunk
 
     async def get_response_stream(
         self,
         messages: List[Dict[str, Any]],
         images: Optional[List[bytes]] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
-        tool_functions: Optional[Dict[str, callable]] = None
-    ) -> AsyncGenerator[Tuple[str, str], None]:
-        
-        # Note: Gemini's Python SDK has some complexities with history & roles.
-        # We'll stick to a simpler "single-turn" chat for now and build the history manually.
-        # System prompt is prepended to the first user message.
-        history_for_gemini = []
-        system_prompt = None
-        if messages and messages[0]['role'] == 'system':
-            system_prompt = messages[0]['content']
-            messages = messages[1:]
-
-        for msg in messages:
-            role = 'user' if msg['role'] == 'user' else 'model'
-            # For now, we will merge content into a single string for simplicity.
-            # A more advanced implementation would handle complex content arrays.
-            content_text = msg['content'] if isinstance(msg['content'], str) else str(msg['content'])
-            if msg['role'] == 'user' and system_prompt:
-                content_text = f"{system_prompt}\n\n{content_text}"
-                system_prompt = None # Only use it once
-            history_for_gemini.append({'role': role, 'parts': [content_text]})
-
-        # The last message is the one we send now.
-        # The history needs to be passed to `start_chat`.
-        current_message_parts = history_for_gemini.pop()['parts']
-
-        if images:
-            for img_bytes in images:
-                img = PIL.Image.open(io.BytesIO(img_bytes))
-                current_message_parts.append(img)
-        
-        api_kwargs = self._prepare_request_params()
-        
+        tool_functions: Optional[Dict[str, callable]] = None,
+    ) -> AsyncGenerator[Tuple[str, Union[str, Dict[str, int]]], None]:
         try:
-            chat = self.model_instance.start_chat(
-                history=history_for_gemini,
-            )
-            
-            # Add tools if available.
-            sanitized_tools = None
-            if tools:
-                # [FIX] Deeply convert OpenAI-style tool schemas to Google's format.
-                # This involves both removing the top-level 'type: object' from parameters
-                # and converting type strings (e.g., "string") to Google's Type enum.
-                
-                # Mapping from JSON Schema types to Google's Type enum
-                type_map = {
-                    "string": Type.STRING,
-                    "number": Type.NUMBER,
-                    "integer": Type.INTEGER,
-                    "boolean": Type.BOOLEAN,
-                    "array": Type.ARRAY,
-                    "object": Type.OBJECT,
-                }
+            system_prompt, contents = self._prepare_messages(messages, images)
+            genai_tools = self._prepare_tools(tools)
+            config = self._prepare_generation_config(system_prompt, genai_tools)
 
-                def _convert_schema(schema_dict):
-                    if not isinstance(schema_dict, dict):
-                        return schema_dict
-                    
-                    # Recursively convert nested properties first
-                    if 'properties' in schema_dict:
-                        for key, prop in schema_dict['properties'].items():
-                            schema_dict['properties'][key] = _convert_schema(prop)
-                    
-                    # Convert items in arrays
-                    if 'items' in schema_dict:
-                        schema_dict['items'] = _convert_schema(schema_dict['items'])
-                        
-                    # Convert the type string to enum at the current level
-                    if 'type' in schema_dict and schema_dict['type'] in type_map:
-                        schema_dict['type'] = type_map[schema_dict['type']]
-                        
-                    return schema_dict
+            if not contents:
+                yield "final", self._handle_error(Exception("No valid message content to send."))
+                return
 
-                sanitized_tools = []
-                tools_copy = json.loads(json.dumps(tools)) # Deep copy
+            combined_usage: Optional[Dict[str, int]] = None
 
-                for tool_def in tools_copy:
-                    declaration = tool_def.get('function', tool_def)
-                    
-                    if 'parameters' in declaration:
-                        # Recursively convert all type strings to enums
-                        declaration['parameters'] = _convert_schema(declaration['parameters'])
-                        
-                    sanitized_tools.append(declaration)
+            if genai_tools and tool_functions:
+                first_response = await self._generate_non_stream(self.model, contents, config)
+                first_usage = self._extract_usage(first_response)
+                if first_usage:
+                    combined_usage = dict(first_usage)
 
-            response = await chat.send_message_async(
-                current_message_parts,
-                stream=self.stream,
-                generation_config=api_kwargs.get('generation_config'),
-                tools=sanitized_tools
-            )
+                function_calls = self._extract_function_calls(first_response)
+                if function_calls:
+                    contents = self._append_tool_call_turns(contents, function_calls, tool_functions)
 
             if self.stream:
                 full_response = ""
-                # Streaming with tools is complex; we'll collect the response first.
-                # This is a limitation of the current SDK state.
-                collected_chunks = [chunk async for chunk in response]
-                
-                # Check for tool calls in the collected response
-                tool_call_chunks = [chunk for chunk in collected_chunks if chunk.parts and chunk.parts[0].function_call]
-                if tool_call_chunks and tool_functions:
-                    function_call = tool_call_chunks[0].parts[0].function_call
-                    function_name = function_call.name
-                    function_to_call = tool_functions.get(function_name)
-                    
-                    if function_to_call:
-                        try:
-                            # Gemini provides args as a dict-like object
-                            function_args = dict(function_call.args)
-                            logger.info(f"Executing tool '{function_name}' with args: {function_args}")
-                            function_response = function_to_call(**function_args)
-                            
-                            # Send the tool response back to the model
-                            tool_response_part = Part(
-                                function_response=FunctionResponse(
-                                    name=function_name,
-                                    response={'result': function_response}
-                                )
-                            )
-                            second_response = await chat.send_message_async(tool_response_part)
-                            yield "final", second_response.text
-                            return
-                        except Exception as e:
-                            logger.error(f"Error executing tool {function_name}: {e}")
-                            yield "final", f"Error executing tool: {e}"
-                            return
-                
-                # If no tool calls, process as regular text stream
-                for chunk in collected_chunks:
-                    # Skip any parts that are tool calls, as they don't have .text and will cause errors
-                    if chunk.parts and chunk.parts[0].function_call:
-                        continue
-                    
-                    try:
-                        # [FIX] Check for safety feedback before accessing text
-                        if chunk.prompt_feedback and chunk.prompt_feedback.block_reason:
-                            reason = chunk.prompt_feedback.block_reason.name
-                            ratings = [str(rating) for rating in chunk.prompt_feedback.safety_ratings]
-                            error_msg = f"Response blocked by Google's safety settings. Reason: {reason}. Details: {', '.join(ratings)}"
-                            logger.warning(error_msg)
-                            full_response += f" [SYSTEM: {error_msg}]"
-                            break # Stop processing further chunks
-                        
-                        # Use hasattr to be safe before accessing .text
-                        if hasattr(chunk, 'text') and chunk.text:
-                            full_response += chunk.text
-                            yield "partial", full_response
-                    except ValueError:
-                        # This can happen if the chunk is empty (e.g. safety stop)
-                        logger.warning("Encountered an empty chunk from Google API, possibly due to safety settings.")
-                        pass
+                latest_usage: Optional[Dict[str, int]] = None
+                async for chunk in self._generate_stream(self.model, contents, config):
+                    chunk_usage = self._extract_usage(chunk)
+                    if chunk_usage:
+                        latest_usage = chunk_usage
+
+                    chunk_text = self._extract_text_from_response(chunk)
+                    if chunk_text:
+                        full_response += chunk_text
+                        yield "partial", full_response
+
                 yield "final", full_response
 
-            else: # Non-streaming mode
-                # [FIX] Check for safety feedback before accessing text
-                if response.prompt_feedback and response.prompt_feedback.block_reason:
-                    reason = response.prompt_feedback.block_reason.name
-                    ratings = [str(rating) for rating in response.prompt_feedback.safety_ratings]
-                    error_msg = f"Response blocked by Google's safety settings. Reason: {reason}. Details: {', '.join(ratings)}"
-                    logger.warning(error_msg)
-                    yield "final", self._handle_error(Exception(error_msg))
-                    return
+                final_usage = latest_usage
+                if combined_usage and final_usage:
+                    final_usage = {
+                        "input_tokens": combined_usage["input_tokens"] + final_usage["input_tokens"],
+                        "output_tokens": combined_usage["output_tokens"] + final_usage["output_tokens"],
+                    }
+                elif combined_usage:
+                    final_usage = combined_usage
 
-                if response.parts and response.parts[0].function_call and tool_functions:
-                    function_call = response.parts[0].function_call
-                    function_name = function_call.name
-                    function_to_call = tool_functions.get(function_name)
-                    
-                    if function_to_call:
-                        try:
-                            function_args = dict(function_call.args)
-                            logger.info(f"Executing tool '{function_name}' with args: {function_args}")
-                            function_response = function_to_call(**function_args)
-                            
-                            tool_response_part = Part(
-                                function_response=FunctionResponse(
-                                    name=function_name,
-                                    response={'result': function_response}
-                                )
-                            )
-                            second_response = await chat.send_message_async(tool_response_part)
-                            yield "final", second_response.text
-                        except Exception as e:
-                            logger.error(f"Error executing tool {function_name}: {e}")
-                            yield "final", f"Error executing tool: {e}"
-                    else:
-                        yield "final", f"Tool '{function_name}' not found."
-                else:
-                    # [FIX] Avoid using response.text directly, as it fails on function calls.
-                    # Instead, construct the text from parts that are not function calls.
-                    full_text = "".join(part.text for part in response.parts if hasattr(part, 'text'))
-                    yield "final", full_text
-                
+                if final_usage:
+                    yield "usage", final_usage
+                return
+
+            final_response = await self._generate_non_stream(self.model, contents, config)
+            final_text = self._extract_text_from_response(final_response)
+            yield "final", final_text
+
+            final_usage = self._extract_usage(final_response)
+            if combined_usage and final_usage:
+                final_usage = {
+                    "input_tokens": combined_usage["input_tokens"] + final_usage["input_tokens"],
+                    "output_tokens": combined_usage["output_tokens"] + final_usage["output_tokens"],
+                }
+            elif not final_usage:
+                final_usage = combined_usage
+
+            if final_usage:
+                yield "usage", final_usage
+
         except Exception as e:
             yield "final", self._handle_error(e)

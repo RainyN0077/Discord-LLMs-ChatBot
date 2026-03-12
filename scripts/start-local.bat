@@ -10,15 +10,15 @@ set "VENV_DIR=%BACKEND_DIR%\.venv"
 echo [1/6] Checking Python...
 set "PYTHON_CMD="
 where py >nul 2>&1
-if %ERRORLEVEL%==0 (
+if not errorlevel 1 (
     set "PYTHON_CMD=py -3"
 ) else (
     where python >nul 2>&1
-    if %ERRORLEVEL%==0 (
+    if not errorlevel 1 (
         set "PYTHON_CMD=python"
     ) else (
         where python3 >nul 2>&1
-        if %ERRORLEVEL%==0 (
+        if not errorlevel 1 (
             set "PYTHON_CMD=python3"
         )
     )
@@ -52,7 +52,7 @@ if errorlevel 1 (
 
 echo [4/6] Preparing frontend dependencies...
 where npm >nul 2>&1
-if %ERRORLEVEL%==0 (
+if not errorlevel 1 (
     pushd "%FRONTEND_DIR%"
     call npm install
     if errorlevel 1 (
@@ -66,12 +66,12 @@ if %ERRORLEVEL%==0 (
 )
 
 echo [5/6] Starting backend on http://localhost:8093 ...
-start "Backend (Uvicorn)" cmd /k "cd /d \"%BACKEND_DIR%\" && call \"%VENV_DIR%\Scripts\activate.bat\" && set REDIS_HOST=localhost && set REDIS_PORT=6379 && set FAIL_ON_REDIS_ERROR=false && uvicorn app.main:app --host 0.0.0.0 --port 8093 --reload"
+start "Backend (Uvicorn)" cmd /k call "%~dp0run-backend-local.bat" "%BACKEND_DIR%" "%VENV_DIR%"
 
 echo [6/6] Starting frontend on http://localhost:8094 ...
 where npm >nul 2>&1
-if %ERRORLEVEL%==0 (
-    start "Frontend (Vite)" cmd /k "cd /d \"%FRONTEND_DIR%\" && set VITE_API_PROXY_TARGET=http://localhost:8093 && npm run dev -- --host 0.0.0.0 --port 8094"
+if not errorlevel 1 (
+    start "Frontend (Vite)" cmd /k "cd /d ""%FRONTEND_DIR%"" && set VITE_API_PROXY_TARGET=http://localhost:8093 && npm run dev -- --host 0.0.0.0 --port 8094"
 ) else (
     echo [WARN] Skipped frontend startup because npm is unavailable.
 )
