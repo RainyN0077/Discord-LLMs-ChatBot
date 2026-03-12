@@ -147,14 +147,9 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
     
-    # 替换消息中的@提及
-    processed_content = message.content
-    for mentioned_user in message.mentions:
-        if mentioned_user.id != client.user.id and message.guild and (member := message.guild.get_member(mentioned_user.id)):
-            _, m_role_config = get_highest_configured_role(member, role_based_configs) or (None, None)
-            rich_id_str = get_rich_identity(member, user_personas, m_role_config)
-            processed_content = processed_content.replace(f'<@{mentioned_user.id}>', rich_id_str).replace(f'<@!{mentioned_user.id}>', rich_id_str)
-    final_text_content = processed_content.replace(f'<@{client.user.id}>', '').replace(f'<@!{client.user.id}>', '').strip()
+    # 保留用户 mention token（<@id>），仅移除对机器人的 mention token。
+    # 这样模型在回复时可以复用正确的 Discord @ 语法。
+    final_text_content = message.content.replace(f'<@{client.user.id}>', '').replace(f'<@!{client.user.id}>', '').strip()
 
     # [NEW] Remove custom emoji text, as they are now sent as images.
     final_text_content = re.sub(r'<a?:\w+:\d+>', '', final_text_content).strip()
