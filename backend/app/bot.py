@@ -181,6 +181,31 @@ def strip_thinking_sections(text: str) -> str:
     return cleaned.strip()
 
 
+def strip_dsml_tool_blocks(text: str) -> str:
+    """Remove leaked DSML function-call blocks from model output."""
+    if not text:
+        return text
+    cleaned = re.sub(
+        r"<\s*\|\s*DSML\s*\|\s*function_calls\s*>.*?<\s*/\s*\|\s*DSML\s*\|\s*function_calls\s*>",
+        "",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    return cleaned.strip()
+
+
+def contains_dsml_tool_blocks(text: str) -> bool:
+    if not text:
+        return False
+    return bool(
+        re.search(
+            r"<\s*\|\s*DSML\s*\|\s*(function_calls|invoke|parameter)\s*>",
+            text,
+            flags=re.IGNORECASE,
+        )
+    )
+
+
 async def run_bot(memory_cutoffs: Dict[int, datetime]):
     global bot_instance
     logger.info(f"[instance={INSTANCE_ID}] run_bot starting.")
@@ -502,15 +527,17 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     return _full_response, _usage_data
 
                 llm_provider = get_llm_provider(config)
+                tools = plugin_manager.get_all_tools()
+                tool_functions = plugin_manager.get_all_tool_functions(message, config)
+                used_tools_in_attempt = False
                 try:
                     # First attempt: with tools
-                    tools = plugin_manager.get_all_tools()
-                    tool_functions = plugin_manager.get_all_tool_functions(message, config)
                     logger.info(f"[instance={INSTANCE_ID}] Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
                     response_gen_with_tools = llm_provider.get_response_stream(
                         llm_messages, images, tools=tools, tool_functions=tool_functions
                     )
                     full_response, usage_data = await _render_llm_response(response_gen_with_tools)
+                    used_tools_in_attempt = bool(tools)
                 except Exception as e:
                     error_str = str(e).lower()
                     # Check for keywords indicating a malformed tool call
@@ -524,6 +551,15 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     else:
                         # It's a different error, re-raise it to be caught by the main handler
                         raise e
+
+                if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
+                    logger.warning(
+                        f"[instance={INSTANCE_ID}] Detected leaked DSML tool blocks in message {message.id}. Retrying without tools."
+                    )
+                    response_gen_no_tools = llm_provider.get_response_stream(
+                        llm_messages, images, tools=[], tool_functions={}
+                    )
+                    full_response, usage_data = await _render_llm_response(response_gen_no_tools)
 
                 # --- Response Validation and Finalization ---
                 error_reason = None
@@ -544,6 +580,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     return
 
                 cleaned_response = process_memory_tags(message, full_response, config)
+                cleaned_response = strip_dsml_tool_blocks(cleaned_response)
                 cleaned_response = strip_thinking_sections(cleaned_response)
 
                 if response_message:
