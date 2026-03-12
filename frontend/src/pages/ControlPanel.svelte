@@ -218,7 +218,8 @@ async function resetFont() {
         </div>
 
         {#if $coreConfig}
-            <div class="tab-content" class:hidden={activeTab !== 'core'}>
+            {#if activeTab === 'core'}
+            <div class="tab-content">
                 <Card title={$t('globalConfig.title')}>
                     <label for="discord-token">{$t('globalConfig.token')}</label>
                     <input id="discord-token" type="password" placeholder={$t('globalConfig.tokenPlaceholder')} bind:value={$coreConfig.discord_token}>
@@ -350,8 +351,10 @@ async function resetFont() {
                     {:else}<div class="context-settings"><p class="info">{$t('contextControl.noneModeInfo')}</p></div>{/if}
                 </Card>
             </div>
+            {/if}
 
-            <div class="tab-content" class:hidden={activeTab !== 'directives'}>
+            {#if activeTab === 'directives'}
+            <div class="tab-content">
                 <KnowledgeEditor />
                 <Card title={$t('scopedPrompts.channels.title')}><ScopedPromptEditor type="channels" /></Card>
                 <Card title={$t('scopedPrompts.guilds.title')}><ScopedPromptEditor type="guilds" /></Card>
@@ -401,8 +404,10 @@ async function resetFont() {
                     </div>
                 </Card>
             </div>
+            {/if}
 
-            <div class="tab-content" class:hidden={activeTab !== 'advanced'}>
+            {#if activeTab === 'advanced'}
+            <div class="tab-content">
                 <PluginEditor />
                 <SearchSettings />
                 <Card title={$t('customParams.title')} theme="dark-theme">
@@ -443,8 +448,10 @@ async function resetFont() {
                     </div>
                 </Card>
             </div>
+            {/if}
 
-            <div class="tab-content" class:hidden={activeTab !== 'automation'}>
+            {#if activeTab === 'automation'}
+            <div class="tab-content">
                 <Card title={$t('automation.title')}>
                     <p class="info">{$t('automation.description')}</p>
 
@@ -490,6 +497,7 @@ async function resetFont() {
                     </div>
                 </Card>
             </div>
+            {/if}
         {/if}
     </main>
     <aside class="log-viewer">
@@ -498,13 +506,10 @@ async function resetFont() {
 </div>
 
 <style>
-.tab-content {
+    .tab-content {
         display: flex;
         flex-direction: column;
         gap: 1.35rem;
-    }
-    .tab-content.hidden {
-        display: none;
     }
     main h1 {
         margin-top: .2rem;

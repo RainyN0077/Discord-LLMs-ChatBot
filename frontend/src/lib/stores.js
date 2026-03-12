@@ -162,73 +162,103 @@ export function showStatus(message, type = 'info', duration = 5000) {
     }
 }
 
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function isBackendNotReadyError(error) {
+    const msg = String(error?.message || '').toLowerCase();
+    return msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network error');
+}
+
 // --- REFACTORED: Data Fetching and Saving ---
-export async function fetchConfig() {
+export async function fetchConfig(options = {}) {
+    const startup = !!options.startup;
+    const maxRetries = Number.isInteger(options.maxRetries) ? options.maxRetries : 20;
+    const retryDelayMs = Number.isInteger(options.retryDelayMs) ? options.retryDelayMs : 1200;
+
     isLoading.set(true);
-    showStatus(t_get('status.loading'), 'info');
-    try {
-        const loadedConfig = await apiFetchConfig();
-        const mergedConfig = { ...defaultConfig, ...loadedConfig };
+    showStatus(startup ? t_get('status.waitingBackend', { attempt: 1, max: maxRetries + 1 }) : t_get('status.loading'), 'info');
 
-        // Distribute fetched data into the new granular stores
-        coreConfig.set({
-            discord_token: mergedConfig.discord_token,
-            llm_provider: mergedConfig.llm_provider,
-            api_key: mergedConfig.api_key,
-            base_url: mergedConfig.base_url,
-            openai_base_url: mergedConfig.openai_base_url || mergedConfig.base_url || '',
-            anthropic_base_url: mergedConfig.anthropic_base_url || '',
-            model_name: mergedConfig.model_name,
-            api_secret_key: mergedConfig.api_secret_key
-        });
-        behaviorConfig.set({
-            bot_nickname: mergedConfig.bot_nickname,
-            system_prompt: mergedConfig.system_prompt,
-            blocked_prompt_response: mergedConfig.blocked_prompt_response,
-            trigger_keywords: mergedConfig.trigger_keywords,
-            trigger_match_mode: mergedConfig.trigger_match_mode || 'contains',
-            trigger_case_sensitive: !!mergedConfig.trigger_case_sensitive,
-            auto_interject_enabled: !!mergedConfig.auto_interject_enabled,
-            auto_interject_interval: mergedConfig.auto_interject_interval ?? 20,
-            auto_interject_min_length: mergedConfig.auto_interject_min_length ?? 0,
-            repeat_parrot_enabled: !!mergedConfig.repeat_parrot_enabled,
-            repeat_parrot_threshold: mergedConfig.repeat_parrot_threshold ?? 3,
-            repeat_parrot_case_sensitive: !!mergedConfig.repeat_parrot_case_sensitive,
-            repeat_parrot_trim_whitespace: mergedConfig.repeat_parrot_trim_whitespace !== false,
-            repeat_parrot_min_length: mergedConfig.repeat_parrot_min_length ?? 2,
-            repeat_parrot_require_multiple_users: mergedConfig.repeat_parrot_require_multiple_users !== false,
-            stream_response: mergedConfig.stream_response,
-            memory_dedup_threshold: mergedConfig.memory_dedup_threshold ?? 0.0,
-            world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold ?? 0.0,
-            auto_memory_enabled: mergedConfig.auto_memory_enabled !== false,
-            auto_memory_min_length: mergedConfig.auto_memory_min_length ?? 8,
-            auto_memory_cooldown_seconds: mergedConfig.auto_memory_cooldown_seconds ?? 45,
-            auto_memory_promote_min_observations: mergedConfig.auto_memory_promote_min_observations ?? 2,
-            auto_memory_promote_min_distinct_users: mergedConfig.auto_memory_promote_min_distinct_users ?? 1,
-            auto_memory_quality_threshold: mergedConfig.auto_memory_quality_threshold ?? 0.55,
-            auto_memory_direct_promote_ai_tag: !!mergedConfig.auto_memory_direct_promote_ai_tag,
-            auto_memory_recall_top_k: mergedConfig.auto_memory_recall_top_k ?? 12,
-            auto_memory_recall_char_limit: mergedConfig.auto_memory_recall_char_limit ?? 2200,
-            auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365
-        });
-        contextConfig.set({
-            context_mode: mergedConfig.context_mode,
-            channel_context_settings: mergedConfig.channel_context_settings,
-            memory_context_settings: mergedConfig.memory_context_settings
-        });
-        pluginsConfig.set(mergedConfig.plugins || {});
-        userPersonas.set(mergedConfig.user_personas || {});
-        roleConfigs.set(mergedConfig.role_based_config || {});
-        scopedPrompts.set(mergedConfig.scoped_prompts || { guilds: {}, channels: {} });
-        customParameters.set(mergedConfig.custom_parameters || []);
+    let attempt = 0;
+    while (attempt <= maxRetries) {
+        try {
+            const loadedConfig = await apiFetchConfig();
+            const mergedConfig = { ...defaultConfig, ...loadedConfig };
 
-        showStatus('', 'info');
-    } catch (e) {
-        console.error('Config fetch error in store:', e);
-        showStatus(t_get('status.loadFailed', { error: e.message }), 'error');
-    } finally {
-        isLoading.set(false);
+            // Distribute fetched data into the new granular stores
+            coreConfig.set({
+                discord_token: mergedConfig.discord_token,
+                llm_provider: mergedConfig.llm_provider,
+                api_key: mergedConfig.api_key,
+                base_url: mergedConfig.base_url,
+                openai_base_url: mergedConfig.openai_base_url || mergedConfig.base_url || '',
+                anthropic_base_url: mergedConfig.anthropic_base_url || '',
+                model_name: mergedConfig.model_name,
+                api_secret_key: mergedConfig.api_secret_key
+            });
+            behaviorConfig.set({
+                bot_nickname: mergedConfig.bot_nickname,
+                system_prompt: mergedConfig.system_prompt,
+                blocked_prompt_response: mergedConfig.blocked_prompt_response,
+                trigger_keywords: mergedConfig.trigger_keywords,
+                trigger_match_mode: mergedConfig.trigger_match_mode || 'contains',
+                trigger_case_sensitive: !!mergedConfig.trigger_case_sensitive,
+                auto_interject_enabled: !!mergedConfig.auto_interject_enabled,
+                auto_interject_interval: mergedConfig.auto_interject_interval ?? 20,
+                auto_interject_min_length: mergedConfig.auto_interject_min_length ?? 0,
+                repeat_parrot_enabled: !!mergedConfig.repeat_parrot_enabled,
+                repeat_parrot_threshold: mergedConfig.repeat_parrot_threshold ?? 3,
+                repeat_parrot_case_sensitive: !!mergedConfig.repeat_parrot_case_sensitive,
+                repeat_parrot_trim_whitespace: mergedConfig.repeat_parrot_trim_whitespace !== false,
+                repeat_parrot_min_length: mergedConfig.repeat_parrot_min_length ?? 2,
+                repeat_parrot_require_multiple_users: mergedConfig.repeat_parrot_require_multiple_users !== false,
+                stream_response: mergedConfig.stream_response,
+                memory_dedup_threshold: mergedConfig.memory_dedup_threshold ?? 0.0,
+                world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold ?? 0.0,
+                auto_memory_enabled: mergedConfig.auto_memory_enabled !== false,
+                auto_memory_min_length: mergedConfig.auto_memory_min_length ?? 8,
+                auto_memory_cooldown_seconds: mergedConfig.auto_memory_cooldown_seconds ?? 45,
+                auto_memory_promote_min_observations: mergedConfig.auto_memory_promote_min_observations ?? 2,
+                auto_memory_promote_min_distinct_users: mergedConfig.auto_memory_promote_min_distinct_users ?? 1,
+                auto_memory_quality_threshold: mergedConfig.auto_memory_quality_threshold ?? 0.55,
+                auto_memory_direct_promote_ai_tag: !!mergedConfig.auto_memory_direct_promote_ai_tag,
+                auto_memory_recall_top_k: mergedConfig.auto_memory_recall_top_k ?? 12,
+                auto_memory_recall_char_limit: mergedConfig.auto_memory_recall_char_limit ?? 2200,
+                auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365
+            });
+            contextConfig.set({
+                context_mode: mergedConfig.context_mode,
+                channel_context_settings: mergedConfig.channel_context_settings,
+                memory_context_settings: mergedConfig.memory_context_settings
+            });
+            pluginsConfig.set(mergedConfig.plugins || {});
+            userPersonas.set(mergedConfig.user_personas || {});
+            roleConfigs.set(mergedConfig.role_based_config || {});
+            scopedPrompts.set(mergedConfig.scoped_prompts || { guilds: {}, channels: {} });
+            customParameters.set(mergedConfig.custom_parameters || []);
+
+            showStatus('', 'info');
+            isLoading.set(false);
+            return mergedConfig;
+        } catch (e) {
+            const canRetry = startup && attempt < maxRetries && isBackendNotReadyError(e);
+            if (canRetry) {
+                attempt += 1;
+                showStatus(t_get('status.waitingBackend', { attempt: attempt + 1, max: maxRetries + 1 }), 'info');
+                await sleep(retryDelayMs);
+                continue;
+            }
+
+            console.error('Config fetch error in store:', e);
+            showStatus(t_get('status.loadFailed', { error: e.message }), 'error');
+            isLoading.set(false);
+            return null;
+        }
     }
+
+    isLoading.set(false);
+    return null;
 }
 
 export async function saveConfig() {

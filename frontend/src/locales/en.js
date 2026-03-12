@@ -1,5 +1,9 @@
 // src/locales/en.js
 export default {
+  appNav: {
+    controlPanel: 'Control Panel',
+    directChat: 'Direct Chat'
+  },
   title: 'Discord LLM Bot Control Panel',
   tabs: {
     core: 'Core Settings',
@@ -13,6 +17,7 @@ export default {
   },
   status: {
     loading: 'Loading configuration...',
+    waitingBackend: 'Waiting for backend to start... ({attempt}/{max})',
     saving: 'Saving...',
     saveSuccess: 'Configuration saved and bot restarted!',
     saveFailed: 'Save failed: {error}',
@@ -285,6 +290,21 @@ export default {
     generatedPrompt: 'Generated System Prompt',
     llmResponse: 'LLM Response',
     errorIncomplete: 'Please fill in all required fields'
+  },
+  directChat: {
+    title: 'Direct LLM Chat',
+    provider: 'Provider',
+    model: 'Model',
+    includeSystemPrompt: 'Include configured system prompt',
+    clear: 'Clear Chat',
+    empty: 'Start typing to chat directly with the current LLM provider.',
+    you: 'You',
+    assistant: 'Assistant',
+    inputPlaceholder: 'Enter message... (Enter to send, Shift+Enter for newline)',
+    send: 'Send',
+    sending: 'Sending...',
+    sendFailed: 'Send failed: ',
+    usage: 'Token usage'
   },
   usage: {
     title: 'Usage Statistics',

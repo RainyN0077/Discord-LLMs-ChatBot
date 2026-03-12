@@ -212,6 +212,16 @@ export async function updateMemoryItem(itemId, content) {
     });
 }
 
+export async function directChat(messages, includeSystemPrompt = true) {
+    return apiFetch(`${BASE_URL}/chat/direct`, {
+        method: 'POST',
+        body: JSON.stringify({
+            messages,
+            include_system_prompt: includeSystemPrompt
+        }),
+    });
+}
+
 export async function fetchMemoryCandidates(includePromoted = false, limit = 200) {
     return apiFetch(`${BASE_URL}/memory/candidates?include_promoted=${includePromoted ? 'true' : 'false'}&limit=${limit}`);
 }

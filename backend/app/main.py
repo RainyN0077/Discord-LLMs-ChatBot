@@ -239,6 +239,21 @@ class AvailableModelsRequest(BaseModel):
     api_key: str
     base_url: Optional[str] = None
 
+class DirectChatMessage(BaseModel):
+    role: str
+    content: str
+
+class DirectChatRequest(BaseModel):
+    messages: List[DirectChatMessage] = Field(default_factory=list)
+    include_system_prompt: bool = True
+
+class DirectChatResponse(BaseModel):
+    success: bool
+    response: str
+    usage: Optional[Dict[str, int]] = None
+    provider: str
+    model: str
+
 # --- Knowledge Base Models ---
 class MemoryItem(BaseModel):
     id: Optional[int] = None
@@ -436,6 +451,53 @@ async def simulate_debugger_run(request: DebuggerRequest):
         "llm_response": llm_response,
         "active_directives_log": active_directives_log,
     }
+
+@app.post("/api/chat/direct", dependencies=[Depends(get_api_key)], response_model=DirectChatResponse)
+async def direct_chat(request: DirectChatRequest):
+    if not request.messages:
+        raise HTTPException(status_code=400, detail="messages cannot be empty.")
+
+    config = load_config()
+    llm_messages: List[Dict[str, str]] = []
+
+    has_custom_system = any((msg.role or "").lower().strip() == "system" for msg in request.messages)
+    if request.include_system_prompt and not has_custom_system and config.get("system_prompt"):
+        llm_messages.append({"role": "system", "content": str(config.get("system_prompt", ""))})
+
+    for msg in request.messages:
+        role = (msg.role or "").lower().strip()
+        if role not in {"system", "user", "assistant"}:
+            raise HTTPException(status_code=400, detail=f"Invalid role '{msg.role}'.")
+        llm_messages.append({"role": role, "content": str(msg.content or "")})
+
+    runtime_config = dict(config)
+    runtime_config["stream_response"] = False
+
+    try:
+        llm_provider = get_llm_provider(runtime_config)
+        full_response = ""
+        usage_data: Optional[Dict[str, int]] = None
+        async for response_type, data in llm_provider.get_response_stream(llm_messages):
+            if response_type == "final":
+                full_response = str(data)
+            elif response_type == "usage" and isinstance(data, dict):
+                usage_data = data
+
+        if full_response.startswith("LLM_PROVIDER_ERROR:"):
+            raise HTTPException(status_code=500, detail=full_response)
+
+        return {
+            "success": True,
+            "response": full_response,
+            "usage": usage_data,
+            "provider": str(config.get("llm_provider", "openai")),
+            "model": str(config.get("model_name", "")),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Direct chat failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Direct chat failed. Check backend logs for details.")
 
 # --- Plugin-specific Endpoints ---
 

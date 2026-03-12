@@ -1,10 +1,13 @@
-<!-- src/App.svelte (FINAL & CORRECT) -->
+﻿<!-- src/App.svelte -->
 <script>
     import { onMount } from 'svelte';
-import { loadFromIndexedDB } from './lib/fontStorage.js';
+    import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang } from './i18n.js';
     import { fetchConfig, saveConfig, statusMessage, statusType, isLoading, customFontName } from './lib/stores.js';
     import ControlPanel from './pages/ControlPanel.svelte';
+    import DirectChat from './pages/DirectChat.svelte';
+
+    let activePage = 'panel';
 
     function applyFont(fontDataUrl, fontName) {
         const styleId = 'custom-font-style';
@@ -27,41 +30,82 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
     }
 
     onMount(async () => {
-    fetchConfig();
-    
-    try {
-        const fontDataUrl = await loadFromIndexedDB('customFontDataUrl');
-        const fontName = await loadFromIndexedDB('customFontName');
-        if (fontDataUrl && fontName) {
-            applyFont(fontDataUrl, fontName);
-        }
-    } catch (e) {
-        console.error('Failed to load font from IndexedDB:', e);
-    }
-});
+        fetchConfig({ startup: true });
 
+        try {
+            const fontDataUrl = await loadFromIndexedDB('customFontDataUrl');
+            const fontName = await loadFromIndexedDB('customFontName');
+            if (fontDataUrl && fontName) {
+                applyFont(fontDataUrl, fontName);
+            }
+        } catch (e) {
+            console.error('Failed to load font from IndexedDB:', e);
+        }
+    });
 </script>
 
-<div class="lang-switcher">
-    <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>中文</button>
-    <button class:active={$lang === 'en'} on:click={() => setLang('en')}>English</button>
-</div>
-
-<ControlPanel {applyFont} />
-
-<div class="save-footer">
-    <div class="status-container">
-        <div class="status {$statusType}" style:visibility={$statusMessage ? 'visible' : 'hidden'}>
-            {$statusMessage || '...'}
-        </div>
-    </div>
-    <button class="save-button" on:click={saveConfig} disabled={$isLoading}>
-        {$isLoading ? $t('buttons.saving') : $t('buttons.save')}
+<div class="page-switcher">
+    <button class:active={activePage === 'panel'} on:click={() => activePage = 'panel'}>
+        {$t('appNav.controlPanel')}
+    </button>
+    <button class:active={activePage === 'chat'} on:click={() => activePage = 'chat'}>
+        {$t('appNav.directChat')}
     </button>
 </div>
 
+<div class="lang-switcher">
+    <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
+    <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
+</div>
+
+{#if activePage === 'panel'}
+    <ControlPanel {applyFont} />
+{:else}
+    <DirectChat />
+{/if}
+
+{#if activePage === 'panel'}
+    <div class="save-footer">
+        <div class="status-container">
+            <div class="status {$statusType}" style:visibility={$statusMessage ? 'visible' : 'hidden'}>
+                {$statusMessage || '...'}
+            </div>
+        </div>
+        <button class="save-button" on:click={saveConfig} disabled={$isLoading}>
+            {$isLoading ? $t('buttons.saving') : $t('buttons.save')}
+        </button>
+    </div>
+{/if}
+
 <style>
-    /* Most styles have been moved to src/styles/global.css or component-specific files */
+    .page-switcher {
+        position: fixed;
+        top: .9rem;
+        left: .9rem;
+        display: flex;
+        gap: .5rem;
+        background-color: rgba(255, 255, 255, .86);
+        padding: .4rem;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        border: 1px solid rgba(15, 23, 42, .08);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        z-index: 1000;
+    }
+
+    .page-switcher button {
+        background-color: transparent;
+        color: var(--text-light);
+        padding: .5rem .95rem;
+        box-shadow: none;
+    }
+
+    .page-switcher button.active {
+        color: #fff;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
+    }
 
     .lang-switcher {
         position: fixed;
@@ -78,12 +122,14 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
         backdrop-filter: blur(8px);
         z-index: 1000;
     }
+
     .lang-switcher button {
         background-color: transparent;
         color: var(--text-light);
-        padding: .5rem 1rem;
+        padding: .5rem .8rem;
         box-shadow: none;
     }
+
     .lang-switcher button.active {
         color: #fff;
         font-weight: 700;
@@ -131,11 +177,13 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
         color: var(--success-text);
         border-color: rgba(0, 121, 107, .18);
     }
+
     .status.error {
         background-color: var(--error-bg);
         color: var(--error-text);
         border-color: rgba(194, 24, 91, .18);
     }
+
     .status.info,
     .status.loading-special {
         background-color: var(--info-bg);
@@ -149,19 +197,22 @@ import { loadFromIndexedDB } from './lib/fontStorage.js';
         background: linear-gradient(135deg, var(--save-color), #1a9156);
         color: #fff;
     }
-    .save-button:hover:not(:disabled) {
-        background-color: var(--save-hover);
-    }
 
     @media (max-width: 880px) {
+        .page-switcher {
+            top: .65rem;
+            left: .65rem;
+        }
+
+        .page-switcher button,
+        .lang-switcher button {
+            padding: .45rem .7rem;
+            font-size: .9rem;
+        }
+
         .lang-switcher {
             top: .65rem;
             right: .65rem;
-        }
-
-        .lang-switcher button {
-            padding: .45rem .75rem;
-            font-size: .9rem;
         }
 
         .save-footer {
