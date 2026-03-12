@@ -1,9 +1,15 @@
 <!-- src/components/PluginEditor.svelte (FINAL & CORRECT) -->
 <script>
     import '../styles/lists.css';
+    import { derived } from 'svelte/store';
     import { t } from '../i18n.js';
     import { pluginsConfig, pluginsArray } from '../lib/stores.js';
     import Card from './Card.svelte';
+
+    const hiddenBuiltinPlugins = new Set(['search']);
+    const visiblePlugins = derived(pluginsArray, ($plugins) =>
+        ($plugins || []).filter((plugin) => !hiddenBuiltinPlugins.has(plugin._key))
+    );
 
     // --- 数据更新函数 ---
     function updatePluginField(key, field, value) {
@@ -77,7 +83,7 @@
 <Card title={$t('pluginManager.title')} theme="dark-theme">
     <p class="info">{$t('pluginManager.info')}</p>
     <div class="list-container">
-        {#each $pluginsArray as plugin (plugin._key)}
+        {#each $visiblePlugins as plugin (plugin._key)}
         <div class="list-item complex-item plugin-item">
             <div class="list-item-main very-wide-grid plugin-grid">
                 <div class="plugin-cell cell-name"><label for="plugin-name-{plugin._key}">{$t('pluginManager.name')}</label><input id="plugin-name-{plugin._key}" type="text" value={plugin.name} on:input={e => updatePluginField(plugin._key, 'name', e.target.value)}></div>

@@ -36,6 +36,16 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     let testResult = null;
     let isTesting = false;
     let useManualInput = false;
+    let availableEmbeddingModels = [];
+    let isLoadingEmbeddingModels = false;
+    let embeddingTestResult = null;
+    let isTestingEmbedding = false;
+    let useManualEmbeddingInput = false;
+    let availableRerankModels = [];
+    let isLoadingRerankModels = false;
+    let rerankTestResult = null;
+    let isTestingRerank = false;
+    let useManualRerankInput = false;
     
     // A curated list of common timezones for the dropdown
     const commonTimezones = [
@@ -48,10 +58,57 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
       'Asia/Tokyo'
     ];
 
+    const advancedProviderOptions = [
+        { value: 'openai', labelKey: 'modelProviders.openai' },
+        { value: 'openai_compatible', labelKey: 'modelProviders.openaiCompatible' },
+        { value: 'gemini', labelKey: 'modelProviders.gemini' },
+        { value: 'anthropic', labelKey: 'modelProviders.anthropic' },
+        { value: 'anthropic_compatible', labelKey: 'modelProviders.anthropicCompatible' }
+    ];
+
     function getProviderBaseUrl() {
         if ($coreConfig.llm_provider === 'openai') return $coreConfig.openai_base_url || '';
         if ($coreConfig.llm_provider === 'anthropic') return $coreConfig.anthropic_base_url || '';
         return '';
+    }
+
+    function buildEndpoint(baseUrl, port) {
+        const cleanedBase = (baseUrl || '').trim();
+        const cleanedPort = String(port || '').trim();
+        if (!cleanedBase) return '';
+        if (!cleanedPort) return cleanedBase;
+        try {
+            const parsed = new URL(cleanedBase);
+            parsed.port = cleanedPort;
+            return parsed.toString().replace(/\/$/, '');
+        } catch (_) {
+            const normalized = cleanedBase.replace(/\/$/, '');
+            if (/:\d+$/.test(normalized)) return normalized;
+            return `${normalized}:${cleanedPort}`;
+        }
+    }
+
+    function getAdvancedConfig(task) {
+        if (task === 'embedding') {
+            return {
+                provider: $coreConfig.embedding_provider,
+                apiKey: $coreConfig.embedding_api_key,
+                baseUrl: buildEndpoint($coreConfig.embedding_base_url, $coreConfig.embedding_port),
+                modelName: $coreConfig.embedding_model_name
+            };
+        }
+        return {
+            provider: $coreConfig.rerank_provider,
+            apiKey: $coreConfig.rerank_api_key,
+            baseUrl: buildEndpoint($coreConfig.rerank_base_url, $coreConfig.rerank_port),
+            modelName: $coreConfig.rerank_model_name
+        };
+    }
+
+    function providerForPlaceholder(provider) {
+        if (provider === 'openai' || provider === 'openai_compatible') return 'openai';
+        if (provider === 'gemini') return 'google';
+        return 'anthropic';
     }
 
     function addParameter() { customParameters.update(cp => { cp.push({ name: '', type: 'text', value: '' }); return cp; }); }
@@ -188,12 +245,112 @@ async function resetFont() {
             isTesting = false;
         }
     }
+
+    async function loadAdvancedModels(task) {
+        const config = getAdvancedConfig(task);
+        if (!config.apiKey) {
+            showStatus(t_get('llmProvider.noApiKey'), 'error');
+            return;
+        }
+
+        if (task === 'embedding') {
+            isLoadingEmbeddingModels = true;
+        } else {
+            isLoadingRerankModels = true;
+        }
+
+        try {
+            const result = await fetchAvailableModels(
+                config.provider,
+                config.apiKey,
+                config.baseUrl,
+                task
+            );
+            if (task === 'embedding') {
+                availableEmbeddingModels = result.models || [];
+                useManualEmbeddingInput = false;
+            } else {
+                availableRerankModels = result.models || [];
+                useManualRerankInput = false;
+            }
+            showStatus(t_get('llmProvider.modelsLoaded'), 'success');
+        } catch (e) {
+            showStatus(t_get('llmProvider.modelsLoadFailed') + e.message, 'error');
+            if (task === 'embedding') {
+                availableEmbeddingModels = [];
+                useManualEmbeddingInput = true;
+            } else {
+                availableRerankModels = [];
+                useManualRerankInput = true;
+            }
+        } finally {
+            if (task === 'embedding') {
+                isLoadingEmbeddingModels = false;
+            } else {
+                isLoadingRerankModels = false;
+            }
+        }
+    }
+
+    async function handleAdvancedTest(task) {
+        const config = getAdvancedConfig(task);
+        if (!config.modelName) {
+            showStatus(t_get('llmProvider.selectModelFirst'), 'error');
+            return;
+        }
+
+        if (task === 'embedding') {
+            isTestingEmbedding = true;
+            embeddingTestResult = null;
+        } else {
+            isTestingRerank = true;
+            rerankTestResult = null;
+        }
+
+        try {
+            const result = await testModel(
+                config.provider,
+                config.apiKey,
+                config.baseUrl,
+                config.modelName,
+                task
+            );
+            if (task === 'embedding') {
+                embeddingTestResult = result;
+            } else {
+                rerankTestResult = result;
+            }
+            if (result.success) {
+                showStatus(t_get('llmProvider.testSuccess'), 'success');
+            } else {
+                showStatus(t_get('llmProvider.testFailed') + result.error, 'error');
+            }
+        } catch (e) {
+            showStatus(t_get('llmProvider.testError') + e.message, 'error');
+        } finally {
+            if (task === 'embedding') {
+                isTestingEmbedding = false;
+            } else {
+                isTestingRerank = false;
+            }
+        }
+    }
     
     // 当provider或API key改变时，重置状态
     $: if ($coreConfig.llm_provider || $coreConfig.api_key) {
         availableModels = [];
         testResult = null;
         useManualInput = false;
+    }
+    $: if ($coreConfig.embedding_provider || $coreConfig.embedding_api_key) {
+        availableEmbeddingModels = [];
+        embeddingTestResult = null;
+        useManualEmbeddingInput = false;
+    }
+    $: if ($coreConfig.rerank_provider || $coreConfig.rerank_api_key) {
+        availableRerankModels = [];
+        rerankTestResult = null;
+        useManualRerankInput = false;
     }
 </script>
 
@@ -313,6 +470,138 @@ async function resetFont() {
                             {:else}
                                 <p>{testResult.error}</p>
                             {/if}
+                        </div>
+                    {/if}
+                </Card>
+                <Card title={$t('embeddingSettings.title')}>
+                    <div class="provider-top-grid">
+                        <div>
+                            <label for="embedding-provider">{$t('embeddingSettings.provider')}</label>
+                            <select id="embedding-provider" bind:value={$coreConfig.embedding_provider}>
+                                {#each advancedProviderOptions as option}
+                                    <option value={option.value}>{$t(option.labelKey)}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="embedding-api-key">{$t('embeddingSettings.apiKey')}</label>
+                            <input id="embedding-api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.embedding_api_key}>
+                        </div>
+                    </div>
+                    <div class="provider-top-grid advanced-endpoint-grid">
+                        <div>
+                            <label for="embedding-base-url">{$t('embeddingSettings.baseUrl')}</label>
+                            <input id="embedding-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.embedding_base_url}>
+                        </div>
+                        <div>
+                            <label for="embedding-port">{$t('embeddingSettings.port')}</label>
+                            <input id="embedding-port" type="text" placeholder="443" bind:value={$coreConfig.embedding_port}>
+                        </div>
+                    </div>
+                    <div class="model-selector-group">
+                        <label for="embedding-model-name">{$t('embeddingSettings.modelName')}</label>
+                        <div class="model-controls">
+                            {#if !useManualEmbeddingInput && availableEmbeddingModels.length > 0}
+                                <select id="embedding-model-name" bind:value={$coreConfig.embedding_model_name}>
+                                    <option value="">-- {$t('llmProvider.selectModel')} --</option>
+                                    {#each availableEmbeddingModels as model}
+                                        <option value={model}>{model}</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <input
+                                    id="embedding-model-name"
+                                    type="text"
+                                    placeholder={$t(`defaultBehavior.modelPlaceholders.${providerForPlaceholder($coreConfig.embedding_provider)}`)}
+                                    bind:value={$coreConfig.embedding_model_name}
+                                >
+                            {/if}
+                            <div class="model-buttons">
+                                <button class="action-btn-secondary" on:click={() => loadAdvancedModels('embedding')} disabled={isLoadingEmbeddingModels}>
+                                    {isLoadingEmbeddingModels ? $t('llmProvider.loading') : $t('llmProvider.fetchModels')}
+                                </button>
+                                {#if availableEmbeddingModels.length > 0}
+                                    <button class="action-btn-secondary" on:click={() => useManualEmbeddingInput = !useManualEmbeddingInput} title={$t('llmProvider.toggleInputMode')}>
+                                        {useManualEmbeddingInput ? 'SEL' : 'TXT'}
+                                    </button>
+                                {/if}
+                                <button class="action-btn" on:click={() => handleAdvancedTest('embedding')} disabled={isTestingEmbedding || !$coreConfig.embedding_model_name}>
+                                    {isTestingEmbedding ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <label for="embedding-dimensions">{$t('embeddingSettings.dimensions')}</label>
+                    <input id="embedding-dimensions" type="number" min="1" step="1" bind:value={$coreConfig.embedding_dimensions}>
+                    {#if embeddingTestResult}
+                        <div class="test-result {embeddingTestResult.success ? 'success' : 'error'}">
+                            <strong>{$t('llmProvider.testResult')}:</strong>
+                            <p>{embeddingTestResult.success ? embeddingTestResult.response : embeddingTestResult.error}</p>
+                        </div>
+                    {/if}
+                </Card>
+                <Card title={$t('rerankSettings.title')}>
+                    <div class="provider-top-grid">
+                        <div>
+                            <label for="rerank-provider">{$t('rerankSettings.provider')}</label>
+                            <select id="rerank-provider" bind:value={$coreConfig.rerank_provider}>
+                                {#each advancedProviderOptions as option}
+                                    <option value={option.value}>{$t(option.labelKey)}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="rerank-api-key">{$t('rerankSettings.apiKey')}</label>
+                            <input id="rerank-api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.rerank_api_key}>
+                        </div>
+                    </div>
+                    <div class="provider-top-grid advanced-endpoint-grid">
+                        <div>
+                            <label for="rerank-base-url">{$t('rerankSettings.baseUrl')}</label>
+                            <input id="rerank-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.rerank_base_url}>
+                        </div>
+                        <div>
+                            <label for="rerank-port">{$t('rerankSettings.port')}</label>
+                            <input id="rerank-port" type="text" placeholder="443" bind:value={$coreConfig.rerank_port}>
+                        </div>
+                    </div>
+                    <div class="model-selector-group">
+                        <label for="rerank-model-name">{$t('rerankSettings.modelName')}</label>
+                        <div class="model-controls">
+                            {#if !useManualRerankInput && availableRerankModels.length > 0}
+                                <select id="rerank-model-name" bind:value={$coreConfig.rerank_model_name}>
+                                    <option value="">-- {$t('llmProvider.selectModel')} --</option>
+                                    {#each availableRerankModels as model}
+                                        <option value={model}>{model}</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <input
+                                    id="rerank-model-name"
+                                    type="text"
+                                    placeholder={$t(`defaultBehavior.modelPlaceholders.${providerForPlaceholder($coreConfig.rerank_provider)}`)}
+                                    bind:value={$coreConfig.rerank_model_name}
+                                >
+                            {/if}
+                            <div class="model-buttons">
+                                <button class="action-btn-secondary" on:click={() => loadAdvancedModels('rerank')} disabled={isLoadingRerankModels}>
+                                    {isLoadingRerankModels ? $t('llmProvider.loading') : $t('llmProvider.fetchModels')}
+                                </button>
+                                {#if availableRerankModels.length > 0}
+                                    <button class="action-btn-secondary" on:click={() => useManualRerankInput = !useManualRerankInput} title={$t('llmProvider.toggleInputMode')}>
+                                        {useManualRerankInput ? 'SEL' : 'TXT'}
+                                    </button>
+                                {/if}
+                                <button class="action-btn" on:click={() => handleAdvancedTest('rerank')} disabled={isTestingRerank || !$coreConfig.rerank_model_name}>
+                                    {isTestingRerank ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {#if rerankTestResult}
+                        <div class="test-result {rerankTestResult.success ? 'success' : 'error'}">
+                            <strong>{$t('llmProvider.testResult')}:</strong>
+                            <p>{rerankTestResult.success ? rerankTestResult.response : rerankTestResult.error}</p>
                         </div>
                     {/if}
                 </Card>
@@ -699,6 +988,10 @@ async function resetFont() {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: .9rem;
+    }
+
+    .advanced-endpoint-grid {
+        margin-top: .8rem;
     }
 
     .provider-extra-row {

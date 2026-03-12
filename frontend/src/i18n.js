@@ -32,6 +32,30 @@ const zhOverrides = {
         themeDark: '切换到深色模式',
         themeLight: '切换到浅色模式',
     },
+    modelProviders: {
+        openai: 'OpenAI',
+        openaiCompatible: 'OpenAI 兼容',
+        gemini: 'Gemini',
+        anthropic: 'Anthropic',
+        anthropicCompatible: 'Anthropic 兼容',
+    },
+    embeddingSettings: {
+        title: 'Embedding 设置',
+        provider: 'Embedding 提供方',
+        apiKey: 'Embedding API Key',
+        baseUrl: 'Embedding 接口地址',
+        port: 'Embedding 端口',
+        modelName: 'Embedding 模型',
+        dimensions: '向量维度',
+    },
+    rerankSettings: {
+        title: 'Rerank 设置',
+        provider: 'Rerank 提供方',
+        apiKey: 'Rerank API Key',
+        baseUrl: 'Rerank 接口地址',
+        port: 'Rerank 端口',
+        modelName: 'Rerank 模型',
+    },
     personaHub: {
         title: '身份管理中心',
         sections: {
@@ -86,9 +110,38 @@ const zhOverrides = {
     usage: {
         periodLabel: '周期',
     },
+    searchSettings: {
+        getApiKey: '获取 Tavily API Key',
+        maxResults: '最大搜索结果数',
+        requireMainTrigger: '需要同时命中 Bot 触发',
+        rewriteQueryWithLlm: '搜索前先用 LLM 整理查询词',
+        usageGuide: {
+            link: '触发说明',
+            title: '搜索触发使用说明',
+            intro: '搜索功能支持命令触发和关键词触发。请二选一配置并明确规则。',
+            commandTitle: '命令触发',
+            command1: '将触发模式设为命令，然后设置命令词，如 !search。',
+            command2: '使用示例：!search 今天的 AI 新闻',
+            command3: '命令必须出现在消息开头。',
+            keywordTitle: '关键词触发',
+            keyword1: '将触发模式设为关键词，并填写逗号分隔的关键词列表。',
+            keyword2: '消息中出现任意关键词就会触发搜索。',
+            keyword3: '关键词模式下会把整条消息作为搜索查询。',
+            troubleshootTitle: '快速排查',
+            troubleshoot1: '确认“启用搜索”已开启。',
+            troubleshoot2: '检查 Tavily API Key 和 API URL 是否正确。',
+            troubleshoot3: '触发模式只能选一种，不要混用。',
+            troubleshoot4: '修改后请保存配置并等待 Bot 重启完成。',
+            close: '关闭',
+        },
+    },
     knowledge: {
         tabs: {
             candidates: '记忆候选',
+        },
+        worldBook: {
+            searchPlaceholder: '按关键词搜索...',
+            noResults: '未找到匹配的世界书条目。',
         },
         confirmDeleteMemoryCandidate: '确定要删除这条记忆候选吗？',
         error: {

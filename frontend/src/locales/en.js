@@ -68,6 +68,30 @@ export default {
     fetchModelsTooltip: 'Fetch or refresh available model list',
     modelListInfo: 'Loaded {count} available models, click ✏️ to switch to manual input'
   },
+  modelProviders: {
+    openai: 'OpenAI',
+    openaiCompatible: 'OpenAI Compatible',
+    gemini: 'Gemini',
+    anthropic: 'Anthropic',
+    anthropicCompatible: 'Anthropic Compatible'
+  },
+  embeddingSettings: {
+    title: 'Embedding Settings',
+    provider: 'Embedding Provider',
+    apiKey: 'Embedding API Key',
+    baseUrl: 'Embedding Base URL',
+    port: 'Embedding Port',
+    modelName: 'Embedding Model',
+    dimensions: 'Embedding Dimensions'
+  },
+  rerankSettings: {
+    title: 'Rerank Settings',
+    provider: 'Rerank Provider',
+    apiKey: 'Rerank API Key',
+    baseUrl: 'Rerank Base URL',
+    port: 'Rerank Port',
+    modelName: 'Rerank Model'
+  },
   defaultBehavior: {
     title: 'Default Behavior',
     modelName: 'Model Name',
@@ -391,7 +415,27 @@ export default {
     "title": "Search Settings",
     "enable": "Enable Search",
     "apiKey": "API Key",
+    "getApiKey": "Get Tavily API Key",
     "apiUrl": "API URL",
+    "usageGuide": {
+      "link": "How to use trigger",
+      "title": "Search Trigger Guide",
+      "intro": "Search can run in command mode or keyword mode. Choose one trigger mode and configure it clearly.",
+      "commandTitle": "Command Mode",
+      "command1": "Set Trigger Mode to Command, then set a command such as !search.",
+      "command2": "Use it like: !search latest OpenAI API updates",
+      "command3": "The command must be at the start of the message.",
+      "keywordTitle": "Keyword Mode",
+      "keyword1": "Set Trigger Mode to Keyword and add comma-separated trigger keywords.",
+      "keyword2": "When any keyword appears in a message, search will be triggered.",
+      "keyword3": "In keyword mode, the whole message is used as the search query.",
+      "troubleshootTitle": "Quick Troubleshooting",
+      "troubleshoot1": "Ensure Enable Search is on.",
+      "troubleshoot2": "Check Tavily API Key and API URL.",
+      "troubleshoot3": "Use either command or keyword mode, not both at once.",
+      "troubleshoot4": "After changing settings, save configuration and wait for bot restart.",
+      "close": "Close"
+    },
     "triggerMode": {
         "title": "Trigger Mode",
         "command": "Command",
@@ -402,6 +446,8 @@ export default {
     "keywordsLabel": "Keywords",
     "keywordsInfo": "Comma-separated keywords that trigger the search.",
     "includeDate": "Include Date in Search",
+    "requireMainTrigger": "Require Bot Trigger",
+    "rewriteQueryWithLlm": "Rewrite Query With LLM",
     "maxResults": "Max Search Results",
     "compression": "Compression Method",
     "compressionNone": "None",
@@ -494,24 +540,26 @@ export default {
      promote: 'Promote',
      delete: 'Delete'
    },
-   worldBook: {
-     title: 'World Book',
-     keywordsLabel: 'Keywords',
-     keywordsHint: 'separated by commas',
-     keywordsPlaceholder: 'e.g., worldview, main characters...',
-     contentLabel: 'Content',
-     contentPlaceholder: 'Describe this setting in detail...',
-     addTitle: 'Add New Entry',
-     editTitle: 'Edit Entry',
-     add: 'Add Entry',
-     save: 'Save Changes',
-     edit: 'Edit',
+    worldBook: {
+      title: 'World Book',
+      keywordsLabel: 'Keywords',
+      keywordsHint: 'separated by commas',
+      keywordsPlaceholder: 'e.g., worldview, main characters...',
+      contentLabel: 'Content',
+      contentPlaceholder: 'Describe this setting in detail...',
+      searchPlaceholder: 'Search by keywords...',
+      noResults: 'No matching entries found.',
+      addTitle: 'Add New Entry',
+      editTitle: 'Edit Entry',
+      add: 'Add Entry',
+      save: 'Save Changes',
+      edit: 'Edit',
      delete: 'Delete',
      cancelEdit: 'Cancel Edit',
      linkedUserLabel: 'Linked User',
      noLinkedUser: 'None'
    },
-   searchPlaceholder: 'Search by keywords...',
-   noResults: 'No matching entries found.'
- }
+    searchPlaceholder: 'Search by keywords...',
+    noResults: 'No matching entries found.'
+  }
 };

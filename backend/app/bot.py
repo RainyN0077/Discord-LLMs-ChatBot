@@ -1,4 +1,4 @@
-# backend/app/bot.py
+﻿# backend/app/bot.py
 import asyncio
 import json
 import logging
@@ -26,13 +26,13 @@ logger = logging.getLogger(__name__)
 
 INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
-# --- [增强] 更健壮的Redis连接逻辑 ---
+# --- [澧炲己] 鏇村仴澹殑Redis杩炴帴閫昏緫 ---
 redis_client = None
 try:
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
     
-    # 尝试连接 Redis
+    # 灏濊瘯杩炴帴 Redis
     _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
     _redis_client.ping()
     redis_client = _redis_client
@@ -40,13 +40,13 @@ try:
 
 except redis.exceptions.ConnectionError as e:
     logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
-    # 检查环境变量，决定是“快速失败”还是“静默退化”
+    # 妫€鏌ョ幆澧冨彉閲忥紝鍐冲畾鏄€滃揩閫熷け璐モ€濊繕鏄€滈潤榛橀€€鍖栤€?
     if os.getenv('FAIL_ON_REDIS_ERROR', 'false').lower() == 'true':
         logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
-        # 抛出一个明确的异常，这将阻止 bot.start() 的执行
+        # 鎶涘嚭涓€涓槑纭殑寮傚父锛岃繖灏嗛樆姝?bot.start() 鐨勬墽琛?
         raise ConnectionAbortedError("Failed to connect to Redis. Aborting.")
     else:
-        # 创建一个模拟客户端以允许在没有 Redis 的情况下进行开发
+        # 鍒涘缓涓€涓ā鎷熷鎴风浠ュ厑璁稿湪娌℃湁 Redis 鐨勬儏鍐典笅杩涜寮€鍙?
         class MockRedis:
             def set(self, *args, **kwargs): return True
         redis_client = MockRedis()
@@ -55,7 +55,7 @@ except redis.exceptions.ConnectionError as e:
 
 from pathlib import Path
 
-# --- [核心修改] 和 main.py 保持一致, 指向新的 data 目录 ---
+# --- [鏍稿績淇敼] 鍜?main.py 淇濇寔涓€鑷? 鎸囧悜鏂扮殑 data 鐩綍 ---
 DATA_DIR = Path.cwd() / "data"
 CONFIG_FILE = DATA_DIR / "config.json"
 bot_instance = None
@@ -71,40 +71,40 @@ def load_bot_config():
 
 def collect_image_urls(msg: discord.Message) -> List[str]:
     """
-    收集消息中的所有视觉内容URL，包括附件、嵌入图片、贴纸和自定义表情。
+    鏀堕泦娑堟伅涓殑鎵€鏈夎瑙夊唴瀹筓RL锛屽寘鎷檮浠躲€佸祵鍏ュ浘鐗囥€佽创绾稿拰鑷畾涔夎〃鎯呫€?
     """
     urls = []
-    # 1. 从附件中收集 (适用于用户直接上传的文件)
+    # 1. 浠庨檮浠朵腑鏀堕泦 (閫傜敤浜庣敤鎴风洿鎺ヤ笂浼犵殑鏂囦欢)
     for attachment in msg.attachments:
         if attachment.content_type and attachment.content_type.startswith('image/'):
             urls.append(attachment.url)
     
-    # 2. 从嵌入内容中收集 (适用于粘贴的图片/GIF链接, 或某些特殊情况)
+    # 2. 浠庡祵鍏ュ唴瀹逛腑鏀堕泦 (閫傜敤浜庣矘璐寸殑鍥剧墖/GIF閾炬帴, 鎴栨煇浜涚壒娈婃儏鍐?
     for embed in msg.embeds:
-        # 检查 embed 的主图片
+        # 妫€鏌?embed 鐨勪富鍥剧墖
         if embed.image and embed.image.url:
             urls.append(embed.image.url)
-        # 检查 embed 的缩略图 (有些链接只显示缩略图)
+        # 妫€鏌?embed 鐨勭缉鐣ュ浘 (鏈変簺閾炬帴鍙樉绀虹缉鐣ュ浘)
         if embed.thumbnail and embed.thumbnail.url:
             urls.append(embed.thumbnail.url)
     
-    # 3. 从贴纸中收集
+    # 3. 浠庤创绾镐腑鏀堕泦
     for sticker in msg.stickers:
         urls.append(sticker.url)
 
-    # 4. 从自定义表情中收集
-    # 使用正则表达式从消息内容中查找表情，并使用 discord.py 工具类进行解析
+    # 4. 浠庤嚜瀹氫箟琛ㄦ儏涓敹闆?
+    # 浣跨敤姝ｅ垯琛ㄨ揪寮忎粠娑堟伅鍐呭涓煡鎵捐〃鎯咃紝骞朵娇鐢?discord.py 宸ュ叿绫昏繘琛岃В鏋?
     emoji_matches = re.finditer(r'<a?:\w+:\d+>', msg.content)
     for match in emoji_matches:
         try:
-            # PartialEmoji.from_str 是从 <a:name:id> 格式安全解析表情的正确方法
+            # PartialEmoji.from_str 鏄粠 <a:name:id> 鏍煎紡瀹夊叏瑙ｆ瀽琛ㄦ儏鐨勬纭柟娉?
             emoji = discord.PartialEmoji.from_str(match.group(0))
             if emoji.url:
                 urls.append(str(emoji.url))
         except Exception as e:
             logger.warning(f"Could not parse emoji from string '{match.group(0)}': {e}")
             
-    # 使用 dict.fromkeys 来去重，同时保持原始顺序
+    # 浣跨敤 dict.fromkeys 鏉ュ幓閲嶏紝鍚屾椂淇濇寔鍘熷椤哄簭
     return list(dict.fromkeys(urls))
 
 
@@ -173,6 +173,14 @@ def process_memory_tags(message: discord.Message, text: str, bot_config: Dict[st
     return cleaned_text
 
 
+def strip_thinking_sections(text: str) -> str:
+    """Remove any leaked internal thinking blocks from model output."""
+    if not text:
+        return text
+    cleaned = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    return cleaned.strip()
+
+
 async def run_bot(memory_cutoffs: Dict[int, datetime]):
     global bot_instance
     logger.info(f"[instance={INSTANCE_ID}] run_bot starting.")
@@ -182,7 +190,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     
     if not discord_token or not isinstance(discord_token, str) or len(discord_token) < 50:
         logger.critical("FATAL: Discord token is missing, invalid, or too short in config.json. Bot cannot start.")
-        # 在异步上下文中，抛出异常是终止启动的明确方式
+        # 鍦ㄥ紓姝ヤ笂涓嬫枃涓紝鎶涘嚭寮傚父鏄粓姝㈠惎鍔ㄧ殑鏄庣‘鏂瑰紡
         raise ValueError("Invalid Discord token provided.")
     
     intents = discord.Intents.default()
@@ -315,36 +323,42 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if message.author == bot.user:
             return
 
-        # --- [BUG修复] 将配置加载移到函数顶部 ---
-        # 确保在任何需要配置的操作之前加载它
+        # --- [BUG淇] 灏嗛厤缃姞杞界Щ鍒板嚱鏁伴《閮?---
+        # 纭繚鍦ㄤ换浣曢渶瑕侀厤缃殑鎿嶄綔涔嬪墠鍔犺浇瀹?
         config = load_bot_config()
         auto_interject_triggered = _track_auto_interject(message, config)
         repeat_parrot_content = _track_repeat_parrot(message, config)
         
-        # 插件处理
-        plugin_result = await plugin_manager.process_message(message, config)
-        if plugin_result is True:
-            return  # 插件已经处理了消息并希望停止后续逻辑
-        
-        injected_data = None
-        if isinstance(plugin_result, tuple) and plugin_result[0] == 'append':
-            injected_data = "\n".join(plugin_result[1])
-
-        # --- [逻辑修正] 先检查触发条件，再获取锁 ---
+                # Trigger detection
         trigger_keywords = config.get("trigger_keywords", [])
         trigger_match_mode = config.get("trigger_match_mode", "contains")
         trigger_case_sensitive = bool(config.get("trigger_case_sensitive", False))
         is_mentioned = bot.user in message.mentions
-        is_reply_to_bot = (message.reference and
-                           isinstance(message.reference.resolved, discord.Message) and
-                           message.reference.resolved.author == bot.user)
+        is_reply_to_bot = (
+            message.reference
+            and isinstance(message.reference.resolved, discord.Message)
+            and message.reference.resolved.author == bot.user
+        )
         has_trigger_keyword = matches_trigger_keywords(
             message.content,
             trigger_keywords,
             match_mode=trigger_match_mode,
-            case_sensitive=trigger_case_sensitive
+            case_sensitive=trigger_case_sensitive,
         )
         normal_triggered = is_mentioned or is_reply_to_bot or has_trigger_keyword
+
+        # Plugin processing (receives runtime trigger state)
+        plugin_runtime_config = dict(config)
+        plugin_runtime_config["_runtime_normal_triggered"] = normal_triggered
+        plugin_result = await plugin_manager.process_message(message, plugin_runtime_config)
+        if plugin_result is True:
+            return
+
+        injected_data = None
+        plugin_append_triggered = False
+        if isinstance(plugin_result, tuple) and plugin_result[0] == 'append':
+            injected_data = "\n".join(plugin_result[1])
+            plugin_append_triggered = bool(plugin_result[1])
 
         if not normal_triggered and repeat_parrot_content:
             await message.channel.send(repeat_parrot_content)
@@ -352,15 +366,18 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             _reset_channel_automation_state(message.channel.id)
             return
 
-        # 如果不是触发消息，则直接忽略
-        if not (normal_triggered or auto_interject_triggered):
+        # 濡傛灉涓嶆槸瑙﹀彂娑堟伅锛屽垯鐩存帴蹇界暐
+        if not (normal_triggered or auto_interject_triggered or plugin_append_triggered):
             return
+
+        if plugin_append_triggered and not (normal_triggered or auto_interject_triggered):
+            logger.info(f"[instance={INSTANCE_ID}] Continuing due to plugin append trigger for message {message.id}.")
 
         if auto_interject_triggered and not normal_triggered:
             logger.info(f"[instance={INSTANCE_ID}] Auto interject triggered in channel {message.channel.id} after configured interval.")
 
-        # --- 分布式锁逻辑 ---
-        # 只有在确认消息是发给bot时，才进行加锁操作
+        # --- 鍒嗗竷寮忛攣閫昏緫 ---
+        # 鍙湁鍦ㄧ‘璁ゆ秷鎭槸鍙戠粰bot鏃讹紝鎵嶈繘琛屽姞閿佹搷浣?
         lock_key = f"discord:message_lock:{message.id}"
         is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
         
@@ -370,7 +387,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         
         logger.info(f"[instance={INSTANCE_ID}] Acquired lock for triggering message {message.id}. Processing...")
         
-        # 图片收集
+        # 鍥剧墖鏀堕泦
         image_urls = collect_image_urls(message)
         if message.reference and isinstance(message.reference.resolved, discord.Message):
             replied_msg = message.reference.resolved
@@ -386,7 +403,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 images.append(img_data)
                 logger.info(f"[instance={INSTANCE_ID}] Successfully downloaded image from {url}")
         
-        # 核心逻辑：上下文、人设、配额
+        # 鏍稿績閫昏緫锛氫笂涓嬫枃銆佷汉璁俱€侀厤棰?
         role_name, role_config = (None, None); 
         if isinstance(message.author, discord.Member):
             role_name, role_config = get_highest_configured_role(message.author, config.get("role_based_config", {})) or (None, None)
@@ -527,6 +544,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     return
 
                 cleaned_response = process_memory_tags(message, full_response, config)
+                cleaned_response = strip_thinking_sections(cleaned_response)
 
                 if response_message:
                     final_chunks = split_message(cleaned_response, 2000)
@@ -582,7 +600,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     
     try:
         await bot.start(discord_token)
-    except ValueError as e: # 捕获我们自己抛出的异常
+    except ValueError as e: # 鎹曡幏鎴戜滑鑷繁鎶涘嚭鐨勫紓甯?
         logger.critical(f"[instance={INSTANCE_ID}] Terminating due to configuration error: {e}")
     except discord.errors.LoginFailure:
         logger.critical(f"[instance={INSTANCE_ID}] FATAL: Login failed. The provided Discord token is incorrect. Please check your config.json.")
@@ -591,3 +609,5 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     finally:
         if not bot.is_closed():
             await bot.close()
+
+
