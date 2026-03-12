@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $rootDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $backendDir = Join-Path $rootDir "backend"
@@ -6,7 +6,10 @@ $frontendDir = Join-Path $rootDir "frontend"
 
 Write-Host "[1/3] Locating local dev processes..."
 
-$targets = Get-CimInstance Win32_Process | Where-Object {
+$targets = @()
+
+# 1) Match by command line patterns (preferred)
+$targets += @(Get-CimInstance Win32_Process | Where-Object {
     $_.Name -eq "python.exe" -and $_.CommandLine -and (
         $_.CommandLine -like "*uvicorn app.main:app*" -or
         $_.CommandLine -like "*uvicorn app.portrait_service:app*"
@@ -14,9 +17,9 @@ $targets = Get-CimInstance Win32_Process | Where-Object {
         $_.CommandLine -like "*$backendDir*" -or
         $_.CommandLine -like "*Discord-LLMs-ChatBot*"
     )
-}
+})
 
-$frontTargets = Get-CimInstance Win32_Process | Where-Object {
+$targets += @(Get-CimInstance Win32_Process | Where-Object {
     $_.Name -eq "node.exe" -and $_.CommandLine -and (
         $_.CommandLine -like "*vite*" -or
         $_.CommandLine -like "*npm run dev*"
@@ -25,9 +28,29 @@ $frontTargets = Get-CimInstance Win32_Process | Where-Object {
         $_.CommandLine -like "*$frontendDir*" -or
         $_.CommandLine -like "*Discord-LLMs-ChatBot*"
     )
+})
+
+# 2) Fallback by local dev ports (8093/8094)
+$portPids = @()
+try {
+    $portPids += @(Get-NetTCPConnection -LocalPort 8093 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)
+    $portPids += @(Get-NetTCPConnection -LocalPort 8094 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess)
+} catch {
+    # Ignore fallback errors
 }
 
-$allTargets = @($targets + $frontTargets | Sort-Object ProcessId -Unique)
+foreach ($procId in ($portPids | Sort-Object -Unique)) {
+    if (-not $procId) { continue }
+    $proc = Get-CimInstance Win32_Process -Filter "ProcessId = $procId" -ErrorAction SilentlyContinue
+    if (-not $proc) { continue }
+
+    # Only target expected process names for safety
+    if ($proc.Name -in @("python.exe", "node.exe")) {
+        $targets += @($proc)
+    }
+}
+
+$allTargets = @($targets | Sort-Object ProcessId -Unique)
 
 if (-not $allTargets -or $allTargets.Count -eq 0) {
     Write-Host "[2/3] No matching local dev process found."
