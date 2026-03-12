@@ -335,6 +335,24 @@ export async function fetchConfig(options = {}) {
     return null;
 }
 
+export async function syncUserPersonasFromBackend(options = {}) {
+    const silent = !!options.silent;
+    try {
+        const loadedConfig = await apiFetchConfig();
+        userPersonas.set(loadedConfig.user_personas || {});
+        if (!silent) {
+            showStatus(t_get('personaHub.syncPortraitsSuccess'), 'success');
+        }
+        return loadedConfig.user_personas || {};
+    } catch (e) {
+        console.error('User portraits sync error:', e);
+        if (!silent) {
+            showStatus(t_get('personaHub.syncPortraitsFailed', { error: e.message }), 'error');
+        }
+        throw e;
+    }
+}
+
 export async function saveConfig() {
     isLoading.set(true);
     showStatus(t_get('status.saving'), 'info');

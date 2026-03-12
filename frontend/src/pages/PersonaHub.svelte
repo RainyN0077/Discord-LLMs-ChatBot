@@ -1,10 +1,11 @@
 <script>
     import '../styles/lists.css';
     import { onMount } from 'svelte';
+    import { get } from 'svelte/store';
     import { fade, fly } from 'svelte/transition';
     import { t, get as t_get } from '../i18n.js';
     import { fetchUsageStats } from '../lib/api.js';
-    import { userPersonas, showStatus } from '../lib/stores.js';
+    import { syncUserPersonasFromBackend, userPersonas, showStatus } from '../lib/stores.js';
     import Card from '../components/Card.svelte';
     import ScopedPromptEditor from '../components/ScopedPromptEditor.svelte';
     import RoleConfigEditor from '../components/RoleConfigEditor.svelte';
@@ -18,6 +19,7 @@
     let channelUsersMap = {};
     let discoveredChannels = [];
     let showHelpModal = false;
+    let isSyncingPortraits = false;
 
     function addPersona() {
         userPersonas.update(up => {
@@ -83,6 +85,15 @@
         }
     }
 
+    async function resyncPortraits() {
+        isSyncingPortraits = true;
+        try {
+            await syncUserPersonasFromBackend();
+        } finally {
+            isSyncingPortraits = false;
+        }
+    }
+
     $: candidateUserIds = selectedChannelId === 'all'
         ? Object.keys(userMetaById || {})
         : (channelUsersMap?.[selectedChannelId]?.user_ids || []);
@@ -104,7 +115,16 @@
         })
         .sort((a, b) => a.display_name.localeCompare(b.display_name));
 
-    onMount(() => {
+    onMount(async () => {
+        // Persona Hub depends on a shared startup fetch. If that initial sync missed,
+        // portraits can appear empty here even though the backend still has them.
+        if (Object.keys(get(userPersonas) || {}).length === 0) {
+            try {
+                await syncUserPersonasFromBackend({ silent: true });
+            } catch (e) {
+                console.error('Initial portrait sync failed:', e);
+            }
+        }
         refreshDiscoveredUsers();
     });
 </script>
@@ -156,6 +176,11 @@
 
             <Card title={$t('userPortrait.title')}>
                 <p class="info">{$t('userPortrait.info')}</p>
+                <div class="portrait-toolbar">
+                    <button class="action-btn-secondary" on:click={resyncPortraits} disabled={isSyncingPortraits}>
+                        {isSyncingPortraits ? $t('personaHub.syncingPortraits') : $t('personaHub.syncPortraits')}
+                    </button>
+                </div>
                 <div class="list-container">
                     {#each Object.keys($userPersonas || {}) as key (key)}
                         <div class="list-item">
@@ -328,6 +353,11 @@
         justify-content: center;
         margin-top: 1rem;
         margin-bottom: .5rem;
+    }
+
+    .portrait-toolbar {
+        display: flex;
+        justify-content: flex-end;
     }
 
     .help-link {
