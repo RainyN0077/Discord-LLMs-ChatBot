@@ -260,64 +260,195 @@ MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## 11. Chinese Guide (涓枃鐗?
+## 11. Chinese Guide (中文版)
 
-### 椤圭洰绠€浠?
-杩欐槸涓€涓敮鎸佸妯″瀷鏈嶅姟鍟嗙殑 Discord 鏈哄櫒浜洪」鐩紝鎻愪緵 Web 鎺у埗闈㈡澘銆佺煡璇嗗簱锛堜笘鐣屼功 + 闀挎湡璁板繂锛夈€佹彃浠剁郴缁熴€佺敤閲忕粺璁″拰閰嶉鎺у埗銆?
-### 涓昏鍔熻兘
+### 项目简介
 
-- 澶氭湇鍔″晢鏀寔锛歄penAI銆丟oogle Gemini锛坄google-genai`锛夈€丄nthropic
-- 鍙鍖栨帶鍒堕潰鏉匡細鍦ㄧ嚎淇敼閰嶇疆骞堕噸鍚満鍣ㄤ汉
-- 鍒嗗眰浜鸿锛氶閬?鏈嶅姟鍣ㄦ寚浠ゃ€佺敤鎴风敾鍍忋€佽韩浠界粍閰嶇疆
-- 鐭ヨ瘑澧炲己锛氫笘鐣屼功鍏抽敭璇嶆敞鍏ャ€侀暱鏈熻蹇嗗€欓€夋彁鍗?- 鎻掍欢绯荤粺锛氭敮鎸佸閮ㄦ帴鍙ｈЕ鍙?`POST /api/plugins/trigger`
-- 鐢ㄩ噺缁熻涓庝环鏍奸潰鏉匡細杩借釜 token 鍜屾垚鏈?
-### 蹇€熷惎鍔紙Docker锛?
+这是一个高度可定制的 Discord 聊天机器人项目，支持多家 LLM 服务商、Web 控制面板、知识增强、长期记忆、插件自动化和用量统计。
+
+### 主要功能
+
+- 多服务商 LLM 支持：
+  - OpenAI（以及 OpenAI 兼容接口）
+  - Google Gemini（`google-genai` SDK）
+  - Anthropic Claude
+- Web 控制面板，可在运行时调整配置
+- 分层人设系统：
+  - 频道 / 服务器级提示词
+  - 用户画像
+  - 身份组行为设定
+- 知识增强能力：
+  - 世界书关键词注入
+  - 长期记忆与候选提升流程
+- 用量统计面板，可查看 token 与模型价格
+- 安全插件系统，支持外部接口触发
+- 配额管理（`!myquota`）
+- 支持 Docker 部署，以及 Windows / Linux 本地开发脚本
+
+### 端口与运行方式
+
+#### Docker（推荐）
+
 ```bash
 docker compose up --build -d
 ```
 
-鍚姩鍚庤闂細
+服务端口：
 
-- 鍓嶇锛歚http://localhost:8094`
-- 鍚庣锛歚http://localhost:8093`
+- 前端：`http://localhost:8094`
+- 后端 API：`http://localhost:8093`
+- Redis：运行在 compose 网络内部
 
-### Windows 鏈湴寮€鍙戯紙闈?Docker锛?
-PowerShell 鍚姩锛?
+#### Windows 本地开发（非 Docker）
+
+PowerShell：
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-local.ps1
 ```
 
-CMD 鍚姩锛?
+CMD：
+
 ```bat
 .\scripts\windows\start-local.bat
 ```
 
-鍋滄鏈湴杩涚▼锛?
+停止本地进程：
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-local.ps1
 ```
 
-鎴栵細
+或：
 
 ```bat
 .\scripts\windows\stop-local.bat
 ```
 
-### 鍏抽敭閰嶇疆椤?
-- `discord_token`锛欴iscord 鏈哄櫒浜?Token
-- `llm_provider`锛歚openai` / `google` / `anthropic`
-- `api_key`锛氬搴旀湇鍔″晢 API Key
-- `model_name`锛氭ā鍨嬪悕绉?- `api_secret_key`锛氬悗绔?API 閴存潈瀵嗛挜锛堣姹傚ご `X-API-Key`锛?
-### Google 杩佺Щ璇存槑
+本地脚本会自动：
 
-褰撳墠 Google 璺緞宸茬粺涓€鍒?`google-genai`锛?
-- `backend/requirements.txt` 浣跨敤 `google-genai`
-- `backend/app/main.py` 浣跨敤 `from google import genai`
-- `backend/app/llm_providers/google_provider.py` 宸茶縼绉诲埌鏂?SDK 瀹炵幇
+- 在缺失时创建 `backend/.venv`
+- 安装 `backend/requirements.txt` 中的后端依赖
+- 如果检测到 npm，则安装前端依赖
+- 在 `8093` 启动后端、在 `8094` 启动前端开发服务器
 
-濡傛灉浣犳湰鍦扮幆澧冭繕鍋滅暀鍦ㄦ棫鍖咃紝寤鸿閲嶆柊瀹夎渚濊禆锛?
+#### Linux 本地开发（非 Docker）
+
+前台调试模式：
+
 ```bash
-# 鍦?backend 鐩綍鎵ц
+bash ./scripts/linux/start-local-foreground.sh
+```
+
+后台模式（`nohup`，带日志和 PID 文件）：
+
+```bash
+bash ./scripts/linux/start-local-nohup.sh
+```
+
+`tmux` 模式（前后端分窗口）：
+
+```bash
+bash ./scripts/linux/start-local-tmux.sh
+```
+
+停止本地进程：
+
+```bash
+bash ./scripts/linux/stop-local.sh
+```
+
+### 快速开始
+
+1. 克隆仓库
+
+```bash
+git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
+cd Discord-LLMs-ChatBot
+```
+
+2. 使用 Docker 启动
+
+```bash
+docker compose up --build -d
+```
+
+3. 打开 Web 控制台
+
+- `http://localhost:8094`
+
+4. 在 UI 中完成配置
+
+- Discord Bot Token
+- LLM 服务商、API Key 和模型名
+- 保存配置并重启机器人
+
+### 关键配置项
+
+- `discord_token`：Discord 机器人 Token
+- `llm_provider`：`openai` / `google` / `anthropic`
+- `api_key`：所选服务商的 API Key
+- `model_name`：所选模型 ID
+- `api_secret_key`：后端接口鉴权密钥，请通过请求头 `X-API-Key` 传入
+
+### 数据持久化
+
+运行数据保存在 `./data` 目录（Docker 中挂载到 `/app/data`），包括：
+
+- `config.json`
+- 日志
+- 世界书 / 记忆等相关数据文件
+
+### Redis 行为说明
+
+- Docker 模式默认使用 compose 中的 Redis 服务
+- 本地脚本会设置 `FAIL_ON_REDIS_ERROR=false`
+  - 如果 Redis 不可用，程序会退回到 mock lock 模式，便于本地开发
+
+### 对外 REST API
+
+主要的外部自动化接口：
+
+- `POST /api/plugins/trigger`
+- 请求头：`X-API-Key: <api_secret_key>`
+
+示例：
+
+```bash
+curl -X POST http://localhost:8093/api/plugins/trigger \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_SECRET_KEY" \
+  -d '{
+    "plugin_name": "Weather Check",
+    "args": {
+      "city": "Shanghai"
+    }
+  }'
+```
+
+常用后端接口还包括：
+
+- `GET /api/config`
+- `POST /api/config`
+- `POST /api/models/list`
+- `POST /api/models/test`
+- `GET /api/logs`
+- `GET /api/usage/stats`
+- `GET/POST /api/usage/pricing`
+- 记忆 / 世界书相关的 `GET/POST/PUT/DELETE` 接口
+
+### Google Provider 迁移说明
+
+当前项目已统一使用 `google-genai` 作为 Google SDK 路径。
+
+- `backend/requirements.txt` 使用 `google-genai`
+- `backend/app/main.py` 的模型列出 / 测试逻辑使用 `from google import genai`
+- `backend/app/llm_providers/google_provider.py` 已迁移到 `google-genai` 实现
+
+如果你本地环境还停留在旧版 `google-generativeai`，建议刷新虚拟环境依赖：
+
+```bash
+# 在 backend 目录执行
 python -m pip install -r requirements.txt
 ```
 
