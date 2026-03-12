@@ -198,11 +198,14 @@
     <div class="dashboard-header">
         <h3>{$t('usage.title')}</h3>
         <div class="controls">
-            <select bind:value={period} on:change={fetchStats}>
-                {#each periodOptions as option}
-                    <option value={option.value}>{$t(option.label)}</option>
-                {/each}
-            </select>
+            <label class="period-control">
+                <span>{$t('usage.periodLabel')}</span>
+                <select bind:value={period} on:change={fetchStats}>
+                    {#each periodOptions as option}
+                        <option value={option.value}>{$t(option.label)}</option>
+                    {/each}
+                </select>
+            </label>
             <button class="icon-btn" on:click={openPricingModal} title={$t('usage.configurePricing')}>
                 💰
             </button>
@@ -352,14 +355,34 @@
         display: flex;
         gap: 0.5rem;
         align-items: center;
+        flex-wrap: wrap;
+    }
+    .period-control {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        color: var(--text-light);
+        font-size: .9rem;
+    }
+    .period-control span {
+        white-space: nowrap;
+    }
+    .period-control select {
+        min-width: 116px;
+        padding: .38rem .62rem;
+        font-size: .95rem;
+        background: var(--panel-soft-bg-2);
+        color: var(--text-color);
+        border: 1px solid var(--panel-muted-border);
     }
     .view-tabs {
         display: flex;
         gap: 0.25rem;
         margin-bottom: 1rem;
-        background: #f0f2f5;
+        background: var(--panel-muted-bg);
         padding: 0.25rem;
         border-radius: 6px;
+        border: 1px solid var(--panel-muted-border);
     }
     .view-tabs button {
         background: transparent;
@@ -385,9 +408,10 @@
         border-radius: 4px;
         font-size: 1rem;
         line-height: 1;
+        color: var(--text-color);
     }
     .icon-btn:hover {
-        background-color: #f0f2f5;
+        background-color: var(--panel-muted-bg);
     }
     .icon-btn:disabled {
         opacity: 0.5;
@@ -407,7 +431,7 @@
         margin-bottom: 1rem;
     }
     .stat-card {
-        background: #f8f9fa;
+        background: var(--panel-soft-bg);
         padding: 0.75rem;
         border-radius: 6px;
         text-align: center;
@@ -446,7 +470,7 @@
         gap: 0.5rem;
         padding: 0.5rem;
         font-weight: 600;
-        background: #f8f9fa;
+        background: var(--panel-soft-bg);
         border-bottom: 1px solid var(--border-color);
         position: sticky;
         top: 0;
@@ -461,17 +485,17 @@
         align-items: center;
     }
     .main-row:hover {
-        background-color: #f8f9fa;
+        background-color: var(--panel-hover-bg);
     }
     .detail-rows {
-        background: #fafbfc;
+        background: var(--panel-soft-bg-2);
     }
     .detail-row {
         display: grid;
         grid-template-columns: 30px 2fr 1.5fr 0.8fr;
         gap: 0.5rem;
         padding: 0.4rem 0.5rem;
-        border-bottom: 1px solid #e9ecef;
+        border-bottom: 1px solid var(--border-color);
         font-size: 0.75rem;
     }
     .expand-btn {
@@ -576,7 +600,7 @@
         border: 1px solid var(--border-color);
         color: var(--text-color);
     }
-     .modal-actions button.secondary:hover {
-        background-color: #f0f2f5;
+    .modal-actions button.secondary:hover {
+        background-color: var(--panel-muted-bg);
     }
 </style>

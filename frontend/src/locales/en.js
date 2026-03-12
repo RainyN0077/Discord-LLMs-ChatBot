@@ -2,7 +2,10 @@
 export default {
   appNav: {
     controlPanel: 'Control Panel',
-    directChat: 'Direct Chat'
+    directChat: 'Direct Chat',
+    personaHub: 'Persona Hub',
+    themeDark: 'Switch to dark mode',
+    themeLight: 'Switch to light mode'
   },
   title: 'Discord LLM Bot Control Panel',
   tabs: {
@@ -187,6 +190,41 @@ export default {
     add: 'Add User Portrait',
     triggerKeywordsPlaceholder: 'Trigger Keywords (comma-separated)'
   },
+  personaHub: {
+    title: 'Persona Hub',
+    sections: {
+      users: 'Users',
+      channels: 'Channels',
+      guilds: 'Servers',
+      roles: 'Roles'
+    },
+    discoveredUsersTitle: 'Discovered Users',
+    allChannels: 'All Channels',
+    searchPlaceholder: 'Search by display name, username, or ID',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
+    noDiscoveredUsers: 'No discovered users yet for the selected scope.',
+    addPortrait: 'Add Portrait',
+    editPortrait: 'Edit Portrait',
+    loadFailed: 'Failed to load discovered users: {error}',
+    helpLink: 'Help',
+    helpTitle: 'What This Page Does',
+    helpBody: 'Persona Hub centralizes identity-related configuration. You can quickly locate users discovered from channel activity, create or edit their portraits, and manage channel/server directives and role-based persona rules from one place.',
+    commonIssuesTitle: 'Common Issues',
+    commonIssue1: 'No discovered users shown: the bot has not recorded usage metadata yet for this scope.',
+    commonIssue2: 'User appears but cannot be @mentioned correctly: portrait nickname should be style-only, not a mention token.',
+    commonIssue3: 'Channel list is empty: there may be no recent interactions logged in usage stats.',
+    commonIssue4: 'Portrait changes seem ineffective: configuration was edited but not saved/reloaded to backend.',
+    commonIssue5: 'Search cannot find a user: try full numeric ID instead of display name.',
+    quickCheckTitle: 'Quick Troubleshooting',
+    quickCheck1: 'Click Refresh in this page to pull latest metadata.',
+    quickCheck2: 'Switch channel filter to All Channels to verify global discovery.',
+    quickCheck3: 'Confirm the target user ID is valid and unique in User Portraits.',
+    quickCheck4: 'Save configuration, then ensure backend has restarted successfully.',
+    quickCheck5: 'Send one test message in Discord to generate fresh usage metadata.',
+    quickCheck6: 'If still failing, open logs and check usage tracker or persona parsing errors.',
+    helpClose: 'Close'
+  },
   pluginManager: {
     title: 'Plugin Manager',
     info: 'Create custom tools triggered by commands or keywords. Supports calling external APIs with optional LLM processing.',
@@ -308,6 +346,7 @@ export default {
   },
   usage: {
     title: 'Usage Statistics',
+    periodLabel: 'Period',
     periods: {
         today: 'Today',
         week: 'This Week',

@@ -136,7 +136,7 @@
         justify-content: space-between;
         align-items: center;
         gap: 1rem;
-        background: #fff;
+        background: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: .7rem .9rem;
@@ -145,7 +145,7 @@
         min-height: 420px;
         max-height: calc(100vh - 300px);
         overflow: auto;
-        background: #fff;
+        background: var(--card-bg);
         border: 1px solid var(--border-color);
         border-radius: 12px;
         padding: .9rem;
@@ -189,8 +189,9 @@
         resize: vertical;
     }
     button.secondary {
-        background: rgba(15, 23, 42, .07);
+        background: var(--control-bg);
         color: var(--text-color);
+        border: 1px solid var(--panel-muted-border);
     }
     .error {
         color: var(--error-text);

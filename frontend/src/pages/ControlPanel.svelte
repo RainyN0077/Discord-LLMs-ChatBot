@@ -6,14 +6,9 @@
         coreConfig,
         behaviorConfig,
         contextConfig,
-        pluginsConfig,
-        userPersonas,
-        roleConfigs,
-        scopedPrompts,
         customParameters,
         keywordsInput,
         setKeywords,
-        userPersonasArray,
         customFontName,
         showStatus,
         timezoneStore
@@ -23,8 +18,6 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
     import LogViewer from '../components/LogViewer.svelte';
-    import ScopedPromptEditor from '../components/ScopedPromptEditor.svelte';
-    import RoleConfigEditor from '../components/RoleConfigEditor.svelte';
     import PluginEditor from '../components/PluginEditor.svelte';
     import SearchSettings from '../components/SearchSettings.svelte';
     import KnowledgeEditor from '../components/KnowledgeEditor.svelte';
@@ -61,8 +54,6 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         return '';
     }
 
-    function addPersona() { userPersonas.update(up => { const newKey = `new-user-${Date.now()}`; up[newKey] = { id: '', nickname: '', prompt: '' }; return up; }); }
-    function removePersona(key) { userPersonas.update(up => { delete up[key]; return up; }); }
     function addParameter() { customParameters.update(cp => { cp.push({ name: '', type: 'text', value: '' }); return cp; }); }
     function removeParameter(index) { customParameters.update(cp => { cp.splice(index, 1); return cp; }); }
     function handleParamTypeChange(index, newType) {
@@ -356,26 +347,6 @@ async function resetFont() {
             {#if activeTab === 'directives'}
             <div class="tab-content">
                 <KnowledgeEditor />
-                <Card title={$t('scopedPrompts.channels.title')}><ScopedPromptEditor type="channels" /></Card>
-                <Card title={$t('scopedPrompts.guilds.title')}><ScopedPromptEditor type="guilds" /></Card>
-                <RoleConfigEditor />
-                <Card title={$t('userPortrait.title')}>
-                    <p class="info">{$t('userPortrait.info')}</p>
-                    <div class="list-container">
-                        {#each Object.keys($userPersonas) as key (key)}
-                            <div class="list-item">
-                                <div class="list-item-main">
-                                    <input class="id-input" type="text" placeholder={$t('userPortrait.userId')} bind:value={$userPersonas[key].id}>
-                                    <input class="nickname-input" type="text" placeholder={$t('userPortrait.customNicknamePlaceholder')} bind:value={$userPersonas[key].nickname}>
-                                    <textarea class="prompt-input" rows="2" placeholder={$t('userPortrait.personaPrompt')} bind:value={$userPersonas[key].prompt}></textarea>
-                                    <input class="keywords-input" type="text" placeholder={$t('userPortrait.triggerKeywordsPlaceholder')} bind:value={$userPersonas[key].trigger_keywords}>
-                                </div>
-                                <button class="remove-btn" on:click={() => removePersona(key)} title={$t('roleConfig.remove')}>×</button>
-                            </div>
-                        {/each}
-                    </div>
-                    <button class="add-btn" on:click={addPersona}>{$t('userPortrait.add')}</button>
-                </Card>
                 <Card title={$t('defaultBehavior.title')}>
                     <label for="bot-nickname">{$t('defaultBehavior.botNickname')}</label>
                     <input id="bot-nickname" type="text" placeholder={$t('defaultBehavior.botNicknamePlaceholder')} bind:value={$behaviorConfig.bot_nickname}>
@@ -545,7 +516,7 @@ async function resetFont() {
     .tabs {
         display: grid;
         grid-template-columns: repeat(4, minmax(0, 1fr));
-        background: rgba(255, 255, 255, .86);
+        background: var(--floating-bg);
         border-radius: 14px;
         padding: .4rem;
         box-shadow: var(--shadow);
@@ -554,7 +525,7 @@ async function resetFont() {
         position: sticky;
         top: .75rem;
         z-index: 20;
-        border: 1px solid rgba(15, 23, 42, .08);
+        border: 1px solid var(--floating-border);
         -webkit-backdrop-filter: blur(10px);
         backdrop-filter: blur(10px);
     }
@@ -572,7 +543,7 @@ async function resetFont() {
     }
     .tabs button:hover {
         color: var(--text-color);
-        background: rgba(15, 23, 42, .05);
+        background: var(--panel-muted-bg);
     }
     .tabs button.active {
         background: linear-gradient(135deg, var(--primary-color), #1d81bf);
@@ -658,9 +629,9 @@ async function resetFont() {
         flex-direction: column;
         gap: .45rem;
         padding: .7rem .8rem;
-        border: 1px solid rgba(15, 23, 42, .08);
+        border: 1px solid var(--panel-muted-border);
         border-radius: 12px;
-        background: rgba(248, 251, 255, .65);
+        background: var(--panel-soft-bg-2);
     }
 
     .api-key-container {
@@ -672,9 +643,9 @@ async function resetFont() {
 
     .api-key-container button {
         padding: .65rem .8rem;
-        background: rgba(15, 23, 42, .06);
+        background: var(--control-bg);
         color: var(--text-color);
-        border: 1px solid rgba(15, 23, 42, .1);
+        border: 1px solid var(--panel-muted-border);
     }
 
     .action-btn {
@@ -689,13 +660,13 @@ async function resetFont() {
     }
 
     .action-btn-secondary {
-        background: rgba(15, 23, 42, .06);
+        background: var(--control-bg);
         color: var(--text-color);
-        border: 1px solid rgba(15, 23, 42, .12);
+        border: 1px solid var(--panel-muted-border);
     }
 
     .action-btn-secondary:hover:not(:disabled) {
-        background: rgba(15, 23, 42, .1);
+        background: var(--control-hover-bg);
         transform: translateY(-1px);
     }
     
@@ -786,22 +757,6 @@ async function resetFont() {
         align-items: center;
     }
 
-    .list-item-main {
-        display: grid;
-        grid-template-areas:
-            "id nickname"
-            "prompt prompt"
-            "keywords keywords";
-        grid-template-columns: 1fr 2fr;
-        gap: 0.5rem;
-        width: 100%;
-    }
-
-    .id-input { grid-area: id; }
-    .nickname-input { grid-area: nickname; }
-    .prompt-input { grid-area: prompt; }
-    .keywords-input { grid-area: keywords; }
-    
     .param-select.wide, .param-textarea {
         grid-column: 3/4;
         resize: vertical;
@@ -880,21 +835,8 @@ async function resetFont() {
           justify-self: start;
       }
 
-      .list-item {
-          flex-direction: column;
-      }
-
-      .list-item-main {
-          grid-template-areas:
-              "id"
-              "nickname"
-              "prompt"
-              "keywords";
-          grid-template-columns: 1fr;
-      }
-
-      .action-container > * {
-          width: 100%;
-      }
+       .action-container > * {
+           width: 100%;
+       }
     }
 </style>

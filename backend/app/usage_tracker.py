@@ -23,6 +23,9 @@ class UsageTracker:
             try:
                 with open(self.data_file, 'r') as f:
                     data = json.load(f)
+                    metadata = data.get("metadata", {})
+                    if "channel_users" not in metadata:
+                        metadata["channel_users"] = {}
                     return {
                         "daily": defaultdict(lambda: {
                             "requests": 0, 
@@ -36,12 +39,7 @@ class UsageTracker:
                                 "by_guild": {}
                             }
                         }, data.get("daily", {})),
-                        "metadata": data.get("metadata", {
-                            "users": {},
-                            "roles": {},
-                            "channels": {},
-                            "guilds": {}
-                        })
+                        "metadata": metadata
                     }
             except Exception as e:
                 print(f"Error loading usage data: {e}")
@@ -62,7 +60,8 @@ class UsageTracker:
                 "users": {},
                 "roles": {},
                 "channels": {},
-                "guilds": {}
+                "guilds": {},
+                "channel_users": {}
             }
         }
     
@@ -109,6 +108,12 @@ class UsageTracker:
                 self.usage_data["metadata"]["channels"][channel_id] = {
                     "name": channel_name
                 }
+                channel_users = self.usage_data["metadata"].setdefault("channel_users", {})
+                per_channel = channel_users.setdefault(channel_id, {"user_ids": []})
+                if "user_ids" not in per_channel or not isinstance(per_channel.get("user_ids"), list):
+                    per_channel["user_ids"] = []
+                if user_id and user_id not in per_channel["user_ids"]:
+                    per_channel["user_ids"].append(user_id)
             if guild_id:
                 self.usage_data["metadata"]["guilds"][guild_id] = {
                     "name": guild_name

@@ -201,8 +201,8 @@
         display: flex;
         gap: 0.5rem;
         align-items: center;
-        background: rgba(15, 23, 42, .04);
-        border: 1px solid rgba(15, 23, 42, .08);
+        background: var(--panel-muted-bg);
+        border: 1px solid var(--panel-muted-border);
         border-radius: 12px;
         padding: .35rem .45rem;
     }
@@ -214,7 +214,7 @@
     
     .log-filter-group button {
         background: transparent;
-        color: #555;
+        color: var(--text-light);
         padding: 0.35rem 0.75rem;
         font-size: 0.85rem;
         border: 1px solid transparent;
@@ -231,7 +231,7 @@
     .log-output-wrapper {
         flex-grow: 1;
         overflow: hidden;
-        background-color: #1e1e1e;
+        background-color: var(--log-shell-bg);
         border-radius: 8px;
         position: relative;
     }
@@ -248,12 +248,17 @@
         gap: .45rem;
         color: var(--text-light);
         font-size: .9rem;
+        white-space: nowrap;
+        margin-left: auto;
     }
 
     .line-limit-control select {
-        min-width: 92px;
-        padding: .25rem .45rem;
-        font-size: .85rem;
+        min-width: 108px;
+        padding: .35rem .55rem;
+        font-size: .9rem;
+        background: var(--panel-soft-bg-2);
+        color: var(--text-color);
+        border: 1px solid var(--panel-muted-border);
     }
     
     .log-output-wrapper pre {
@@ -265,7 +270,7 @@
         font-family: 'Fira Code', 'Courier New', monospace;
         font-size: 0.8rem;
         line-height: 1.6;
-        color: #d4d4d4;
+        color: var(--log-text-color);
         white-space: pre-wrap;
         word-break: break-all;
     }
@@ -275,7 +280,7 @@
     }
 
     .timestamp {
-        color: #9e9e9e; /* Light grey for timestamp */
+        color: var(--log-time-color);
         margin-right: 1em;
     }
     

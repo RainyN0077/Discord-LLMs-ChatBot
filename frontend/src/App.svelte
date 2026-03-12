@@ -6,8 +6,10 @@
     import { fetchConfig, saveConfig, statusMessage, statusType, isLoading, customFontName } from './lib/stores.js';
     import ControlPanel from './pages/ControlPanel.svelte';
     import DirectChat from './pages/DirectChat.svelte';
+    import PersonaHub from './pages/PersonaHub.svelte';
 
     let activePage = 'panel';
+    let theme = 'light';
 
     function applyFont(fontDataUrl, fontName) {
         const styleId = 'custom-font-style';
@@ -31,6 +33,13 @@
 
     onMount(async () => {
         fetchConfig({ startup: true });
+        const storedTheme = localStorage.getItem('theme');
+        if (storedTheme === 'dark' || storedTheme === 'light') {
+            theme = storedTheme;
+        } else {
+            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        applyTheme(theme);
 
         try {
             const fontDataUrl = await loadFromIndexedDB('customFontDataUrl');
@@ -42,6 +51,16 @@
             console.error('Failed to load font from IndexedDB:', e);
         }
     });
+
+    function applyTheme(nextTheme) {
+        theme = nextTheme;
+        document.documentElement.setAttribute('data-theme', nextTheme);
+        localStorage.setItem('theme', nextTheme);
+    }
+
+    function toggleTheme() {
+        applyTheme(theme === 'dark' ? 'light' : 'dark');
+    }
 </script>
 
 <div class="page-switcher">
@@ -51,20 +70,31 @@
     <button class:active={activePage === 'chat'} on:click={() => activePage = 'chat'}>
         {$t('appNav.directChat')}
     </button>
+    <button class:active={activePage === 'persona'} on:click={() => activePage = 'persona'}>
+        {$t('appNav.personaHub')}
+    </button>
 </div>
 
 <div class="lang-switcher">
-    <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
-    <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
+    <div class="segment segment-lang" aria-label="Language Switcher">
+        <div class="segment-thumb" class:to-right={$lang === 'en'}></div>
+        <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
+        <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
+    </div>
+    <button class="theme-toggle" on:click={toggleTheme} title={$t(theme === 'dark' ? 'appNav.themeLight' : 'appNav.themeDark')}>
+        {theme === 'dark' ? '☀' : '☾'}
+    </button>
 </div>
 
 {#if activePage === 'panel'}
     <ControlPanel {applyFont} />
-{:else}
+{:else if activePage === 'chat'}
     <DirectChat />
+{:else}
+    <PersonaHub />
 {/if}
 
-{#if activePage === 'panel'}
+{#if activePage === 'panel' || activePage === 'persona'}
     <div class="save-footer">
         <div class="status-container">
             <div class="status {$statusType}" style:visibility={$statusMessage ? 'visible' : 'hidden'}>
@@ -84,11 +114,11 @@
         left: .9rem;
         display: flex;
         gap: .5rem;
-        background-color: rgba(255, 255, 255, .86);
+        background-color: var(--floating-bg);
         padding: .4rem;
         border-radius: 12px;
         box-shadow: var(--shadow);
-        border: 1px solid rgba(15, 23, 42, .08);
+        border: 1px solid var(--floating-border);
         -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
         z-index: 1000;
@@ -113,27 +143,73 @@
         right: .9rem;
         display: flex;
         gap: .5rem;
-        background-color: rgba(255, 255, 255, .86);
+        background-color: var(--floating-bg);
         padding: .4rem;
         border-radius: 12px;
         box-shadow: var(--shadow);
-        border: 1px solid rgba(15, 23, 42, .08);
+        border: 1px solid var(--floating-border);
         -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
         z-index: 1000;
+        align-items: center;
     }
 
-    .lang-switcher button {
+    .segment {
+        position: relative;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .25rem;
+        padding: .2rem;
+        border-radius: 10px;
+        background: var(--panel-muted-bg);
+        border: 1px solid var(--panel-muted-border);
+        min-width: 112px;
+    }
+
+    .segment-thumb {
+        position: absolute;
+        top: .2rem;
+        left: .2rem;
+        width: calc(50% - .25rem);
+        bottom: .2rem;
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
+        box-shadow: 0 6px 14px rgba(15, 23, 42, .2);
+        transform: translateX(0);
+        transition: transform .24s ease;
+    }
+
+    .segment-thumb.to-right {
+        transform: translateX(calc(100% + .05rem));
+    }
+
+    .segment button {
         background-color: transparent;
         color: var(--text-light);
-        padding: .5rem .8rem;
+        padding: .45rem .65rem;
         box-shadow: none;
+        position: relative;
+        z-index: 1;
     }
 
-    .lang-switcher button.active {
+    .segment button.active {
         color: #fff;
         font-weight: 700;
-        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
+    }
+
+    .theme-toggle {
+        background: transparent;
+        color: var(--text-light);
+        box-shadow: none;
+        padding: .45rem .7rem;
+        border-radius: 10px;
+        border: 1px solid var(--border-color);
+        min-width: 42px;
+    }
+
+    .theme-toggle:hover {
+        color: var(--text-color);
+        border-color: var(--primary-color);
     }
 
     .save-footer {
@@ -146,10 +222,10 @@
         align-items: center;
         gap: 1.5rem;
         padding: .85rem clamp(1rem, 2.4vw, 2rem);
-        background: rgba(255, 255, 255, 0.86);
+        background: var(--footer-bg);
         -webkit-backdrop-filter: blur(8px);
         backdrop-filter: blur(8px);
-        border-top: 1px solid var(--border-color);
+        border-top: 1px solid var(--footer-border);
         z-index: 1001;
     }
 
@@ -205,7 +281,8 @@
         }
 
         .page-switcher button,
-        .lang-switcher button {
+        .segment button,
+        .theme-toggle {
             padding: .45rem .7rem;
             font-size: .9rem;
         }
