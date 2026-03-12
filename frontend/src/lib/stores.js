@@ -41,8 +41,8 @@ const defaultConfig = {
     role_based_config: {},
     scoped_prompts: { guilds: {}, channels: {} },
     context_mode: 'channel',
-    channel_context_settings: { message_limit: 10, char_limit: 4000 },
-    memory_context_settings: { message_limit: 15, char_limit: 6000 },
+    channel_context_settings: { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
+    memory_context_settings: { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false },
     custom_parameters: [],
     plugins: {},
     api_secret_key: ''
@@ -94,8 +94,8 @@ export const behaviorConfig = writable({
 
 export const contextConfig = writable({
     context_mode: 'channel',
-    channel_context_settings: { message_limit: 10, char_limit: 4000 },
-    memory_context_settings: { message_limit: 15, char_limit: 6000 }
+    channel_context_settings: { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
+    memory_context_settings: { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false }
 });
 
 export const pluginsConfig = writable({});
@@ -229,8 +229,18 @@ export async function fetchConfig(options = {}) {
             });
             contextConfig.set({
                 context_mode: mergedConfig.context_mode,
-                channel_context_settings: mergedConfig.channel_context_settings,
-                memory_context_settings: mergedConfig.memory_context_settings
+                channel_context_settings: {
+                    message_limit: mergedConfig.channel_context_settings?.message_limit ?? 10,
+                    char_limit: mergedConfig.channel_context_settings?.char_limit ?? 4000,
+                    unlimited_context_length: !!mergedConfig.channel_context_settings?.unlimited_context_length,
+                    unlimited_message_count: !!mergedConfig.channel_context_settings?.unlimited_message_count
+                },
+                memory_context_settings: {
+                    message_limit: mergedConfig.memory_context_settings?.message_limit ?? 15,
+                    char_limit: mergedConfig.memory_context_settings?.char_limit ?? 6000,
+                    unlimited_context_length: !!mergedConfig.memory_context_settings?.unlimited_context_length,
+                    unlimited_message_count: !!mergedConfig.memory_context_settings?.unlimited_message_count
+                }
             });
             pluginsConfig.set(mergedConfig.plugins || {});
             userPersonas.set(mergedConfig.user_personas || {});

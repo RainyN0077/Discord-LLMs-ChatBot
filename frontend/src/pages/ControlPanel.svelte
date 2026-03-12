@@ -330,12 +330,23 @@ async function resetFont() {
                             <p class="info">{$t(`contextControl.${$contextConfig.context_mode}ModeInfo`)}</p>
                             <div class="control-grid">
                             <label for="context-messages">{$t('contextControl.historyLimit')}</label>
-                            <div class="slider-container">
-                                <input type="range" id="context-messages" min="0" max="50" step="5" bind:value={$contextConfig[settingsKey].message_limit}>
-                                <span>{$contextConfig[settingsKey].message_limit} {$t('contextControl.messages')}</span>
+                            <div class="inline-input">
+                                <input type="number" id="context-messages" min="0" step="1" bind:value={$contextConfig[settingsKey].message_limit} disabled={$contextConfig[settingsKey].unlimited_message_count}>
+                                <label class="checkbox-inline fancy-checkbox">
+                                    <input type="checkbox" bind:checked={$contextConfig[settingsKey].unlimited_message_count}>
+                                    <span class="checkbox-box" aria-hidden="true"></span>
+                                    <span class="checkbox-text">{$t('contextControl.unlimitedHistoryMessages')}</span>
+                                </label>
                             </div>
                             <label for="context-chars">{$t('contextControl.charLimit')}</label>
-                            <input type="number" id="context-chars" placeholder={$t('contextControl.charLimitPlaceholder')} bind:value={$contextConfig[settingsKey].char_limit}>
+                            <div class="inline-input">
+                                <input type="number" id="context-chars" placeholder={$t('contextControl.charLimitPlaceholder')} bind:value={$contextConfig[settingsKey].char_limit} disabled={$contextConfig[settingsKey].unlimited_context_length}>
+                                <label class="checkbox-inline fancy-checkbox">
+                                    <input type="checkbox" bind:checked={$contextConfig[settingsKey].unlimited_context_length}>
+                                    <span class="checkbox-box" aria-hidden="true"></span>
+                                    <span class="checkbox-text">{$t('contextControl.unlimitedContextLength')}</span>
+                                </label>
+                            </div>
                             </div>
                         </div>
                         {/if}
@@ -568,9 +579,75 @@ async function resetFont() {
         display: flex;
         align-items: center;
         gap: .75rem;
+        flex-wrap: wrap;
     }
-    .inline-input input {
+    .inline-input input[type="number"] {
         max-width: 180px;
+    }
+    .checkbox-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        color: var(--text-light);
+        font-weight: 500;
+    }
+    .fancy-checkbox {
+        position: relative;
+        cursor: pointer;
+        user-select: none;
+        padding: .36rem .62rem .36rem .45rem;
+        border-radius: 999px;
+        border: 1px solid var(--panel-muted-border);
+        background: var(--panel-muted-bg);
+        transition: border-color .2s ease, background-color .2s ease, transform .15s ease;
+    }
+    .fancy-checkbox:hover {
+        border-color: var(--primary-color);
+        background: var(--control-bg);
+    }
+    .fancy-checkbox input[type="checkbox"] {
+        position: absolute;
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .checkbox-box {
+        width: 20px;
+        height: 20px;
+        border-radius: 6px;
+        border: 1px solid var(--border-color);
+        background: var(--surface-tint);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--shadow-soft);
+        transition: all .2s ease;
+        flex-shrink: 0;
+    }
+    .checkbox-box::after {
+        content: "";
+        width: 10px;
+        height: 6px;
+        border-left: 2px solid #fff;
+        border-bottom: 2px solid #fff;
+        transform: rotate(-45deg) scale(0);
+        transform-origin: center;
+        margin-top: -1px;
+        transition: transform .15s ease;
+    }
+    .checkbox-text {
+        color: var(--text-color);
+        line-height: 1.2;
+    }
+    .fancy-checkbox input[type="checkbox"]:checked + .checkbox-box {
+        background: linear-gradient(135deg, var(--primary-color), #1b73b0);
+        border-color: var(--primary-color);
+    }
+    .fancy-checkbox input[type="checkbox"]:checked + .checkbox-box::after {
+        transform: rotate(-45deg) scale(1);
+    }
+    .fancy-checkbox input[type="checkbox"]:focus-visible + .checkbox-box {
+        box-shadow: 0 0 0 3px rgba(69, 163, 230, .35);
     }
     
     /* 新增的模型选择器样式 */
@@ -727,23 +804,6 @@ async function resetFont() {
         align-items: center;
     }
 
-    .slider-container {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-
-    .slider-container input[type=range] {
-        flex-grow: 1;
-        accent-color: var(--primary-color);
-    }
-    
-    .slider-container span {
-        min-width: 110px;
-        font-weight: 500;
-        text-align: right;
-    }
-    
     .context-settings {
         border-top: 1px solid var(--border-color);
         margin-top: 1rem;
@@ -816,20 +876,9 @@ async function resetFont() {
           gap: .6rem;
       }
 
-      .slider-container {
-          flex-direction: column;
-          align-items: stretch;
-          gap: .4rem;
-      }
-
-      .slider-container span {
-          min-width: 0;
-          text-align: left;
-      }
-
-      .param-item {
-          grid-template-columns: 1fr;
-      }
+       .param-item {
+           grid-template-columns: 1fr;
+       }
 
       .param-item > .remove-btn {
           justify-self: start;

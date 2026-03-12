@@ -130,7 +130,9 @@ export default {
     historyLimit: 'History Limit',
     messages: 'messages',
     charLimit: 'Token Limit',
-    charLimitPlaceholder: 'Enter max token count'
+    charLimitPlaceholder: 'Enter max token count',
+    unlimitedContextLength: 'Unlimited context length',
+    unlimitedHistoryMessages: 'Unlimited history messages'
   },
   scopedPrompts: {
     enabled: 'Enabled',
@@ -200,6 +202,7 @@ export default {
     },
     discoveredUsersTitle: 'Discovered Users',
     allChannels: 'All Channels',
+    channelFallback: 'Channel',
     searchPlaceholder: 'Search by display name, username, or ID',
     refresh: 'Refresh',
     refreshing: 'Refreshing...',

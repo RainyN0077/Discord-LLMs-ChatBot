@@ -21,6 +21,10 @@ const zhOverrides = {
     status: {
         waitingBackend: '后端启动中，正在等待连接...（{attempt}/{max}）',
     },
+    contextControl: {
+        unlimitedContextLength: '不限制上下文长度',
+        unlimitedHistoryMessages: '不限制历史消息数量',
+    },
     appNav: {
         controlPanel: '控制面板',
         directChat: '直接对话',
@@ -38,6 +42,7 @@ const zhOverrides = {
         },
         discoveredUsersTitle: '已读取用户',
         allChannels: '全部频道',
+        channelFallback: '频道',
         searchPlaceholder: '按显示名、用户名或 ID 搜索',
         refresh: '刷新',
         refreshing: '刷新中...',

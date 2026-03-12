@@ -35,22 +35,26 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     settings = bot_config.get(f'{context_mode}_context_settings', {})
     msg_limit = settings.get('message_limit', 10)
     char_limit = settings.get('char_limit', 4000)
+    unlimited_context_length = bool(settings.get('unlimited_context_length', False))
+    unlimited_message_count = bool(settings.get('unlimited_message_count', False))
 
-    if msg_limit <= 0:
+    if not unlimited_message_count and msg_limit <= 0:
         return [], []
 
     fetched_history = []
     if context_mode == 'channel':
         # 限制历史记录获取数量以避免性能问题
-        fetched_history = [msg async for msg in message.channel.history(limit=min(msg_limit * 2, 100), before=message, after=cutoff_timestamp)]
+        history_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
+        fetched_history = [msg async for msg in message.channel.history(limit=history_limit, before=message, after=cutoff_timestamp)]
     elif context_mode == 'memory':
         trigger_keywords = bot_config.get("trigger_keywords", [])
         trigger_match_mode = bot_config.get("trigger_match_mode", "contains")
         trigger_case_sensitive = bool(bot_config.get("trigger_case_sensitive", False))
-        potential_history = [msg async for msg in message.channel.history(limit=max(msg_limit * 3, 50), before=message, after=cutoff_timestamp)]
+        history_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
+        potential_history = [msg async for msg in message.channel.history(limit=history_limit, before=message, after=cutoff_timestamp)]
         relevant_messages, processed_ids = [], set()
         for hist_msg in potential_history:
-            if len(relevant_messages) >= msg_limit:
+            if not unlimited_message_count and len(relevant_messages) >= msg_limit:
                 break
             if hist_msg.id in processed_ids:
                 continue
@@ -134,7 +138,7 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                 image_note=image_note
             )
 
-        if total_chars + len(content) > char_limit:
+        if not unlimited_context_length and total_chars + len(content) > char_limit:
             break
         total_chars += len(content)
         temp_history.append({"role": role, "content": content})

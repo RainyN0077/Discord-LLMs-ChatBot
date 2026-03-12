@@ -59,11 +59,18 @@
             userMetaById = metadata.users || {};
             channelUsersMap = metadata.channel_users || {};
 
-            discoveredChannels = Object.entries(metadata.channels || {})
-                .map(([id, value]) => ({
-                    id,
-                    name: value?.name || id
-                }))
+            const channelMeta = metadata.channels || {};
+            const allChannelIds = new Set([
+                ...Object.keys(channelMeta),
+                ...Object.keys(channelUsersMap || {})
+            ]);
+
+            discoveredChannels = [...allChannelIds]
+                .map((id) => {
+                    const name = channelMeta?.[id]?.name || `${$t('personaHub.channelFallback')} ${id}`;
+                    const userCount = (channelUsersMap?.[id]?.user_ids || []).length;
+                    return { id, name, userCount };
+                })
                 .sort((a, b) => a.name.localeCompare(b.name));
 
             if (selectedChannelId !== 'all' && !discoveredChannels.find(ch => ch.id === selectedChannelId)) {
@@ -119,7 +126,7 @@
                     <select bind:value={selectedChannelId}>
                         <option value="all">{$t('personaHub.allChannels')}</option>
                         {#each discoveredChannels as channel (channel.id)}
-                            <option value={channel.id}>{channel.name} ({channel.id})</option>
+                            <option value={channel.id}>{channel.name} ({channel.userCount})</option>
                         {/each}
                     </select>
                     <input type="text" placeholder={$t('personaHub.searchPlaceholder')} bind:value={userSearch}>
@@ -263,6 +270,13 @@
         margin-bottom: .9rem;
     }
 
+    .discover-controls select,
+    .discover-controls input {
+        min-height: 52px;
+        font-size: 1.02rem;
+        border: 1px solid var(--border-color);
+    }
+
     .discovered-list {
         display: grid;
         gap: .55rem;
@@ -282,6 +296,10 @@
     .meta {
         min-width: 0;
         display: grid;
+    }
+
+    .meta strong {
+        color: var(--text-color);
     }
 
     .meta span {
@@ -315,7 +333,7 @@
     .help-link {
         background: transparent;
         border: none;
-        color: var(--primary-color);
+        color: color-mix(in srgb, var(--primary-color) 90%, white 10%);
         text-decoration: underline;
         cursor: pointer;
         padding: .2rem .4rem;

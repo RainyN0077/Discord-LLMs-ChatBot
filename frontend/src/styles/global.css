@@ -40,11 +40,11 @@
     --bg-color: #0f1620;
     --card-bg: #1a2431;
     --text-color: #e5edf6;
-    --text-light: #a2b3c7;
+    --text-light: #b8c8da;
     --primary-color: #45a3e6;
     --primary-hover: #2b8acc;
-    --border-color: #2b3b4d;
-    --surface-tint: #111c29;
+    --border-color: #37506a;
+    --surface-tint: #152434;
     --success-bg: #12362c;
     --success-text: #5dd9b8;
     --error-bg: #421d30;
@@ -130,6 +130,7 @@ textarea {
     background-color: var(--surface-tint);
     transition: all .2s ease;
     box-shadow: var(--shadow-soft);
+    color: var(--text-color);
 }
 
 input:not([type="checkbox"]):not([type="radio"]):focus,
@@ -143,6 +144,20 @@ textarea:focus {
 textarea {
     resize: vertical;
     font-family: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: color-mix(in srgb, var(--text-light) 82%, transparent);
+}
+
+:root[data-theme='dark'] {
+    color-scheme: dark;
+}
+
+:root[data-theme='dark'] select option {
+    background: #132232;
+    color: var(--text-color);
 }
 
 /* Base Buttons */

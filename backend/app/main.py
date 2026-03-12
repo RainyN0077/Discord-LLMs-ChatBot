@@ -67,8 +67,8 @@ def load_config():
         'world_book_dedup_threshold': 0.0,
         'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
         'context_mode': 'channel',
-        'channel_context_settings': {'message_limit': 10, 'char_limit': 4000},
-        'memory_context_settings': {'message_limit': 15, 'char_limit': 6000},
+        'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},
+        'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},
         'custom_parameters': [], 'plugins': {},
         'api_secret_key': secrets.token_hex(32)
     }
@@ -142,6 +142,8 @@ class RoleConfig(BaseModel):
 class ContextSettings(BaseModel):
     message_limit: int = Field(ge=0)
     char_limit: int = Field(ge=0)
+    unlimited_context_length: bool = False
+    unlimited_message_count: bool = False
 
 class CustomParameter(BaseModel):
     name: str
