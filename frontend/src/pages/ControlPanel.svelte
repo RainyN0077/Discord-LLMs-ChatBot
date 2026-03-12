@@ -46,6 +46,11 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     let rerankTestResult = null;
     let isTestingRerank = false;
     let useManualRerankInput = false;
+    let availableOcrModels = [];
+    let isLoadingOcrModels = false;
+    let ocrTestResult = null;
+    let isTestingOcr = false;
+    let useManualOcrInput = false;
     
     // A curated list of common timezones for the dropdown
     const commonTimezones = [
@@ -95,6 +100,14 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
                 apiKey: $coreConfig.embedding_api_key,
                 baseUrl: buildEndpoint($coreConfig.embedding_base_url, $coreConfig.embedding_port),
                 modelName: $coreConfig.embedding_model_name
+            };
+        }
+        if (task === 'ocr') {
+            return {
+                provider: $coreConfig.ocr_provider,
+                apiKey: $coreConfig.ocr_api_key,
+                baseUrl: buildEndpoint($coreConfig.ocr_base_url, $coreConfig.ocr_port),
+                modelName: $coreConfig.ocr_model_name
             };
         }
         return {
@@ -255,6 +268,8 @@ async function resetFont() {
 
         if (task === 'embedding') {
             isLoadingEmbeddingModels = true;
+        } else if (task === 'ocr') {
+            isLoadingOcrModels = true;
         } else {
             isLoadingRerankModels = true;
         }
@@ -269,6 +284,9 @@ async function resetFont() {
             if (task === 'embedding') {
                 availableEmbeddingModels = result.models || [];
                 useManualEmbeddingInput = false;
+            } else if (task === 'ocr') {
+                availableOcrModels = result.models || [];
+                useManualOcrInput = false;
             } else {
                 availableRerankModels = result.models || [];
                 useManualRerankInput = false;
@@ -279,6 +297,9 @@ async function resetFont() {
             if (task === 'embedding') {
                 availableEmbeddingModels = [];
                 useManualEmbeddingInput = true;
+            } else if (task === 'ocr') {
+                availableOcrModels = [];
+                useManualOcrInput = true;
             } else {
                 availableRerankModels = [];
                 useManualRerankInput = true;
@@ -286,6 +307,8 @@ async function resetFont() {
         } finally {
             if (task === 'embedding') {
                 isLoadingEmbeddingModels = false;
+            } else if (task === 'ocr') {
+                isLoadingOcrModels = false;
             } else {
                 isLoadingRerankModels = false;
             }
@@ -302,6 +325,9 @@ async function resetFont() {
         if (task === 'embedding') {
             isTestingEmbedding = true;
             embeddingTestResult = null;
+        } else if (task === 'ocr') {
+            isTestingOcr = true;
+            ocrTestResult = null;
         } else {
             isTestingRerank = true;
             rerankTestResult = null;
@@ -317,6 +343,8 @@ async function resetFont() {
             );
             if (task === 'embedding') {
                 embeddingTestResult = result;
+            } else if (task === 'ocr') {
+                ocrTestResult = result;
             } else {
                 rerankTestResult = result;
             }
@@ -330,6 +358,8 @@ async function resetFont() {
         } finally {
             if (task === 'embedding') {
                 isTestingEmbedding = false;
+            } else if (task === 'ocr') {
+                isTestingOcr = false;
             } else {
                 isTestingRerank = false;
             }
@@ -351,6 +381,11 @@ async function resetFont() {
         availableRerankModels = [];
         rerankTestResult = null;
         useManualRerankInput = false;
+    }
+    $: if ($coreConfig.ocr_provider || $coreConfig.ocr_api_key || $coreConfig.llm_is_multimodal) {
+        availableOcrModels = [];
+        ocrTestResult = null;
+        useManualOcrInput = false;
     }
 </script>
 
@@ -472,7 +507,97 @@ async function resetFont() {
                             {/if}
                         </div>
                     {/if}
+
+                    <div class="provider-extra-row">
+                        <label class="checkbox-inline fancy-checkbox">
+                            <input type="checkbox" bind:checked={$coreConfig.llm_is_multimodal}>
+                            <span class="checkbox-box" aria-hidden="true"></span>
+                            <span class="checkbox-text">{$t('llmProvider.multimodalLabel')}</span>
+                        </label>
+                        <p class="info">{$t('llmProvider.multimodalInfo')}</p>
+                        {#if $coreConfig.llm_is_multimodal}
+                            <p class="info">{$t('llmProvider.ocrHiddenHint')}</p>
+                        {/if}
+                    </div>
                 </Card>
+                {#if !$coreConfig.llm_is_multimodal}
+                <Card title={$t('ocrSettings.title')}>
+                    <p class="info">{$t('ocrSettings.info')}</p>
+                    <div class="provider-top-grid">
+                        <div>
+                            <label for="ocr-provider">{$t('ocrSettings.provider')}</label>
+                            <select id="ocr-provider" bind:value={$coreConfig.ocr_provider}>
+                                {#each advancedProviderOptions as option}
+                                    <option value={option.value}>{$t(option.labelKey)}</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div>
+                            <label for="ocr-api-key">{$t('ocrSettings.apiKey')}</label>
+                            <input id="ocr-api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.ocr_api_key}>
+                        </div>
+                    </div>
+                    <div class="provider-top-grid advanced-endpoint-grid">
+                        <div>
+                            <label for="ocr-base-url">{$t('ocrSettings.baseUrl')}</label>
+                            <input id="ocr-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.ocr_base_url}>
+                        </div>
+                        <div>
+                            <label for="ocr-port">{$t('ocrSettings.port')}</label>
+                            <input id="ocr-port" type="text" placeholder="443" bind:value={$coreConfig.ocr_port}>
+                        </div>
+                    </div>
+                    <div class="model-selector-group">
+                        <label for="ocr-model-name">{$t('ocrSettings.modelName')}</label>
+                        <div class="model-controls">
+                            {#if !useManualOcrInput && availableOcrModels.length > 0}
+                                <select id="ocr-model-name" bind:value={$coreConfig.ocr_model_name}>
+                                    <option value="">-- {$t('llmProvider.selectModel')} --</option>
+                                    {#each availableOcrModels as model}
+                                        <option value={model}>{model}</option>
+                                    {/each}
+                                </select>
+                            {:else}
+                                <input
+                                    id="ocr-model-name"
+                                    type="text"
+                                    placeholder={$t(`defaultBehavior.modelPlaceholders.${providerForPlaceholder($coreConfig.ocr_provider)}`)}
+                                    bind:value={$coreConfig.ocr_model_name}
+                                >
+                            {/if}
+                            <div class="model-buttons">
+                                <button class="action-btn-secondary" on:click={() => loadAdvancedModels('ocr')} disabled={isLoadingOcrModels}>
+                                    {isLoadingOcrModels ? $t('llmProvider.loading') : $t('llmProvider.fetchModels')}
+                                </button>
+                                {#if availableOcrModels.length > 0}
+                                    <button class="action-btn-secondary" on:click={() => useManualOcrInput = !useManualOcrInput} title={$t('llmProvider.toggleInputMode')}>
+                                        {useManualOcrInput ? 'SEL' : 'TXT'}
+                                    </button>
+                                {/if}
+                                <button class="action-btn" on:click={() => handleAdvancedTest('ocr')} disabled={isTestingOcr || !$coreConfig.ocr_model_name}>
+                                    {isTestingOcr ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <label for="ocr-prompt-template">{$t('ocrSettings.promptTemplate')}</label>
+                    <textarea
+                        id="ocr-prompt-template"
+                        rows="5"
+                        placeholder={$t('ocrSettings.promptTemplatePlaceholder')}
+                        bind:value={$coreConfig.ocr_prompt_template}
+                    ></textarea>
+                    <label for="ocr-max-output-chars">{$t('ocrSettings.maxOutputChars')}</label>
+                    <input id="ocr-max-output-chars" type="number" min="200" max="20000" step="100" bind:value={$coreConfig.ocr_max_output_chars}>
+                    <p class="info">{$t('ocrSettings.maxOutputCharsInfo')}</p>
+                    {#if ocrTestResult}
+                        <div class="test-result {ocrTestResult.success ? 'success' : 'error'}">
+                            <strong>{$t('llmProvider.testResult')}:</strong>
+                            <p>{ocrTestResult.success ? ocrTestResult.response : ocrTestResult.error}</p>
+                        </div>
+                    {/if}
+                </Card>
+                {/if}
                 <Card title={$t('embeddingSettings.title')}>
                     <div class="provider-top-grid">
                         <div>

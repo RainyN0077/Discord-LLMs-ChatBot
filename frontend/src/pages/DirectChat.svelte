@@ -2,7 +2,7 @@
     import { tick } from 'svelte';
     import { t } from '../i18n.js';
     import { coreConfig } from '../lib/stores.js';
-    import { directChat, fetchDebugCaptures, fetchDebugCaptureDetail } from '../lib/api.js';
+    import { directChat, fetchDebugCaptures, fetchDebugCaptureDetail, sanitizeDebugText } from '../lib/api.js';
 
     let activeSection = 'chat';
     let includeSystemPrompt = true;
@@ -25,12 +25,19 @@
     let selectedCapture = null;
     let captureChannelFilter = '';
     let captureLimit = 30;
+    let sanitizeInput = '';
+    let sanitizeOutput = '';
+    let isSanitizing = false;
+    let pendingFiles = [];
+    let fileInput;
 
     function clearChat() {
         messages = [];
         inputText = '';
         errorMessage = '';
         usageText = '';
+        pendingFiles = [];
+        if (fileInput) fileInput.value = '';
     }
 
     async function scrollToBottom() {
@@ -42,12 +49,15 @@
 
     async function sendMessage() {
         const content = inputText.trim();
-        if (!content || isSending) return;
+        const attachments = pendingFiles.map((file) => ({ ...file }));
+        if ((!content && attachments.length === 0) || isSending) return;
 
         errorMessage = '';
         usageText = '';
-        messages = [...messages, { role: 'user', content }];
+        messages = [...messages, { role: 'user', content, attachmentNames: attachments.map((file) => file.name) }];
         inputText = '';
+        pendingFiles = [];
+        if (fileInput) fileInput.value = '';
         await scrollToBottom();
 
         isSending = true;
@@ -55,6 +65,7 @@
             const payloadMessages = messages.map((m) => ({ role: m.role, content: m.content }));
             const result = await directChat(
                 payloadMessages,
+                attachments,
                 includeSystemPrompt,
                 debugMode,
                 debugMode ? debugContext : null
@@ -62,12 +73,18 @@
             const assistantReply = (result?.response || '').trim();
             const formattedUserMessages = Array.isArray(result?.formatted_user_messages) ? result.formatted_user_messages : [];
             const latestFormattedInput = formattedUserMessages.length > 0 ? formattedUserMessages[formattedUserMessages.length - 1] : '';
+            const debugUserDetails = Array.isArray(result?.debug_user_details) ? result.debug_user_details : [];
+            const latestDebugDetail = debugUserDetails.length > 0 ? debugUserDetails[debugUserDetails.length - 1] : null;
             messages = [
                 ...messages,
                 {
                     role: 'assistant',
                     content: assistantReply || '...',
-                    debugFormattedInput: debugMode ? latestFormattedInput : ''
+                    debugFormattedInput: debugMode ? (latestDebugDetail?.formatted_content || latestFormattedInput) : '',
+                    debugOcrOutput: debugMode ? (latestDebugDetail?.ocr_output || '') : '',
+                    debugAttachmentContext: debugMode ? (latestDebugDetail?.attachment_context || '') : '',
+                    debugAttachmentNames: debugMode ? (latestDebugDetail?.attachment_names || []) : [],
+                    debugUsedMultimodalImages: debugMode ? !!latestDebugDetail?.used_multimodal_images : false
                 }
             ];
 
@@ -78,10 +95,51 @@
             }
         } catch (e) {
             errorMessage = `${$t('directChat.sendFailed')}${e.message}`;
+            pendingFiles = attachments;
         } finally {
             isSending = false;
             await scrollToBottom();
         }
+    }
+
+    function readFileAsDataUrl(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error(`Failed to read file: ${file.name}`));
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function handleFileChange(event) {
+        const files = Array.from(event.target.files || []);
+        if (files.length === 0) return;
+
+        try {
+            const decodedFiles = await Promise.all(files.map(async (file) => {
+                const dataUrl = await readFileAsDataUrl(file);
+                const data_base64 = dataUrl.includes(',') ? dataUrl.split(',', 2)[1] : dataUrl;
+                return {
+                    name: file.name,
+                    content_type: file.type || 'application/octet-stream',
+                    size: file.size,
+                    data_base64
+                };
+            }));
+            pendingFiles = [...pendingFiles, ...decodedFiles];
+        } catch (e) {
+            errorMessage = `${$t('directChat.sendFailed')}${e.message}`;
+        } finally {
+            if (fileInput) fileInput.value = '';
+        }
+    }
+
+    function removePendingFile(index) {
+        pendingFiles = pendingFiles.filter((_, currentIndex) => currentIndex !== index);
+    }
+
+    function openFilePicker() {
+        fileInput?.click();
     }
 
     function onInputKeydown(e) {
@@ -122,6 +180,19 @@
     function openCaptureSection() {
         activeSection = 'capture';
         loadCaptures();
+    }
+
+    async function runSanitizeTest() {
+        isSanitizing = true;
+        captureError = '';
+        try {
+            const result = await sanitizeDebugText(sanitizeInput);
+            sanitizeOutput = result?.sanitized_text || '';
+        } catch (e) {
+            captureError = `${$t('directChat.sanitizeFailed')}${e.message}`;
+        } finally {
+            isSanitizing = false;
+        }
     }
 </script>
 
@@ -171,10 +242,34 @@
                 <div class="msg {m.role}">
                     <div class="role">{m.role === 'assistant' ? $t('directChat.assistant') : $t('directChat.you')}</div>
                     <pre>{m.content}</pre>
+                    {#if m.attachmentNames?.length}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.attachments')}</div>
+                            <pre>{m.attachmentNames.join('\n')}</pre>
+                        </div>
+                    {/if}
                     {#if m.role === 'assistant' && m.debugFormattedInput}
                         <div class="debug-input">
                             <div class="debug-label">{$t('directChat.formattedInput')}</div>
                             <pre>{m.debugFormattedInput}</pre>
+                        </div>
+                    {/if}
+                    {#if m.role === 'assistant' && m.debugOcrOutput}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.debugOcrOutput')}</div>
+                            <pre>{m.debugOcrOutput}</pre>
+                        </div>
+                    {/if}
+                    {#if m.role === 'assistant' && m.debugAttachmentContext}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.debugAttachmentContext')}</div>
+                            <pre>{m.debugAttachmentContext}</pre>
+                        </div>
+                    {/if}
+                    {#if m.role === 'assistant' && m.debugUsedMultimodalImages}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.debugMultimodalImages')}</div>
+                            <pre>{$t('directChat.debugMultimodalImagesUsed')}</pre>
                         </div>
                     {/if}
                 </div>
@@ -183,6 +278,23 @@
     {:else}
         <div class="capture-layout">
             <div class="capture-list">
+                <div class="sanitize-box">
+                    <div class="debug-label">{$t('directChat.sanitizeTitle')}</div>
+                    <textarea
+                        rows="5"
+                        bind:value={sanitizeInput}
+                        placeholder={$t('directChat.sanitizeInputPlaceholder')}
+                    ></textarea>
+                    <button on:click={runSanitizeTest} disabled={isSanitizing || !sanitizeInput.trim()}>
+                        {isSanitizing ? $t('directChat.sanitizing') : $t('directChat.sanitizeRun')}
+                    </button>
+                    {#if sanitizeOutput}
+                        <div class="debug-input">
+                            <div class="debug-label">{$t('directChat.sanitizeOutput')}</div>
+                            <pre>{sanitizeOutput}</pre>
+                        </div>
+                    {/if}
+                </div>
                 <div class="capture-toolbar">
                     <input type="text" bind:value={captureChannelFilter} placeholder={$t('directChat.captureChannelFilter')} />
                     <input type="number" min="1" max="100" bind:value={captureLimit} />
@@ -250,14 +362,37 @@
 
     {#if activeSection === 'chat'}
         <div class="composer">
-            <textarea
-                rows="3"
-                bind:value={inputText}
-                on:keydown={onInputKeydown}
-                placeholder={$t('directChat.inputPlaceholder')}
-                disabled={isSending}
-            ></textarea>
-            <button on:click={sendMessage} disabled={isSending || !inputText.trim()}>
+            <div class="composer-main">
+                <div class="file-toolbar">
+                    <input bind:this={fileInput} type="file" multiple on:change={handleFileChange} hidden />
+                    <button type="button" class="secondary" on:click={openFilePicker} disabled={isSending}>
+                        {$t('directChat.attachFiles')}
+                    </button>
+                    {#if pendingFiles.length > 0}
+                        <span class="file-count">{$t('directChat.selectedFiles', { count: pendingFiles.length })}</span>
+                    {/if}
+                </div>
+                {#if pendingFiles.length > 0}
+                    <div class="pending-files">
+                        {#each pendingFiles as file, index}
+                            <div class="pending-file">
+                                <span>{file.name} ({Math.max(1, Math.round(file.size / 1024))} KB)</span>
+                                <button type="button" class="secondary" on:click={() => removePendingFile(index)} disabled={isSending}>
+                                    {$t('directChat.removeFile')}
+                                </button>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+                <textarea
+                    rows="3"
+                    bind:value={inputText}
+                    on:keydown={onInputKeydown}
+                    placeholder={$t('directChat.inputPlaceholder')}
+                    disabled={isSending}
+                ></textarea>
+            </div>
+            <button on:click={sendMessage} disabled={isSending || (!inputText.trim() && pendingFiles.length === 0)}>
                 {isSending ? $t('directChat.sending') : $t('directChat.send')}
             </button>
         </div>
@@ -352,6 +487,15 @@
         grid-template-columns: 1fr 90px auto;
         gap: .5rem;
     }
+    .sanitize-box {
+        display: flex;
+        flex-direction: column;
+        gap: .5rem;
+        background: var(--panel-muted-bg);
+        border: 1px solid var(--panel-muted-border);
+        border-radius: 10px;
+        padding: .65rem;
+    }
     .capture-item {
         text-align: left;
         background: var(--panel-muted-bg);
@@ -426,6 +570,36 @@
         display: grid;
         grid-template-columns: 1fr auto;
         gap: .7rem;
+    }
+    .composer-main {
+        display: flex;
+        flex-direction: column;
+        gap: .6rem;
+    }
+    .file-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .6rem;
+        align-items: center;
+    }
+    .file-count {
+        color: var(--text-light);
+        font-size: .86rem;
+    }
+    .pending-files {
+        display: flex;
+        flex-direction: column;
+        gap: .45rem;
+        padding: .7rem;
+        border-radius: 10px;
+        border: 1px solid var(--panel-muted-border);
+        background: var(--panel-muted-bg);
+    }
+    .pending-file {
+        display: flex;
+        justify-content: space-between;
+        gap: .75rem;
+        align-items: center;
     }
     textarea {
         resize: vertical;

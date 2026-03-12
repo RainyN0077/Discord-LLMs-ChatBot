@@ -28,4 +28,4 @@ EXPOSE 8000
 
 # 修改启动命令，以适应新的目录结构
 # 我们现在从顶层启动，所以需要告诉 uvicorn 在 app 包里找 main 模块
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-use-colors"]

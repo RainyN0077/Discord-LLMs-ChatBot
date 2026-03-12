@@ -168,6 +168,13 @@ export async function fetchDebugCaptureDetail(captureId) {
     return apiFetch(`${BASE_URL}/debug/captures/${captureId}`);
 }
 
+export async function sanitizeDebugText(text) {
+    return apiFetch(`${BASE_URL}/debug/sanitize`, {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+    });
+}
+
 export async function fetchAvailableModels(provider, apiKey, baseUrl, task = 'chat') {
     return apiFetch(`${BASE_URL}/models/list`, {
         method: 'POST',
@@ -226,11 +233,12 @@ export async function updateMemoryItem(itemId, content) {
     });
 }
 
-export async function directChat(messages, includeSystemPrompt = true, debugMode = false, debugContext = null) {
+export async function directChat(messages, attachments = [], includeSystemPrompt = true, debugMode = false, debugContext = null) {
     return apiFetch(`${BASE_URL}/chat/direct`, {
         method: 'POST',
         body: JSON.stringify({
             messages,
+            attachments,
             include_system_prompt: includeSystemPrompt,
             debug_mode: debugMode,
             debug_context: debugContext

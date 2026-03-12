@@ -66,7 +66,10 @@ export default {
     modelResponded: 'Model responded',
     toggleInputMode: 'Toggle input mode',
     fetchModelsTooltip: 'Fetch or refresh available model list',
-    modelListInfo: 'Loaded {count} available models, click ✏️ to switch to manual input'
+    modelListInfo: 'Loaded {count} available models, click ✏️ to switch to manual input',
+    multimodalLabel: 'This model is multimodal',
+    multimodalInfo: 'Enable this when the main model can read images directly. Disable it to route images through a separate OCR model before they reach the text-only LLM.',
+    ocrHiddenHint: 'OCR settings are hidden because the main model will consume images directly.'
   },
   modelProviders: {
     openai: 'OpenAI',
@@ -91,6 +94,19 @@ export default {
     baseUrl: 'Rerank Base URL',
     port: 'Rerank Port',
     modelName: 'Rerank Model'
+  },
+  ocrSettings: {
+    title: 'OCR Model Settings',
+    info: 'Used only when the main LLM is not multimodal. Attached images will be transcribed into <ocr_output> blocks for the text-only model.',
+    provider: 'OCR Provider',
+    apiKey: 'OCR API Key',
+    baseUrl: 'OCR Base URL',
+    port: 'OCR Port',
+    modelName: 'OCR Model',
+    promptTemplate: 'OCR Prompt Template',
+    promptTemplatePlaceholder: 'Control how the OCR model extracts visible text and factual image details.',
+    maxOutputChars: 'Max OCR Output Characters',
+    maxOutputCharsInfo: 'Caps OCR text before it is injected into the main LLM prompt.'
   },
   defaultBehavior: {
     title: 'Default Behavior',
@@ -384,6 +400,20 @@ export default {
     captureLlmMessages: 'Full LLM messages payload',
     captureLoadFailed: 'Failed to load capture list: ',
     captureDetailFailed: 'Failed to load capture detail: ',
+    sanitizeTitle: 'Sanitize DSML/Thinking Test',
+    sanitizeInputPlaceholder: 'Paste raw model output here...',
+    sanitizeRun: 'Sanitize',
+    sanitizing: 'Sanitizing...',
+    sanitizeOutput: 'Sanitized output',
+    sanitizeFailed: 'Sanitize failed: ',
+    attachments: 'Attachments',
+    attachFiles: 'Attach Files',
+    selectedFiles: '{count} file(s) selected',
+    removeFile: 'Remove',
+    debugOcrOutput: 'OCR output sent to model',
+    debugAttachmentContext: 'Attachment text context sent to model',
+    debugMultimodalImages: 'Image handling mode',
+    debugMultimodalImagesUsed: 'Images were passed directly to the multimodal model.',
     clear: 'Clear Chat',
     empty: 'Start typing to chat directly with the current LLM provider.',
     you: 'You',

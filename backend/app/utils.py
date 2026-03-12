@@ -44,6 +44,12 @@ def setup_logging():
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(log_formatter)
     root_logger.addHandler(stream_handler)
+
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
+        uvicorn_logger.setLevel(logging.INFO)
     
     # 2. 设置文件处理器 (输出到文件)
     try:

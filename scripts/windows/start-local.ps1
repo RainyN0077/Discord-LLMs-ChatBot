@@ -67,7 +67,7 @@ if ($hasNpm) {
 Write-Host "[5/6] Starting backend on http://localhost:8093 ..."
 $backendCommand = @"
 Set-Location '$backendDir'
-& '$venvPython' -m uvicorn app.main:app --host 0.0.0.0 --port 8093 --reload
+& '$venvPython' -m uvicorn app.main:app --host 0.0.0.0 --port 8093 --reload --no-use-colors
 "@
 Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendCommand -WorkingDirectory $backendDir -WindowStyle Normal
 

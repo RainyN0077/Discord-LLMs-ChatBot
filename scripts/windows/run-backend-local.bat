@@ -22,5 +22,5 @@ set REDIS_HOST=localhost
 set REDIS_PORT=6379
 set FAIL_ON_REDIS_ERROR=false
 
-"%VENV_DIR%\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8093 --reload
+"%VENV_DIR%\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8093 --reload --no-use-colors
 exit /b %ERRORLEVEL%

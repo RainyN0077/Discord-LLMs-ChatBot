@@ -21,6 +21,7 @@ from .core_logic.usage_manager import UsageManager
 from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
 from .debug_capture_store import add_capture
 from .llm_providers.factory import get_llm_provider
+from .ocr_service import extract_ocr_text, has_ocr_model_config, is_multimodal_llm, OCR_TIMEOUT_SECONDS
 from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
@@ -70,43 +71,59 @@ def load_bot_config():
             current_config = json.load(f)
     return current_config
 
-def collect_image_urls(msg: discord.Message) -> List[str]:
+def collect_image_descriptors(msg: discord.Message, source_label: str) -> List[Dict[str, str]]:
     """
-    鏀堕泦娑堟伅涓殑鎵€鏈夎瑙夊唴瀹筓RL锛屽寘鎷檮浠躲€佸祵鍏ュ浘鐗囥€佽创绾稿拰鑷畾涔夎〃鎯呫€?
+    Collect all image-like content in a message with enough metadata to either
+    send it directly to a multimodal LLM or route it through OCR first.
     """
-    urls = []
-    # 1. 浠庨檮浠朵腑鏀堕泦 (閫傜敤浜庣敤鎴风洿鎺ヤ笂浼犵殑鏂囦欢)
+    descriptors: List[Dict[str, str]] = []
+
+    def add_descriptor(url: Optional[str], kind: str) -> None:
+        if not url:
+            return
+        descriptors.append(
+            {
+                "url": str(url),
+                "source": source_label,
+                "label": f"{source_label} / {kind}",
+            }
+        )
+
     for attachment in msg.attachments:
         if attachment.content_type and attachment.content_type.startswith('image/'):
-            urls.append(attachment.url)
+            add_descriptor(attachment.url, "attachment")
     
-    # 2. 浠庡祵鍏ュ唴瀹逛腑鏀堕泦 (閫傜敤浜庣矘璐寸殑鍥剧墖/GIF閾炬帴, 鎴栨煇浜涚壒娈婃儏鍐?
     for embed in msg.embeds:
-        # 妫€鏌?embed 鐨勪富鍥剧墖
         if embed.image and embed.image.url:
-            urls.append(embed.image.url)
-        # 妫€鏌?embed 鐨勭缉鐣ュ浘 (鏈変簺閾炬帴鍙樉绀虹缉鐣ュ浘)
+            add_descriptor(embed.image.url, "embed-image")
         if embed.thumbnail and embed.thumbnail.url:
-            urls.append(embed.thumbnail.url)
+            add_descriptor(embed.thumbnail.url, "embed-thumbnail")
     
-    # 3. 浠庤创绾镐腑鏀堕泦
     for sticker in msg.stickers:
-        urls.append(sticker.url)
+        add_descriptor(str(sticker.url), "sticker")
 
-    # 4. 浠庤嚜瀹氫箟琛ㄦ儏涓敹闆?
-    # 浣跨敤姝ｅ垯琛ㄨ揪寮忎粠娑堟伅鍐呭涓煡鎵捐〃鎯咃紝骞朵娇鐢?discord.py 宸ュ叿绫昏繘琛岃В鏋?
     emoji_matches = re.finditer(r'<a?:\w+:\d+>', msg.content)
     for match in emoji_matches:
         try:
-            # PartialEmoji.from_str 鏄粠 <a:name:id> 鏍煎紡瀹夊叏瑙ｆ瀽琛ㄦ儏鐨勬纭柟娉?
             emoji = discord.PartialEmoji.from_str(match.group(0))
             if emoji.url:
-                urls.append(str(emoji.url))
+                add_descriptor(str(emoji.url), "custom-emoji")
         except Exception as e:
             logger.warning(f"Could not parse emoji from string '{match.group(0)}': {e}")
-            
-    # 浣跨敤 dict.fromkeys 鏉ュ幓閲嶏紝鍚屾椂淇濇寔鍘熷椤哄簭
-    return list(dict.fromkeys(urls))
+
+    deduped_descriptors: List[Dict[str, str]] = []
+    seen_urls = set()
+    for item in descriptors:
+        url = item["url"]
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        deduped_descriptors.append(item)
+    return deduped_descriptors
+
+
+def build_ocr_prompt_block(ocr_text: str) -> str:
+    return f"[Image OCR Context]\n<ocr_output>\n{ocr_text}\n</ocr_output>"
 
 
 
@@ -186,11 +203,26 @@ def strip_dsml_tool_blocks(text: str) -> str:
     """Remove leaked DSML function-call blocks from model output."""
     if not text:
         return text
+    cleaned = text
+    # 1) Remove full function_calls blocks (supports styles like `< | DSML | ... >` and `< / | DSML | ... >`).
     cleaned = re.sub(
-        r"<\s*\|\s*DSML\s*\|\s*function_calls\s*>.*?<\s*/\s*\|\s*DSML\s*\|\s*function_calls\s*>",
+        r"<\s*/?\s*\|\s*DSML\s*\|\s*function_calls\s*>[\s\S]*?<\s*/?\s*\|\s*DSML\s*\|\s*function_calls\s*>",
         "",
-        text,
-        flags=re.IGNORECASE | re.DOTALL,
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    # 2) Remove any remaining lines containing DSML tags to avoid inline parameter leaks.
+    cleaned = re.sub(
+        r"(?im)^[^\n\r]*<\s*/?\s*\|\s*DSML\s*\|[^\n\r]*$",
+        "",
+        cleaned,
+    )
+    # 3) Defensive pass for malformed inline DSML tags.
+    cleaned = re.sub(
+        r"<\s*/?\s*\|\s*DSML\s*\|[^>]*>",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
     )
     return cleaned.strip()
 
@@ -200,7 +232,7 @@ def contains_dsml_tool_blocks(text: str) -> bool:
         return False
     return bool(
         re.search(
-            r"<\s*\|\s*DSML\s*\|\s*(function_calls|invoke|parameter)\s*>",
+            r"<\s*/?\s*\|\s*DSML\s*\|\s*(function_calls|invoke|parameter)\b",
             text,
             flags=re.IGNORECASE,
         )
@@ -422,20 +454,21 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         logger.info(f"[instance={INSTANCE_ID}] Acquired lock for triggering message {message.id}. Processing...")
         
         # 鍥剧墖鏀堕泦
-        image_urls = collect_image_urls(message)
+        image_descriptors = collect_image_descriptors(message, "Current message")
         if message.reference and isinstance(message.reference.resolved, discord.Message):
             replied_msg = message.reference.resolved
-            replied_images = collect_image_urls(replied_msg)
-            image_urls.extend(replied_images)
+            replied_images = collect_image_descriptors(replied_msg, f"Replied message from {replied_msg.author}")
+            image_descriptors.extend(replied_images)
             if replied_images:
                 logger.info(f"[instance={INSTANCE_ID}] Found {len(replied_images)} images in replied message from {replied_msg.author}")
-        images = []
-        unique_image_urls = list(dict.fromkeys(image_urls))
-        for url in unique_image_urls:
+        downloaded_images: List[Dict[str, Any]] = []
+        for descriptor in image_descriptors:
+            url = descriptor["url"]
             img_data = await download_image(url)
             if img_data:
-                images.append(img_data)
+                downloaded_images.append({**descriptor, "bytes": img_data})
                 logger.info(f"[instance={INSTANCE_ID}] Successfully downloaded image from {url}")
+        llm_images = [item["bytes"] for item in downloaded_images]
         
         # 鏍稿績閫昏緫锛氫笂涓嬫枃銆佷汉璁俱€侀厤棰?
         role_name, role_config = (None, None); 
@@ -447,6 +480,68 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(config, str(message.channel.id), str(message.guild.id) if message.guild else None, role_name, role_config)
         system_prompt = await build_system_prompt(bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log)
         final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
+
+        if downloaded_images and not is_multimodal_llm(config):
+            if has_ocr_model_config(config):
+                try:
+                    ocr_text, ocr_usage = await asyncio.wait_for(
+                        extract_ocr_text(downloaded_images, config),
+                        timeout=OCR_TIMEOUT_SECONDS,
+                    )
+                    if ocr_text:
+                        final_formatted_content = f"{final_formatted_content}\n\n{build_ocr_prompt_block(ocr_text)}"
+                        logger.info(
+                            "[instance=%s] OCR extracted text for %s images using %s/%s.",
+                            INSTANCE_ID,
+                            len(downloaded_images),
+                            config.get("ocr_provider", ""),
+                            config.get("ocr_model_name", ""),
+                        )
+                        if ocr_usage:
+                            logger.info(
+                                "[instance=%s] OCR usage data: input=%s output=%s",
+                                INSTANCE_ID,
+                                ocr_usage.get("input_tokens", 0),
+                                ocr_usage.get("output_tokens", 0),
+                            )
+                    else:
+                        logger.warning(
+                            "[instance=%s] OCR returned empty output for %s images. Falling back to image note only.",
+                            INSTANCE_ID,
+                            len(downloaded_images),
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "[instance=%s] OCR preprocessing timed out after %s seconds for message %s.",
+                        INSTANCE_ID,
+                        OCR_TIMEOUT_SECONDS,
+                        message.id,
+                    )
+                    final_formatted_content = (
+                        f"{final_formatted_content}\n\n"
+                        f"{build_ocr_prompt_block('OCR解析超时，你没有成功获取到图片内容')}"
+                    )
+                except Exception as ocr_error:
+                    logger.error(
+                        "[instance=%s] OCR preprocessing failed for message %s: %s",
+                        INSTANCE_ID,
+                        message.id,
+                        ocr_error,
+                        exc_info=True,
+                    )
+                    final_formatted_content = (
+                        f"{final_formatted_content}\n\n"
+                        f"{build_ocr_prompt_block('OCR preprocessing failed. Images were attached but could not be transcribed.')}"
+                    )
+            else:
+                logger.warning(
+                    "[instance=%s] Main model is text-only but OCR is not configured. Images will not be transcribed.",
+                    INSTANCE_ID,
+                )
+                final_formatted_content = (
+                    f"{final_formatted_content}\n\n"
+                    f"{build_ocr_prompt_block('Images were attached, but OCR is not configured for the current text-only LLM.')}"
+                )
         
         # --- [NEW] Memory Retrieval and Injection ---
         try:
@@ -543,7 +638,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     # First attempt: with tools
                     logger.info(f"[instance={INSTANCE_ID}] Attempting LLM call for message {message.id} with {len(tools)} tools enabled.")
                     response_gen_with_tools = llm_provider.get_response_stream(
-                        llm_messages, images, tools=tools, tool_functions=tool_functions
+                        llm_messages, llm_images if is_multimodal_llm(config) else None, tools=tools, tool_functions=tool_functions
                     )
                     full_response, usage_data = await _render_llm_response(response_gen_with_tools)
                     used_tools_in_attempt = bool(tools)
@@ -554,7 +649,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         logger.warning(f"Malformed tool call from LLM for message {message.id}. Retrying without tools. Original error: {e}")
                         # Second attempt: without tools
                         response_gen_no_tools = llm_provider.get_response_stream(
-                            llm_messages, images, tools=[], tool_functions={}
+                            llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                         )
                         full_response, usage_data = await _render_llm_response(response_gen_no_tools)
                     else:
@@ -566,7 +661,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                         f"[instance={INSTANCE_ID}] Detected leaked DSML tool blocks in message {message.id}. Retrying without tools."
                     )
                     response_gen_no_tools = llm_provider.get_response_stream(
-                        llm_messages, images, tools=[], tool_functions={}
+                        llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                     )
                     full_response, usage_data = await _render_llm_response(response_gen_no_tools)
 

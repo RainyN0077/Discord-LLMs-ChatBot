@@ -17,4 +17,4 @@ export REDIS_HOST="${REDIS_HOST:-localhost}"
 export REDIS_PORT="${REDIS_PORT:-6379}"
 export FAIL_ON_REDIS_ERROR="${FAIL_ON_REDIS_ERROR:-false}"
 
-exec "$VENV_PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload
+exec "$VENV_PYTHON" -m uvicorn app.main:app --host 0.0.0.0 --port "$BACKEND_PORT" --reload --no-use-colors
