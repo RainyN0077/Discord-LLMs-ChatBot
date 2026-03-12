@@ -32,7 +32,14 @@ from .core_logic.context_builder import format_user_message_for_llm
 from .core_logic.knowledge_manager import knowledge_manager
 from .debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from .llm_providers.factory import get_llm_provider
-from .ocr_service import extract_ocr_text, DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS, has_ocr_model_config, is_multimodal_llm
+from .ocr_service import (
+    extract_ocr_text,
+    DEFAULT_OCR_PROMPT_TEMPLATE,
+    OCR_TIMEOUT_SECONDS,
+    get_ocr_timeout_seconds,
+    has_ocr_model_config,
+    is_multimodal_llm,
+)
 from .xai_sdk_utils import (
     create_xai_sync_client,
     list_xai_embedding_model_names,
@@ -43,21 +50,21 @@ from .xai_sdk_utils import (
 
 logger = logging.getLogger(__name__)
 
-# 使用 pathlib.Path.cwd() 获取当前工作目录，这在Docker容器中通常是 '/app'
-# 这样可以确保路径相对于项目根目录是正确的
-# --- [核心修改] 将所有动态数据（配置、日志等）指向 /app/data 目录 ---
-# 这个目录在 docker-compose.yml 中被映射到主机上的 ./data 目录
+# Resolve runtime paths relative to the project root.
+# In Docker this is typically `/app`, which keeps config and log paths stable.
+# Store mutable runtime data under `/app/data`, which is mapped to `./data` by docker-compose.
+# This keeps runtime artifacts in one place across local and container environments.
 DATA_DIR = Path.cwd() / "data"
-DATA_DIR.mkdir(exist_ok=True) # 确保目录存在
+DATA_DIR.mkdir(exist_ok=True)  # Ensure the data directory exists.
 
 CONFIG_FILE = DATA_DIR / "config.json"
-# 日志文件的具体路径由 setup_logging 函数内部管理，但也会使用 DATA_DIR
+# Log file paths are managed by setup_logging(), which also uses DATA_DIR.
 
 bot_task = None
 MEMORY_CUTOFFS: Dict[int, datetime] = {}
 
 def load_config():
-    """加载配置，并为新字段设置默认值，增加错误日志。"""
+    """Load config, apply defaults for new fields, and log recoverable errors."""
     default_config = {
         'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
         'openai_base_url': None, 'anthropic_base_url': None, 'grok_base_url': None,
@@ -70,6 +77,8 @@ def load_config():
         'ocr_model_name': '',
         'ocr_prompt_template': DEFAULT_OCR_PROMPT_TEMPLATE,
         'ocr_max_output_chars': 4000,
+        'ocr_timeout_seconds': OCR_TIMEOUT_SECONDS,
+        'ocr_timeout_disabled': False,
         'embedding_provider': 'openai',
         'embedding_api_key': '',
         'embedding_base_url': '',
@@ -137,7 +146,7 @@ def save_config(config_data):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global bot_task
-    # 在应用启动时，立即设置日志系统
+    # Initialize logging as soon as the application starts.
     setup_logging()
     
     loop = asyncio.get_event_loop()
@@ -229,6 +238,8 @@ class Config(BaseModel):
     ocr_model_name: str = ""
     ocr_prompt_template: str = DEFAULT_OCR_PROMPT_TEMPLATE
     ocr_max_output_chars: int = Field(4000, ge=200, le=20000)
+    ocr_timeout_seconds: int = Field(OCR_TIMEOUT_SECONDS, ge=1, le=86400)
+    ocr_timeout_disabled: bool = False
     embedding_provider: str = "openai"
     embedding_api_key: str = ""
     embedding_base_url: Optional[str] = None
@@ -301,26 +312,32 @@ def _build_ocr_test_image_bytes() -> bytes:
 
 
 async def _test_ocr_model_connection(request: "ModelTestRequest") -> Dict[str, Any]:
+    ocr_test_config = {
+        "ocr_provider": request.provider,
+        "ocr_api_key": request.api_key,
+        "ocr_base_url": request.base_url,
+        "ocr_port": "",
+        "ocr_model_name": request.model_name,
+        "ocr_prompt_template": DEFAULT_OCR_PROMPT_TEMPLATE,
+        "ocr_max_output_chars": 1200,
+        "ocr_timeout_seconds": request.ocr_timeout_seconds or OCR_TIMEOUT_SECONDS,
+        "ocr_timeout_disabled": request.ocr_timeout_disabled,
+    }
+    timeout_seconds = get_ocr_timeout_seconds(ocr_test_config)
+
     try:
-        ocr_text, usage_data = await asyncio.wait_for(
-            extract_ocr_text(
-                [{"bytes": _build_ocr_test_image_bytes(), "label": "Connection test image"}],
-                {
-                    "ocr_provider": request.provider,
-                    "ocr_api_key": request.api_key,
-                    "ocr_base_url": request.base_url,
-                    "ocr_port": "",
-                    "ocr_model_name": request.model_name,
-                    "ocr_prompt_template": DEFAULT_OCR_PROMPT_TEMPLATE,
-                    "ocr_max_output_chars": 1200,
-                },
-            ),
-            timeout=OCR_TIMEOUT_SECONDS,
+        extraction_task = extract_ocr_text(
+            [{"bytes": _build_ocr_test_image_bytes(), "label": "Connection test image"}],
+            ocr_test_config,
         )
+        if timeout_seconds is None:
+            ocr_text, usage_data = await extraction_task
+        else:
+            ocr_text, usage_data = await asyncio.wait_for(extraction_task, timeout=timeout_seconds)
     except asyncio.TimeoutError:
         return {
             "success": False,
-            "error": f"OCR model test timed out after {OCR_TIMEOUT_SECONDS} seconds.",
+            "error": f"OCR model test timed out after {timeout_seconds} seconds.",
         }
 
     if not ocr_text.strip():
@@ -358,6 +375,8 @@ class ModelTestRequest(BaseModel):
     base_url: Optional[str] = None
     model_name: str
     task: str = "chat"
+    ocr_timeout_seconds: Optional[int] = Field(None, ge=1, le=86400)
+    ocr_timeout_disabled: bool = False
 
 class AvailableModelsRequest(BaseModel):
     provider: str
@@ -614,11 +633,13 @@ async def _augment_direct_chat_user_content(
             used_multimodal_images = True
             llm_images = [item["bytes"] for item in image_attachments]
         elif has_ocr_model_config(config):
+            timeout_seconds = get_ocr_timeout_seconds(config)
             try:
-                ocr_output, _ = await asyncio.wait_for(
-                    extract_ocr_text(image_attachments, config),
-                    timeout=OCR_TIMEOUT_SECONDS,
-                )
+                extraction_task = extract_ocr_text(image_attachments, config)
+                if timeout_seconds is None:
+                    ocr_output, _ = await extraction_task
+                else:
+                    ocr_output, _ = await asyncio.wait_for(extraction_task, timeout=timeout_seconds)
                 if not ocr_output.strip():
                     ocr_output = "OCR returned an empty response. You did not successfully obtain image content."
             except asyncio.TimeoutError:
@@ -695,14 +716,14 @@ async def get_api_key(api_key_received: str = Security(api_key_header)):
 async def get_config_endpoint():
     config_data = load_config()
     try:
-        # 尝试验证配置
+        # Validate the config before returning it to the frontend.
         Config.parse_obj(config_data)
         logger.info("Config validation successful")
         return config_data
     except ValidationError as e:
         logger.error(f"Config validation failed: {e}")
-        # 即使验证失败，也返回配置数据，让前端能够显示
-        # 但添加一个警告字段
+        # Return the config anyway so the frontend can still render current values.
+        # Attach a warning field so validation problems are visible in the UI.
         config_data["_validation_warning"] = str(e)
         return config_data
 
@@ -710,13 +731,13 @@ async def get_config_endpoint():
 async def update_config_endpoint(config_data: Config):
     global bot_task
     try:
-        # 保存配置
+        # Persist the validated config payload.
         config_dict = config_data.dict(by_alias=True)
-        # 移除可能的验证警告字段
+        # Remove any transient validation warning before saving.
         config_dict.pop("_validation_warning", None)
         save_config(config_dict)
         
-        # 重启bot
+        # Restart the Discord bot so the new config takes effect.
         if bot_task and not bot_task.done():
             bot_task.cancel()
             try: 
@@ -1130,7 +1151,7 @@ async def update_plugin_config_endpoint(plugin_name: str, plugin_data: Dict[str,
     logger.info(f"Plugin '{plugin_name}' configuration updated and bot restarted.")
     return {"message": f"Plugin '{plugin_name}' configuration updated and bot restarted."}
 
-# 获取可用模型列表
+# List models available on the current endpoint.
 @app.post("/api/models/list", dependencies=[Depends(get_api_key)])
 async def get_available_models(request: AvailableModelsRequest):
     try:
@@ -1200,7 +1221,7 @@ async def get_available_models(request: AvailableModelsRequest):
         error_detail = f"{type(e).__name__}: {str(e)}"
         raise HTTPException(status_code=400, detail=error_detail)
 
-# 测试模型连接
+# Test the configured model connection.
 @app.post("/api/models/test", dependencies=[Depends(get_api_key)])
 async def test_model_connection(request: ModelTestRequest):
     try:

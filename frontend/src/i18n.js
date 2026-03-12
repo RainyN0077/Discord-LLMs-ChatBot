@@ -82,6 +82,11 @@ const zhOverrides = {
         promptTemplatePlaceholder: '控制 OCR 模型如何提取图片中的可见文字和关键视觉信息。',
         maxOutputChars: 'OCR 输出最大字符数',
         maxOutputCharsInfo: '限制注入主模型前的 OCR 文本长度，避免提示词膨胀。',
+        timeoutSeconds: 'OCR 超时时长（秒）',
+        timeoutMode: '超时设置',
+        timeoutEnabledOption: '启用超时',
+        timeoutDisabledOption: '不设置超时时长',
+        timeoutInfo: '测试连接和实际 OCR 预处理共用这份超时设置；关闭后会一直等待直到 OCR 返回。',
     },
     personaHub: {
         title: '身份管理中心',

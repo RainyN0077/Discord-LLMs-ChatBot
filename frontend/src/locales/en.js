@@ -108,7 +108,12 @@ export default {
     promptTemplate: 'OCR Prompt Template',
     promptTemplatePlaceholder: 'Control how the OCR model extracts visible text and factual image details.',
     maxOutputChars: 'Max OCR Output Characters',
-    maxOutputCharsInfo: 'Caps OCR text before it is injected into the main LLM prompt.'
+    maxOutputCharsInfo: 'Caps OCR text before it is injected into the main LLM prompt.',
+    timeoutSeconds: 'OCR Timeout (seconds)',
+    timeoutMode: 'Timeout Mode',
+    timeoutEnabledOption: 'Use timeout',
+    timeoutDisabledOption: 'No timeout',
+    timeoutInfo: 'The same OCR timeout is used for both connection tests and real OCR preprocessing. Disable it to wait indefinitely.'
   },
   defaultBehavior: {
     title: 'Default Behavior',

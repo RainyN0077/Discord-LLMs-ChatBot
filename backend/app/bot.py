@@ -21,7 +21,12 @@ from .core_logic.usage_manager import UsageManager
 from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
 from .debug_capture_store import add_capture
 from .llm_providers.factory import get_llm_provider
-from .ocr_service import extract_ocr_text, has_ocr_model_config, is_multimodal_llm, OCR_TIMEOUT_SECONDS
+from .ocr_service import (
+    extract_ocr_text,
+    get_ocr_timeout_seconds,
+    has_ocr_model_config,
+    is_multimodal_llm,
+)
 from plugins.manager import PluginManager
 
 logger = logging.getLogger(__name__)
@@ -38,7 +43,7 @@ except ImportError:
 
 INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
-# --- [澧炲己] 鏇村仴澹殑Redis杩炴帴閫昏緫 ---
+# --- Hardened Redis connection handling ---
 redis_client = None
 try:
     REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
@@ -52,13 +57,13 @@ try:
 
 except redis.exceptions.ConnectionError as e:
     logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
-    # 妫€鏌ョ幆澧冨彉閲忥紝鍐冲畾鏄€滃揩閫熷け璐モ€濊繕鏄€滈潤榛橀€€鍖栤€?
+    # Check the environment flag to decide between fail-fast and mock fallback behavior.
     if os.getenv('FAIL_ON_REDIS_ERROR', 'false').lower() == 'true':
         logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
-        # 鎶涘嚭涓€涓槑纭殑寮傚父锛岃繖灏嗛樆姝?bot.start() 鐨勬墽琛?
+        # Raising an explicit exception here prevents bot.start() from running.
         raise ConnectionAbortedError("Failed to connect to Redis. Aborting.")
     else:
-        # 鍒涘缓涓€涓ā鎷熷鎴风浠ュ厑璁稿湪娌℃湁 Redis 鐨勬儏鍐典笅杩涜寮€鍙?
+        # Use a minimal mock client so local development can continue without Redis.
         class MockRedis:
             def set(self, *args, **kwargs): return True
         redis_client = MockRedis()
@@ -67,7 +72,7 @@ except redis.exceptions.ConnectionError as e:
 
 from pathlib import Path
 
-# --- [鏍稿績淇敼] 鍜?main.py 淇濇寔涓€鑷? 鎸囧悜鏂扮殑 data 鐩綍 ---
+# Keep the runtime data directory aligned with main.py.
 DATA_DIR = Path.cwd() / "data"
 CONFIG_FILE = DATA_DIR / "config.json"
 BOT_PROCESS_LOCK_FILE = DATA_DIR / "discord_bot.lock"
@@ -313,7 +318,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     
     if not discord_token or not isinstance(discord_token, str) or len(discord_token) < 50:
         logger.critical("FATAL: Discord token is missing, invalid, or too short in config.json. Bot cannot start.")
-        # 鍦ㄥ紓姝ヤ笂涓嬫枃涓紝鎶涘嚭寮傚父鏄粓姝㈠惎鍔ㄧ殑鏄庣‘鏂瑰紡
+        # In async startup code, raising an exception is the clearest way to abort launch.
         raise ValueError("Invalid Discord token provided.")
 
     if os.getenv("DISCORD_BOT_AUTOSTART", "true").strip().lower() not in {"1", "true", "yes", "on"}:
@@ -471,8 +476,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if message.author == bot.user:
             return
 
-        # --- [BUG淇] 灏嗛厤缃姞杞界Щ鍒板嚱鏁伴《閮?---
-        # 纭繚鍦ㄤ换浣曢渶瑕侀厤缃殑鎿嶄綔涔嬪墠鍔犺浇瀹?
+        # Load config at the top of the handler so every downstream step uses fresh values.
         config = load_bot_config()
         auto_interject_triggered = _track_auto_interject(message, config)
         repeat_parrot_content = _track_repeat_parrot(message, config)
@@ -516,7 +520,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             _reset_channel_automation_state(message.channel.id)
             return
 
-        # 濡傛灉涓嶆槸瑙﹀彂娑堟伅锛屽垯鐩存帴蹇界暐
+        # Ignore messages that do not trigger any bot behavior.
         if not (normal_triggered or auto_interject_triggered or plugin_append_triggered):
             return
 
@@ -534,8 +538,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         if plugin_append_triggered:
             trigger_sources.append("plugin_append")
 
-        # --- 鍒嗗竷寮忛攣閫昏緫 ---
-        # 鍙湁鍦ㄧ‘璁ゆ秷鎭槸鍙戠粰bot鏃讹紝鎵嶈繘琛屽姞閿佹搷浣?
+        # --- Distributed lock handling ---
+        # Only lock confirmed trigger messages so unrelated chat is never serialized.
         lock_key = f"discord:message_lock:{message.id}"
         is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
         
@@ -545,7 +549,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         
         logger.info(f"[instance={INSTANCE_ID}] Acquired lock for triggering message {message.id}. Processing...")
         
-        # 鍥剧墖鏀堕泦
+        # Collect image inputs from the current message and any replied message.
         image_descriptors = collect_image_descriptors(message, "Current message")
         if message.reference and isinstance(message.reference.resolved, discord.Message):
             replied_msg = message.reference.resolved
@@ -562,7 +566,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 logger.info(f"[instance={INSTANCE_ID}] Successfully downloaded image from {url}")
         llm_images = [item["bytes"] for item in downloaded_images]
         
-        # 鏍稿績閫昏緫锛氫笂涓嬫枃銆佷汉璁俱€侀厤棰?
+        # Core prompt assembly: context, persona, and final user payload.
         role_name, role_config = (None, None); 
         if isinstance(message.author, discord.Member):
             role_name, role_config = get_highest_configured_role(message.author, config.get("role_based_config", {})) or (None, None)
@@ -575,11 +579,13 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
         if downloaded_images and not is_multimodal_llm(config):
             if has_ocr_model_config(config):
+                timeout_seconds = get_ocr_timeout_seconds(config)
                 try:
-                    ocr_text, ocr_usage = await asyncio.wait_for(
-                        extract_ocr_text(downloaded_images, config),
-                        timeout=OCR_TIMEOUT_SECONDS,
-                    )
+                    extraction_task = extract_ocr_text(downloaded_images, config)
+                    if timeout_seconds is None:
+                        ocr_text, ocr_usage = await extraction_task
+                    else:
+                        ocr_text, ocr_usage = await asyncio.wait_for(extraction_task, timeout=timeout_seconds)
                     if ocr_text:
                         final_formatted_content = f"{final_formatted_content}\n\n{build_ocr_prompt_block(ocr_text)}"
                         logger.info(
@@ -606,7 +612,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                     logger.warning(
                         "[instance=%s] OCR preprocessing timed out after %s seconds for message %s.",
                         INSTANCE_ID,
-                        OCR_TIMEOUT_SECONDS,
+                        timeout_seconds,
                         message.id,
                     )
                     final_formatted_content = (
@@ -863,7 +869,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     except asyncio.CancelledError:
         logger.info(f"[instance={INSTANCE_ID}] Discord bot task cancelled.")
         raise
-    except ValueError as e: # 鎹曡幏鎴戜滑鑷繁鎶涘嚭鐨勫紓甯?
+    except ValueError as e:  # Catch the explicit configuration error raised above.
         logger.critical(f"[instance={INSTANCE_ID}] Terminating due to configuration error: {e}")
     except discord.errors.LoginFailure:
         logger.critical(f"[instance={INSTANCE_ID}] FATAL: Login failed. The provided Discord token is incorrect. Please check your config.json.")

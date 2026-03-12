@@ -109,7 +109,9 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
                 provider: $coreConfig.ocr_provider,
                 apiKey: $coreConfig.ocr_api_key,
                 baseUrl: buildEndpoint($coreConfig.ocr_base_url, $coreConfig.ocr_port),
-                modelName: $coreConfig.ocr_model_name
+                modelName: $coreConfig.ocr_model_name,
+                timeoutSeconds: $coreConfig.ocr_timeout_seconds,
+                timeoutDisabled: !!$coreConfig.ocr_timeout_disabled
             };
         }
         return {
@@ -125,6 +127,13 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         if (provider === 'grok') return 'grok';
         if (provider === 'gemini') return 'google';
         return 'anthropic';
+    }
+
+    function setOcrTimeoutDisabled(disabled) {
+        coreConfig.update((config) => ({
+            ...config,
+            ocr_timeout_disabled: disabled
+        }));
     }
 
     function addParameter() { customParameters.update(cp => { cp.push({ name: '', type: 'text', value: '' }); return cp; }); }
@@ -342,7 +351,13 @@ async function resetFont() {
                 config.apiKey,
                 config.baseUrl,
                 config.modelName,
-                task
+                task,
+                task === 'ocr'
+                    ? {
+                        ocr_timeout_seconds: config.timeoutSeconds,
+                        ocr_timeout_disabled: config.timeoutDisabled
+                    }
+                    : {}
             );
             if (task === 'embedding') {
                 embeddingTestResult = result;
@@ -598,6 +613,32 @@ async function resetFont() {
                     <label for="ocr-max-output-chars">{$t('ocrSettings.maxOutputChars')}</label>
                     <input id="ocr-max-output-chars" type="number" min="200" max="20000" step="100" bind:value={$coreConfig.ocr_max_output_chars}>
                     <p class="info">{$t('ocrSettings.maxOutputCharsInfo')}</p>
+                    <div class="provider-top-grid advanced-endpoint-grid">
+                        <div>
+                            <label for="ocr-timeout-seconds">{$t('ocrSettings.timeoutSeconds')}</label>
+                            <input
+                                id="ocr-timeout-seconds"
+                                type="number"
+                                min="1"
+                                max="86400"
+                                step="1"
+                                bind:value={$coreConfig.ocr_timeout_seconds}
+                                disabled={$coreConfig.ocr_timeout_disabled}
+                            >
+                        </div>
+                        <div>
+                            <label for="ocr-timeout-mode">{$t('ocrSettings.timeoutMode')}</label>
+                            <select
+                                id="ocr-timeout-mode"
+                                value={$coreConfig.ocr_timeout_disabled ? 'disabled' : 'enabled'}
+                                on:change={(event) => setOcrTimeoutDisabled(event.currentTarget.value === 'disabled')}
+                            >
+                                <option value="enabled">{$t('ocrSettings.timeoutEnabledOption')}</option>
+                                <option value="disabled">{$t('ocrSettings.timeoutDisabledOption')}</option>
+                            </select>
+                        </div>
+                    </div>
+                    <p class="info">{$t('ocrSettings.timeoutInfo')}</p>
                     {#if ocrTestResult}
                         <div class="test-result {ocrTestResult.success ? 'success' : 'error'}">
                             <strong>{$t('llmProvider.testResult')}:</strong>

@@ -182,7 +182,7 @@ export async function fetchAvailableModels(provider, apiKey, baseUrl, task = 'ch
     });
 }
 
-export async function testModel(provider, apiKey, baseUrl, modelName, task = 'chat') {
+export async function testModel(provider, apiKey, baseUrl, modelName, task = 'chat', extra = {}) {
     return apiFetch(`${BASE_URL}/models/test`, {
         method: 'POST',
         body: JSON.stringify({
@@ -190,7 +190,8 @@ export async function testModel(provider, apiKey, baseUrl, modelName, task = 'ch
             api_key: apiKey,
             base_url: baseUrl,
             model_name: modelName,
-            task
+            task,
+            ...extra
         }),
     });
 }

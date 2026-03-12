@@ -29,6 +29,19 @@ def is_multimodal_llm(config: Dict[str, Any]) -> bool:
     return bool(config.get("llm_is_multimodal", True))
 
 
+def get_ocr_timeout_seconds(config: Dict[str, Any]) -> Optional[int]:
+    if bool(config.get("ocr_timeout_disabled", False)):
+        return None
+
+    raw_value = config.get("ocr_timeout_seconds", OCR_TIMEOUT_SECONDS)
+    try:
+        timeout_seconds = int(raw_value)
+    except (TypeError, ValueError):
+        return OCR_TIMEOUT_SECONDS
+
+    return max(1, min(86400, timeout_seconds))
+
+
 def _normalize_provider(provider: str) -> str:
     normalized = (provider or "").strip().lower()
     if normalized in {"openai_compatible", "openai-compatible"}:
