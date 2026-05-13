@@ -6,7 +6,7 @@ class Stub:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
-from ..main import PromptPreviewRequest, RoleConfig
+from ..models import PromptPreviewRequest, RoleConfig
 from .persona_manager import determine_bot_persona, build_system_prompt, get_rich_identity, get_highest_configured_role
 from .context_builder import format_user_message_for_llm
 from ..utils import escape_content
