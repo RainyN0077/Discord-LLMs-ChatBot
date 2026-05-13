@@ -369,3 +369,51 @@ export async function updateBotConfig(botId, config) {
 export async function fetchBotLogs(botId) {
     return apiFetch(`${BASE_URL}/bots/${botId}/logs`);
 }
+
+export async function exportBotConfig(botId) {
+    const url = `${BASE_URL}/bots/${botId}/export`;
+    const key = getApiSecretKey();
+    const headers = {};
+    if (key) headers['X-API-Key'] = key;
+
+    const response = await fetch(url, { headers });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: 'Export failed' }));
+        throw new Error(err.detail || 'Export failed');
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const filenameMatch = disposition.match(/filename="?(.+?)"?$/);
+    const filename = filenameMatch ? filenameMatch[1] : `${botId}-config.json`;
+
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
+}
+
+export async function importBotConfig(file, overwrite = false) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('overwrite', String(overwrite));
+
+    const key = getApiSecretKey();
+    const headers = {};
+    if (key) headers['X-API-Key'] = key;
+
+    const response = await fetch(`${BASE_URL}/bots/import`, {
+        method: 'POST',
+        headers,
+        body: formData,
+    });
+    if (!response.ok) {
+        const err = await response.json().catch(() => ({ detail: 'Import failed' }));
+        throw new Error(err.detail || 'Import failed');
+    }
+    return response.json();
+}

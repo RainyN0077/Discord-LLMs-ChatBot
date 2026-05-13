@@ -21,7 +21,7 @@
         statusType,
         saveConfig
     } from '../lib/stores.js';
-    import { fetchBotConfig, updateBotConfig, clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
+    import { fetchBotConfig, updateBotConfig, clearMemory, fetchAvailableModels, testModel, exportBotConfig, importBotConfig } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
@@ -35,6 +35,12 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     let loadingConfig = false;
     let configError = '';
     let isSaving = false;
+    let isImporting = false;
+    let importOverwrite = false;
+    let importFileInput;
+    let showImportConfirm = false;
+    let importPendingData = null;
+    let importPendingBotId = null;
 
     let configLoadSeq = 0;
 
@@ -141,11 +147,73 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     }
 
 
+    async function handleExport() {
+        if (!botId) return;
+        try {
+            await exportBotConfig(botId);
+            showStatus('Config exported.', 'success');
+        } catch (e) {
+            showStatus('Export failed: ' + e.message, 'error');
+        }
+    }
+
+    function handleImportClick() {
+        if (importFileInput) importFileInput.click();
+    }
+
+    async function handleImportFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (!file.name.endsWith('.json')) {
+            showStatus('Please select a .json config file.', 'error');
+            return;
+        }
+
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            importPendingData = data;
+            importPendingBotId = data.bot_id || '';
+            showImportConfirm = true;
+        } catch (e) {
+            showStatus('Invalid JSON file: ' + e.message, 'error');
+        } finally {
+            event.target.value = '';
+        }
+    }
+
+    async function confirmImport() {
+        if (!importPendingData) return;
+        isImporting = true;
+        showImportConfirm = false;
+        try {
+            const blob = new Blob([JSON.stringify(importPendingData, null, 2)], { type: 'application/json' });
+            const file = new File([blob], 'config.json', { type: 'application/json' });
+            const result = await importBotConfig(file, importOverwrite);
+            showStatus(result.message || 'Config imported successfully!', 'success');
+            importOverwrite = false;
+        } catch (e) {
+            showStatus('Import failed: ' + e.message, 'error');
+        } finally {
+            isImporting = false;
+            importPendingData = null;
+            importPendingBotId = null;
+        }
+    }
+
+    function cancelImport() {
+        showImportConfirm = false;
+        importPendingData = null;
+        importPendingBotId = null;
+        importOverwrite = false;
+    }
+
 
     let activeTab = 'advanced';
     let channelIdToClear = '';
     let fontFileInput;
-    
+
     // 模型选择相关变量
     let availableModels = [];
     let isLoadingModels = false;
@@ -543,10 +611,39 @@ async function resetFont() {
 <div class="config-panel">
     <div class="config-header">
         <h2>{botId ? `Config: ${botId}` : 'Select a bot'}</h2>
-        <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
-            {isSaving ? 'Saving...' : 'Save & Restart'}
-        </button>
+        <div class="header-actions">
+            <button class="export-btn" on:click={handleExport} disabled={!botId} title="Export config as JSON">
+                &#8615; Export
+            </button>
+            <button class="import-btn" on:click={handleImportClick} disabled={isImporting} title="Import config from JSON file">
+                &#8614; Import
+            </button>
+            <input type="file" accept=".json" bind:this={importFileInput} on:change={handleImportFile} class="hidden-input">
+            <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
+                {isSaving ? 'Saving...' : 'Save & Restart'}
+            </button>
+        </div>
     </div>
+
+    {#if showImportConfirm}
+        <div class="import-confirm-overlay" on:click={cancelImport}>
+            <div class="import-confirm-dialog" on:click|stopPropagation>
+                <h3>Import Config</h3>
+                <p>Import bot config for <strong>{importPendingBotId || 'unknown'}</strong>?</p>
+                <label class="checkbox-inline fancy-checkbox" style="margin-bottom: 1rem;">
+                    <input type="checkbox" bind:checked={importOverwrite}>
+                    <span class="checkbox-box" aria-hidden="true"></span>
+                    <span class="checkbox-text">Overwrite existing bot</span>
+                </label>
+                <div class="import-confirm-actions">
+                    <button class="import-confirm-btn" on:click={confirmImport} disabled={isImporting}>
+                        {isImporting ? 'Importing...' : 'Confirm Import'}
+                    </button>
+                    <button class="import-cancel-btn" on:click={cancelImport}>Cancel</button>
+                </div>
+            </div>
+        </div>
+    {/if}
     
     {#if loadingConfig}
         <div class="loading-state">Loading configuration for {botId}...</div>
@@ -1141,6 +1238,113 @@ async function resetFont() {
         cursor: not-allowed;
     }
 
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        flex-shrink: 0;
+    }
+
+    .export-btn {
+        padding: .6rem 1rem;
+        background: linear-gradient(135deg, var(--primary-color), #1b73b0);
+        color: #fff;
+        font-size: .9rem;
+        font-weight: 600;
+        border-radius: 10px;
+        flex-shrink: 0;
+    }
+
+    .export-btn:disabled {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    .import-btn {
+        padding: .6rem 1rem;
+        background: var(--panel-muted-bg);
+        color: var(--text-color);
+        font-size: .9rem;
+        font-weight: 600;
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        flex-shrink: 0;
+    }
+
+    .import-btn:disabled {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    .hidden-input {
+        display: none;
+    }
+
+    .import-confirm-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .45);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 200;
+    }
+
+    .import-confirm-dialog {
+        background: var(--card-bg);
+        border-radius: 14px;
+        padding: 1.5rem;
+        max-width: 420px;
+        width: 90%;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border-color);
+    }
+
+    .import-confirm-dialog h3 {
+        margin: 0 0 .75rem 0;
+        font-size: 1.1rem;
+        color: var(--text-color);
+    }
+
+    .import-confirm-dialog p {
+        margin: 0 0 .5rem 0;
+        color: var(--text-light);
+        font-size: .95rem;
+    }
+
+    .import-confirm-actions {
+        display: flex;
+        gap: .75rem;
+        justify-content: flex-end;
+        margin-top: .5rem;
+    }
+
+    .import-confirm-btn {
+        padding: .55rem 1.2rem;
+        background: linear-gradient(135deg, var(--save-color), #1a9156);
+        color: #fff;
+        font-size: .9rem;
+        font-weight: 600;
+        border-radius: 8px;
+        box-shadow: none;
+    }
+
+    .import-confirm-btn:disabled {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    .import-cancel-btn {
+        padding: .55rem 1.2rem;
+        background: var(--panel-muted-bg);
+        color: var(--text-color);
+        font-size: .9rem;
+        font-weight: 600;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: none;
+    }
+
     .loading-state, .error-state, .empty-state {
         text-align: center;
         padding: 3rem 1rem;
@@ -1499,6 +1703,12 @@ async function resetFont() {
             font-size: .85rem;
         }
 
+        .export-btn, .import-btn {
+            padding: .5rem .8rem;
+            font-size: .8rem;
+            border-radius: 8px;
+        }
+
         .provider-top-grid {
             grid-template-columns: 1fr;
         }
@@ -1557,6 +1767,16 @@ async function resetFont() {
             padding: .4rem .8rem;
             font-size: .78rem;
             border-radius: 8px;
+        }
+
+        .export-btn, .import-btn {
+            padding: .35rem .55rem;
+            font-size: .72rem;
+            border-radius: 7px;
+        }
+
+        .header-actions {
+            gap: .35rem;
         }
 
         .tabs {

@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -143,3 +144,37 @@ def get_bot_knowledge_path(bot_id: str) -> Path:
 
 def get_bot_usage_path(bot_id: str) -> Path:
     return get_bot_dir(bot_id) / "usage_data.json"
+
+
+# Legacy field name mappings: old key → new key
+# Covers configs from earlier versions of the project where field names may have changed.
+LEGACY_FIELD_MAP: Dict[str, str] = {
+    'name': 'bot_name',
+    'nickname': 'bot_nickname',
+    'token': 'discord_token',
+    'api_url': 'openai_base_url',
+    'anthropic_api_url': 'anthropic_base_url',
+    'grok_api_url': 'grok_base_url',
+    'embedding_api_url': 'embedding_base_url',
+    'rerank_api_url': 'rerank_base_url',
+    'ocr_api_url': 'ocr_base_url',
+}
+
+
+def normalize_config(config: Dict[str, Any], *, apply_defaults: bool = True) -> Dict[str, Any]:
+    """Normalize a config dict: remap legacy field names and optionally apply defaults."""
+    normalized = copy.deepcopy(config)
+
+    for old_key, new_key in LEGACY_FIELD_MAP.items():
+        if old_key in normalized:
+            normalized.setdefault(new_key, normalized[old_key])
+            if old_key != new_key:
+                del normalized[old_key]
+
+    if normalized.get('openai_base_url') and not normalized.get('base_url'):
+        normalized['base_url'] = normalized['openai_base_url']
+
+    if apply_defaults:
+        _set_defaults_recursive(DEFAULT_CONFIG, normalized)
+
+    return normalized

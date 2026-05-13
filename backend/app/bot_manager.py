@@ -57,6 +57,9 @@ class BotManager:
             json.dump(old_config, f, indent=2, ensure_ascii=False)
         backup_path = CONFIG_FILE.with_suffix(".json.backup")
         shutil.move(str(CONFIG_FILE), str(backup_path))
+        legacy_api_key = old_config.get("api_secret_key")
+        if legacy_api_key:
+            save_config({"api_secret_key": legacy_api_key})
         logger.info(f"Migrated legacy config -> {bot_config_path} (backup: {backup_path})")
         return bot_id
 
