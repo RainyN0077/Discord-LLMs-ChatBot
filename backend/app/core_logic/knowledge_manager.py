@@ -393,7 +393,10 @@ class KnowledgeManager:
         with self.get_conn() as conn:
             c = conn.cursor()
             if q_tokens:
-                match = " OR ".join(f'"{t}"' for t in q_tokens)
+                def _fts5_quote(token: str) -> str:
+                    safe = token.replace('"', '""')
+                    return f'"{safe}"'
+                match = " OR ".join(_fts5_quote(t) for t in q_tokens)
                 try:
                     c.execute(
                         """
