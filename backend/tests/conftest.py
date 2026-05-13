@@ -164,9 +164,16 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     mock_bot_module = MagicMock()
     mock_bot_module.run_bot = AsyncMock(return_value=None)
     mock_bot_module.strip_thinking_sections = MagicMock(return_value="sanitized text")
+    _original_app_bot = sys.modules.get("app.bot")
     sys.modules["app.bot"] = mock_bot_module
 
-    from app.main import app
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client
+    try:
+        from app.main import app
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            yield client
+    finally:
+        if _original_app_bot is not None:
+            sys.modules["app.bot"] = _original_app_bot
+        else:
+            sys.modules.pop("app.bot", None)

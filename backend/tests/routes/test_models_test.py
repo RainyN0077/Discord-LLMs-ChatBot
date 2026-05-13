@@ -13,4 +13,4 @@ class TestModelsRoutes:
 
     async def test_list_models_invalid_provider(self, app_client, auth_headers):
         response = await app_client.post("/api/models/list", json={"provider": "invalid_provider", "api_key": "sk-test", "task": "chat"}, headers=auth_headers)
-        assert response.status_code in (200, 400, 500)
+        assert response.status_code == 400

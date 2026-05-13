@@ -22,7 +22,7 @@ class TestDebugRoutes:
 
     async def test_get_capture_detail_not_found(self, app_client, auth_headers):
         response = await app_client.get("/api/debug/captures/nonexistent_id", headers=auth_headers)
-        assert response.status_code in (200, 404)
+        assert response.status_code == 404
 
     async def test_sanitize_requires_auth(self, app_client):
         response = await app_client.post("/api/debug/sanitize", json={"text": "test"})

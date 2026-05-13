@@ -13,8 +13,8 @@ class TestChatRoutes:
         response = await app_client.post("/api/chat/direct", json={
             "messages": [],
         }, headers=auth_headers)
-        assert response.status_code in (200, 400, 422, 500)
+        assert response.status_code == 400
 
     async def test_direct_chat_without_messages_field(self, app_client, auth_headers):
         response = await app_client.post("/api/chat/direct", json={}, headers=auth_headers)
-        assert response.status_code in (200, 400, 422, 500)
+        assert response.status_code == 400

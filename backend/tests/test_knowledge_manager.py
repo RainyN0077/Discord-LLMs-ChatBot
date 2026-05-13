@@ -1,4 +1,6 @@
-import pytest
+﻿import pytest
+
+pytestmark = [pytest.mark.unit]
 from app.core_logic.knowledge_manager import KnowledgeManager
 
 
@@ -241,7 +243,7 @@ class TestMemoryCandidates:
             user_name="Tester2",
             source="test",
         )
-        assert result["status"] in ("duplicate_existing", "skipped_low_signal")
+        assert result["status"] == "duplicate_existing"
 
     def test_ingest_disabled(self, test_db):
         result = test_db.ingest_memory_candidate(

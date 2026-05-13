@@ -1,4 +1,6 @@
-import pytest
+﻿import pytest
+
+pytestmark = [pytest.mark.unit]
 from app.handlers.automation import (
     track_auto_interject,
     normalize_repeat_content,

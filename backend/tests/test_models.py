@@ -1,4 +1,6 @@
-import pytest
+﻿import pytest
+
+pytestmark = [pytest.mark.unit]
 from pydantic import ValidationError
 
 from app.models import (
