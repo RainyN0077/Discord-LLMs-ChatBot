@@ -100,7 +100,7 @@ async def simulate_debugger_run(request: DebuggerRequest):
 
 @router.get("/api/debug/captures", dependencies=[Depends(get_api_key)], response_model=List[DebugCaptureSummary])
 async def get_debug_captures(limit: int = 20, channel_id: Optional[str] = None):
-    rows = list_debug_captures(limit=limit, channel_id=channel_id)
+    rows = await list_debug_captures(limit=limit, channel_id=channel_id)
     return [
         {
             "id": str(row.get("id", "")),
@@ -122,7 +122,7 @@ async def get_debug_captures(limit: int = 20, channel_id: Optional[str] = None):
 
 @router.get("/api/debug/captures/{capture_id}", dependencies=[Depends(get_api_key)], response_model=DebugCaptureDetail)
 async def get_debug_capture_detail(capture_id: str):
-    row = get_debug_capture(capture_id)
+    row = await get_debug_capture(capture_id)
     if not row:
         raise HTTPException(status_code=404, detail="Capture not found.")
 

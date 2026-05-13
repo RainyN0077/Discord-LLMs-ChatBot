@@ -580,7 +580,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
                 cleaned_response = strip_dsml_tool_blocks(cleaned_response)
                 cleaned_response = strip_thinking_sections(cleaned_response)
 
-                add_capture({
+                await add_capture({
                     "trigger_message_id": str(message.id),
                     "channel_id": str(message.channel.id),
                     "guild_id": str(message.guild.id) if message.guild else None,
