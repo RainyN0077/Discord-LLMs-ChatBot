@@ -6,7 +6,6 @@ from unittest.mock import MagicMock
 from ..main import PromptPreviewRequest, RoleConfig
 from .persona_manager import determine_bot_persona, build_system_prompt, get_rich_identity, get_highest_configured_role
 from .context_builder import format_user_message_for_llm
-from .knowledge_manager import knowledge_manager
 from ..utils import escape_content
 
 logger = logging.getLogger(__name__)
@@ -190,21 +189,17 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
             plugin_outputs.append(plugin_scenario['simulated_output'])
         injected_data_str = "\n".join(plugin_outputs)
         
-    # Simulate knowledge injection (simplified)
-    # A full simulation would require a mock knowledge_manager
+    # Simulate knowledge injection via parameter injection (no monkey-patch)
+    world_book_entries = []
     if "世界设定" in mock_message.content:
         log.add("模拟知识库注入...", 1)
         log.add("检测到关键词，注入 '世界设定' 上下文", 2)
-        knowledge_manager.find_world_book_entries_for_text = lambda x: [{'content': '这是一个关于这个世界的设定条目。', 'keywords': '世界设定'}]
-    else:
-        knowledge_manager.find_world_book_entries_for_text = lambda x: []
+        world_book_entries.append({'id': 1001, 'content': '这是一个关于这个世界的设定条目。', 'keywords': '世界设定'})
 
     if "长期记忆" in mock_message.content:
         log.add("模拟知识库注入...", 1)
         log.add("检测到关键词，注入 '长期记忆' 上下文", 2)
-        knowledge_manager.get_all_memories = lambda: [{'content': '这是一条相关的长期记忆。'}]
-    else:
-        knowledge_manager.get_all_memories = lambda: []
+
 
     
     # Format the final user message block
@@ -218,7 +213,8 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
         client=MagicMock(), # Not used for preview
         bot_config=simulated_bot_config,
         role_config=author_role_config,
-        injected_data=injected_data_str
+        injected_data=injected_data_str,
+        world_book_entries=world_book_entries if world_book_entries else None,
     )
     log.add("调用 `format_user_message_for_llm`...", 2)
     if mock_message.reference:
