@@ -146,7 +146,14 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     history_for_llm = list(reversed(temp_history))
     return fetched_history, history_for_llm
 
-def format_user_message_for_llm(message: discord.Message, client: discord.Client, bot_config: Dict[str, Any], role_config: Optional[Dict[str, Any]], injected_data: Optional[str] = None) -> str:
+def format_user_message_for_llm(
+    message: discord.Message,
+    client: discord.Client,
+    bot_config: Dict[str, Any],
+    role_config: Optional[Dict[str, Any]],
+    injected_data: Optional[str] = None,
+    world_book_entries: Optional[List[Dict[str, Any]]] = None,
+) -> str:
     """将用户的当前消息格式化为最终LLM输入块。"""
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
@@ -211,34 +218,35 @@ def format_user_message_for_llm(message: discord.Message, client: discord.Client
     if injected_data:
         request_block_parts.append(TOOL_CONTEXT_TPL.format(data=injected_data))
 
-    # --- New: Inject knowledge base content ---
-    # 1. Inject World Book entries (Append Strategy)
+    # --- Inject world book content ---
     all_wb_entries = []
     added_entry_ids = set()
 
-    # Gather all relevant user IDs: author, @mentions, and keyword mentions
-    relevant_user_ids = {str(message.author.id)}
-    for mentioned_user in message.mentions:
-        relevant_user_ids.add(str(mentioned_user.id))
-    
-    keyword_mentioned_ids = find_mentioned_users_by_keywords(final_text_content, user_personas)
-    relevant_user_ids.update(keyword_mentioned_ids)
+    if world_book_entries is not None:
+        for entry in world_book_entries:
+            if entry.get('id') not in added_entry_ids:
+                all_wb_entries.append(entry)
+                added_entry_ids.add(entry.get('id'))
+    else:
+        relevant_user_ids = {str(message.author.id)}
+        for mentioned_user in message.mentions:
+            relevant_user_ids.add(str(mentioned_user.id))
 
-    # a. Load entries linked to users
-    for user_id in relevant_user_ids:
-        user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
-        for entry in user_entries:
+        keyword_mentioned_ids = find_mentioned_users_by_keywords(final_text_content, user_personas)
+        relevant_user_ids.update(keyword_mentioned_ids)
+
+        for user_id in relevant_user_ids:
+            user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
+            for entry in user_entries:
+                if entry['id'] not in added_entry_ids:
+                    all_wb_entries.append(entry)
+                    added_entry_ids.add(entry['id'])
+
+        text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+        for entry in text_triggered_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)
                 added_entry_ids.add(entry['id'])
-
-    # b. Load entries triggered by keywords in the text
-    text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
-    for entry in text_triggered_entries:
-        # With knowledge_manager now returning full entries, this check is valid.
-        if entry['id'] not in added_entry_ids:
-            all_wb_entries.append(entry)
-            added_entry_ids.add(entry['id'])
 
     if all_wb_entries:
         max_entries = int(bot_config.get("world_book_context_max_entries", DEFAULT_WORLDBOOK_MAX_ENTRIES))
