@@ -103,6 +103,9 @@ def load_config() -> Dict[str, Any]:
         with open(CONFIG_FILE, "r", encoding='utf-8') as f:
             data = json.load(f)
         _set_defaults_recursive(DEFAULT_CONFIG, data)
+        if not data.get("api_secret_key"):
+            data["api_secret_key"] = secrets.token_hex(32)
+            logger.warning("api_secret_key was empty in config.json, generated a new one")
         save_config(data)
         return data
     except json.JSONDecodeError as e:

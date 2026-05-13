@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from pathlib import Path
@@ -50,6 +51,9 @@ class BotInstance:
                 data = json.load(f)
             from .config_cache import _set_defaults_recursive
             _set_defaults_recursive(DEFAULT_CONFIG, data)
+            if not data.get("api_secret_key"):
+                data["api_secret_key"] = secrets.token_hex(32)
+                logger.warning("api_secret_key was empty in per-bot config, generated a new one")
         else:
             from copy import deepcopy
             data = deepcopy(DEFAULT_CONFIG)
