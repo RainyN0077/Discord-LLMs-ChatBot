@@ -65,7 +65,19 @@ except redis.exceptions.ConnectionError as e:
     else:
         # Use a minimal mock client so local development can continue without Redis.
         class MockRedis:
-            def set(self, *args, **kwargs): return True
+            def __init__(self):
+                self._store = {}
+            def set(self, key, value, *args, **kwargs):
+                self._store[key] = value
+                return True
+            def get(self, key):
+                return self._store.get(key)
+            def ping(self):
+                return True
+            def delete(self, key):
+                return self._store.pop(key, None) is not None
+            def exists(self, key):
+                return key in self._store
         redis_client = MockRedis()
         logger.warning(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client. CONCURRENCY PROTECTION IS DISABLED.")
 
