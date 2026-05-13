@@ -1,7 +1,10 @@
 # backend/app/core_logic/preview_builder.py
 import logging
 from typing import Dict, Any, List
-from unittest.mock import MagicMock
+
+class Stub:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
 
 from ..main import PromptPreviewRequest, RoleConfig
 from .persona_manager import determine_bot_persona, build_system_prompt, get_rich_identity, get_highest_configured_role
@@ -28,20 +31,20 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     log = ConstructionLog()
 
     # Mock Guild
-    mock_guild = MagicMock()
+    mock_guild = Stub()
     mock_guild.id = int(scenario_data.get('guild_id', 0))
     mock_guild.name = "模拟服务器"
     log.add(f"场景设定：服务器 '{mock_guild.name}' (ID: {mock_guild.id})", 1)
 
     # Mock Channel
-    mock_channel = MagicMock()
+    mock_channel = Stub()
     mock_channel.id = int(scenario_data.get('channel_id', 0))
     mock_channel.name = "模拟频道"
     mock_channel.guild = mock_guild
     log.add(f"场景设定：频道 '#{mock_channel.name}' (ID: {mock_channel.id})", 1)
 
     # Mock Author (User/Member)
-    mock_author = MagicMock()
+    mock_author = Stub()
     mock_author.id = int(scenario_data.get('user_id', 0))
     mock_author.name = "模拟用户"
     mock_author.display_name = "模拟用户"
@@ -50,7 +53,7 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     # Simulate roles for the author
     role_based_configs = bot_config.get("role_based_config", {})
     for role_id_str in scenario_data.get('user_roles', []):
-        mock_role = MagicMock()
+        mock_role = Stub()
         mock_role.id = int(role_id_str)
         role_config_data = role_based_configs.get(role_id_str, {})
         mock_role.name = role_config_data.get("title", f"角色{role_id_str}")
@@ -64,7 +67,7 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     mock_replied_author = None
     if scenario_data.get('is_reply') and scenario_data.get('replied_message'):
         replied_data = scenario_data['replied_message']
-        mock_replied_author = MagicMock()
+        mock_replied_author = Stub()
         mock_replied_author.id = int(replied_data.get('author_id', 0))
         mock_replied_author.name = "被回复者"
         mock_replied_author.display_name = "被回复者"
@@ -72,12 +75,12 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     # Mock Mentioned User if necessary
     # This is a simplified simulation. A real scenario could have multiple mentions.
     if "@张三" in scenario_data.get('message_content', ''):
-        mock_mentioned_user = MagicMock()
+        mock_mentioned_user = Stub()
         mock_mentioned_user.id = 9876543210 # A fixed ID for simulation
         mock_mentioned_user.name = "张三"
         mock_mentioned_user.display_name = "张三"
         # Simulate a role for the mentioned user to test rich identity
-        mentioned_user_role = MagicMock()
+        mentioned_user_role = Stub()
         mentioned_user_role.id = 999
         mentioned_user_role.name = "开发者"
         mock_mentioned_user.roles = [mentioned_user_role]
@@ -91,7 +94,7 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
         mock_guild.get_member = get_member
 
     # Mock Message
-    mock_message = MagicMock()
+    mock_message = Stub()
     mock_message.author = mock_author
     mock_message.channel = mock_channel
     mock_message.guild = mock_guild
@@ -104,7 +107,7 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     if image_count > 0:
         log.add(f"场景设定：用户发送了 {image_count} 张图片", 1)
         for i in range(image_count):
-            attachment = MagicMock()
+            attachment = Stub()
             attachment.content_type = 'image/png'
             mock_message.attachments.append(attachment)
             
@@ -121,12 +124,12 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
         log.add("场景设定：这是一条回复消息", 1)
         replied_data = scenario_data['replied_message']
         
-        mock_replied_message = MagicMock()
+        mock_replied_message = Stub()
         mock_replied_message.author = mock_replied_author
         mock_replied_message.clean_content = escape_content(replied_data.get('content', ''))
         mock_replied_message.attachments = []
         
-        mock_reference = MagicMock()
+        mock_reference = Stub()
         mock_reference.resolved = mock_replied_message
         mock_message.reference = mock_reference
         log.add(f"回复内容：'{mock_replied_message.clean_content}' (来自: @{mock_replied_author.name})", 2)
@@ -210,7 +213,7 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
 
     user_request = format_user_message_for_llm(
         message=mock_message,
-        client=MagicMock(), # Not used for preview
+        client=Stub(), # Not used for preview
         bot_config=simulated_bot_config,
         role_config=author_role_config,
         injected_data=injected_data_str,
