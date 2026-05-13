@@ -26,6 +26,11 @@ frontend/.vite/
 # pytest cache
 .pytest_cache/
 
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
 # Kilo project config
 .kilo/
 

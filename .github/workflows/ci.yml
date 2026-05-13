@@ -1,41 +1,42 @@
 name: CI
-
 on:
   push:
-    branches: [main, 'feat/**', 'fix/**', 'release/**']
+    branches: [main, master, 'feat/**', 'fix/**', 'release/**']
   pull_request:
-    branches: [main]
-
+    branches: [main, master]
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
-
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
-
       - name: Install dependencies
         run: |
           cd backend
           pip install -r requirements-test.txt
           pip install -r requirements.txt
-
-      - name: Run fast tests
+      - name: Run tests with coverage
         run: |
           cd backend
           mkdir -p data
-          pytest tests/ -m "not slow" --cov=app --cov-report=term --cov-report=xml -v
+          pytest tests/ \
+            -m "not slow" \
+            --cov=app \
+            --cov=plugins \
+            --cov-report=term \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=40 \
+            -v
         env:
           FAIL_ON_REDIS_ERROR: "false"
-
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v4
         with:

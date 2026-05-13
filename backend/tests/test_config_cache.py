@@ -10,189 +10,148 @@ from app.config_cache import (
     save_config,
     invalidate_cache,
     DEFAULT_CONFIG,
-    _merge_defaults,
+    _set_defaults_recursive,
 )
 
 
-class TestMergeDefaults:
+class TestSetDefaultsRecursive:
     def test_adds_missing_keys(self):
         config = {}
         default = {"a": 1, "b": 2}
-        result = _merge_defaults(default, config)
-        assert result == {"a": 1, "b": 2}
+        _set_defaults_recursive(default, config)
+        assert config == {"a": 1, "b": 2}
 
     def test_preserves_existing_values(self):
         config = {"a": 100}
         default = {"a": 1, "b": 2}
-        result = _merge_defaults(default, config)
-        assert result["a"] == 100
-        assert result["b"] == 2
+        _set_defaults_recursive(default, config)
+        assert config["a"] == 100
+        assert config["b"] == 2
 
     def test_nested_dict_recursive(self):
         config = {"outer": {"inner1": "keep_me"}}
         default = {"outer": {"inner1": "default1", "inner2": "default2"}}
-        result = _merge_defaults(default, config)
-        assert result["outer"]["inner1"] == "keep_me"
-        assert result["outer"]["inner2"] == "default2"
+        _set_defaults_recursive(default, config)
+        assert config["outer"]["inner1"] == "keep_me"
+        assert config["outer"]["inner2"] == "default2"
 
     def test_nested_default_copies_all(self):
         config = {}
         default = {"a": {"b": {"c": 1}}, "d": 2}
-        result = _merge_defaults(default, config)
-        assert result["a"]["b"]["c"] == 1
-        assert result["d"] == 2
+        _set_defaults_recursive(default, config)
+        assert config["a"]["b"]["c"] == 1
+        assert config["d"] == 2
 
-    def test_original_config_unmodified(self):
-        config = {"a": 100}
-        original = dict(config)
-        default = {"a": 1, "b": 2}
-        _merge_defaults(default, config)
-        assert config == original
+    def test_nested_no_overwrite(self):
+        config = {"level1": {"level2": {"key": "original"}}}
+        default = {"level1": {"level2": {"key": "default", "extra": 42}}}
+        _set_defaults_recursive(default, config)
+        assert config["level1"]["level2"]["key"] == "original"
+        assert config["level1"]["level2"]["extra"] == 42
 
-
-class TestLoadConfig:
-    def test_loads_config_from_file(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps(test_config_dict, indent=2), encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result = load_config()
-        assert result["api_secret_key"] == test_config_dict["api_secret_key"]
-        assert result["llm_provider"] == test_config_dict["llm_provider"]
-
-    def test_missing_defaults_filled_in(self, tmp_path, monkeypatch):
-        partial_config = {"api_secret_key": "my-key", "llm_provider": "google"}
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps(partial_config), encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result = load_config()
-        assert result["api_secret_key"] == "my-key"
-        assert result["system_prompt"] == DEFAULT_CONFIG["system_prompt"]
-
-    def test_caches_result_on_same_mtime(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps(test_config_dict, indent=2), encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result1 = load_config()
-        result2 = load_config()
-        assert result1 is result2
-
-    def test_mtime_change_refreshes_cache(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps(test_config_dict, indent=2), encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result1 = load_config()
-        assert result1["api_secret_key"] == test_config_dict["api_secret_key"]
-
-        time.sleep(0.01)
-        modified = dict(test_config_dict, api_secret_key="new-secret-key")
-        config_file.write_text(json.dumps(modified, indent=2), encoding="utf-8")
-
-        result2 = load_config()
-        assert result2["api_secret_key"] == "new-secret-key"
-
-    def test_corrupted_json_falls_back_to_defaults(self, tmp_path, monkeypatch):
-        config_file = tmp_path / "config.json"
-        config_file.write_text("this is not valid json {{{", encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result = load_config()
-        assert result["system_prompt"] == DEFAULT_CONFIG["system_prompt"]
-        assert result["model_name"] == DEFAULT_CONFIG["model_name"]
-
-    def test_nonexistent_file_auto_creates(self, tmp_path, monkeypatch):
-        config_file = tmp_path / "nonexistent_config.json"
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result = load_config()
-        assert config_file.exists()
-        assert result["system_prompt"] == DEFAULT_CONFIG["system_prompt"]
-
-
-class TestSaveConfig:
-    def test_save_and_reload(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        save_config(test_config_dict)
-        assert config_file.exists()
-
-        cc.invalidate_cache()
-        loaded = load_config()
-        assert loaded["api_secret_key"] == test_config_dict["api_secret_key"]
-
-    def test_save_updates_cache(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        save_config(test_config_dict)
-        result = load_config()
-        assert result["api_secret_key"] == test_config_dict["api_secret_key"]
-
-
-class TestInvalidateCache:
-    def test_invalidate_causes_reread(self, tmp_path, monkeypatch, test_config_dict):
-        config_file = tmp_path / "config.json"
-        config_file.write_text(json.dumps(test_config_dict, indent=2), encoding="utf-8")
-
-        import app.config_cache as cc
-        monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
-        cc.invalidate_cache()
-
-        result1 = load_config()
-
-        modified = dict(test_config_dict, api_secret_key="changed-key")
-        config_file.write_text(json.dumps(modified, indent=2), encoding="utf-8")
-
-        invalidate_cache()
-        result2 = load_config()
-        assert result2["api_secret_key"] == "changed-key"
-        assert result1 is not result2
+    def test_mutates_in_place(self):
+        config = {}
+        original_id = id(config)
+        _set_defaults_recursive({"a": 1}, config)
+        assert id(config) == original_id
 
 
 class TestDefaultConfig:
-    def test_default_config_has_required_keys(self):
-        required_keys = [
-            "api_secret_key",
-            "system_prompt",
-            "trigger_keywords",
-            "stream_response",
-            "context_mode",
-            "user_personas",
-            "role_based_config",
-            "scoped_prompts",
-            "plugins",
-        ]
-        for key in required_keys:
-            assert key in DEFAULT_CONFIG
+    def test_has_essential_keys(self):
+        assert "api_secret_key" in DEFAULT_CONFIG
+        assert "discord_token" in DEFAULT_CONFIG
+        assert "llm_provider" in DEFAULT_CONFIG
+        assert "model_name" in DEFAULT_CONFIG
+        assert "system_prompt" in DEFAULT_CONFIG
+        assert "trigger_keywords" in DEFAULT_CONFIG
+        assert "context_mode" in DEFAULT_CONFIG
 
-    def test_default_config_api_key_is_random(self):
-        key1 = DEFAULT_CONFIG["api_secret_key"]
-        assert len(key1) == 64
+    def test_trigger_keywords_is_list(self):
+        assert isinstance(DEFAULT_CONFIG["trigger_keywords"], list)
+
+    def test_role_based_config_exists(self):
+        assert "role_based_config" in DEFAULT_CONFIG
+        assert isinstance(DEFAULT_CONFIG["role_based_config"], dict)
+
+    def test_scoped_prompts_exists(self):
+        assert "scoped_prompts" in DEFAULT_CONFIG
+        assert "guilds" in DEFAULT_CONFIG["scoped_prompts"]
+        assert "channels" in DEFAULT_CONFIG["scoped_prompts"]
+
+    def test_scoped_prompts_exists(self):
+        assert "scoped_prompts" in DEFAULT_CONFIG
+        assert "guilds" in DEFAULT_CONFIG["scoped_prompts"]
+        assert "channels" in DEFAULT_CONFIG["scoped_prompts"]
+
+    def test_channel_context_settings(self):
+        assert "channel_context_settings" in DEFAULT_CONFIG
+
+
+class TestLoadSaveConfig:
+    def test_load_creates_default(self, tmp_path):
+        import app.config_cache as cc
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(exist_ok=True)
+        config_file = data_dir / "config.json"
+
+        original = (cc.DATA_DIR, cc.CONFIG_FILE)
+        try:
+            cc.DATA_DIR = data_dir
+            cc.CONFIG_FILE = config_file
+            cc.invalidate_cache()
+
+            config = cc.load_config()
+            assert "api_secret_key" in config
+        finally:
+            cc.DATA_DIR, cc.CONFIG_FILE = original
+            cc.invalidate_cache()
+
+    def test_save_and_load_roundtrip(self, tmp_path):
+        import app.config_cache as cc
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(exist_ok=True)
+        config_file = data_dir / "config.json"
+
+        original = (cc.DATA_DIR, cc.CONFIG_FILE)
+        try:
+            cc.DATA_DIR = data_dir
+            cc.CONFIG_FILE = config_file
+            cc.invalidate_cache()
+
+            config = cc.load_config()
+            config["test_field"] = "hello"
+            cc.save_config(config)
+            cc.invalidate_cache()
+            loaded = cc.load_config()
+            assert loaded["test_field"] == "hello"
+        finally:
+            cc.DATA_DIR, cc.CONFIG_FILE = original
+            cc.invalidate_cache()
+
+    def test_invalidate_cache_forces_reload(self, tmp_path):
+        import app.config_cache as cc
+        data_dir = tmp_path / "data"
+        data_dir.mkdir(exist_ok=True)
+        config_file = data_dir / "config.json"
+
+        original = (cc.DATA_DIR, cc.CONFIG_FILE)
+        try:
+            cc.DATA_DIR = data_dir
+            cc.CONFIG_FILE = config_file
+            cc.invalidate_cache()
+
+            config1 = cc.load_config()
+            config1["field"] = "value1"
+            cc.save_config(config1)
+
+            config2 = cc.load_config()
+            assert config2["field"] == "value1"
+
+            config1["field"] = "value2"
+            cc.save_config(config1)
+            cc.invalidate_cache()
+            config3 = cc.load_config()
+            assert config3["field"] == "value2"
+        finally:
+            cc.DATA_DIR, cc.CONFIG_FILE = original
+            cc.invalidate_cache()

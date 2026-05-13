@@ -234,7 +234,7 @@ class TestRoleConfig:
         assert rc.title == ""
         assert rc.prompt == ""
         assert rc.message_limit == 0
-        assert rc.token_limit == 0
+        assert rc.char_limit == 0
 
     def test_constraints(self):
         with pytest.raises(ValidationError):
