@@ -259,10 +259,13 @@ class MemoryPlugin(BasePlugin):
                         break
 
                 if not found_user and message.guild:
-                    for member in message.guild.members:
-                        if member.name.lower() == subject_name_lower or (member.nick and member.nick.lower() == subject_name_lower):
-                            found_user = member
-                            break
+                    try:
+                        for member in message.guild.members:
+                            if member.name.lower() == subject_name_lower or (member.nick and member.nick.lower() == subject_name_lower):
+                                found_user = member
+                                break
+                    except Exception:
+                        pass
 
                 if not found_user:
                     user_personas = config.get("user_personas", {})
