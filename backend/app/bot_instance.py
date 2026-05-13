@@ -303,7 +303,7 @@ class BotInstance:
             downloaded_images = await collect_and_download_images(message)
             llm_images = [item["bytes"] for item in downloaded_images]
 
-            system_prompt, final_formatted_content, history_for_llm, history_messages = await build_full_context(
+            system_prompt, final_formatted_content, history_for_llm, history_messages, role_name, role_config = await build_full_context(
                 bot, config, message, _instance.memory_cutoffs, injected_data
             )
 
