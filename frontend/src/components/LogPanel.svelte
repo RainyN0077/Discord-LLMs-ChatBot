@@ -173,7 +173,7 @@
             <div class="log-limit-note">Showing last {renderedLogLimit} lines ({hiddenLogCount} hidden)</div>
         {/if}
         <div class="log-output-wrapper">
-            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.originalLine + i)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
+            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log (log.originalLine)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
         </div>
     {/if}
 </div>
