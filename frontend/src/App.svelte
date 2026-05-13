@@ -121,15 +121,22 @@
         box-sizing: border-box;
     }
 
+    :global(html) {
+        overflow: hidden;
+    }
+
     :global(body) {
         overflow: hidden;
+        padding-top: 0;
+        padding-left: 0;
+        padding-right: 0;
     }
 
     .app-shell {
         display: flex;
         flex-direction: column;
         height: 100vh;
-        width: 100vw;
+        width: 100%;
         overflow: hidden;
     }
 
@@ -145,6 +152,7 @@
         z-index: 100;
         flex-shrink: 0;
         height: 46px;
+        overflow: hidden;
     }
 
     .header-left {

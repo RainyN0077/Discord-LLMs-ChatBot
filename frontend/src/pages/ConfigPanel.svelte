@@ -1106,6 +1106,8 @@ async function resetFont() {
         align-items: center;
         margin-bottom: 1rem;
         flex-shrink: 0;
+        overflow: hidden;
+        min-width: 0;
     }
 
     .config-header h2 {
@@ -1117,6 +1119,11 @@ async function resetFont() {
         background: linear-gradient(135deg, rgba(31, 139, 214, .1), rgba(24, 138, 81, .08));
         border: 1px solid rgba(15, 23, 42, .08);
         box-shadow: var(--shadow-soft);
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .save-btn {
@@ -1126,6 +1133,7 @@ async function resetFont() {
         font-size: .95rem;
         font-weight: 600;
         border-radius: 10px;
+        flex-shrink: 0;
     }
 
     .save-btn:disabled {
@@ -1471,9 +1479,6 @@ async function resetFont() {
         flex-wrap: wrap;
     }
 
-    @media (max-width: 1280px) {
-    }
-
     @media (max-width: 900px) {
         .config-panel {
             padding: .75rem 1rem;
@@ -1546,11 +1551,6 @@ async function resetFont() {
         .config-header h2 {
             font-size: .85rem;
             padding: .35rem .6rem;
-            flex: 1;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
         }
 
         .save-btn {
