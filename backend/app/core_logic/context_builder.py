@@ -6,7 +6,7 @@ import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
 from ..utils import escape_content, matches_trigger_keywords
-from .knowledge_manager import knowledge_manager
+from .knowledge_manager import get_knowledge_manager
 
 # --- Constants for structured prompts ---
 # Using constants makes the code cleaner, easier to read, and simplifies future modifications.
@@ -236,13 +236,13 @@ def format_user_message_for_llm(
         relevant_user_ids.update(keyword_mentioned_ids)
 
         for user_id in relevant_user_ids:
-            user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
+            user_entries = get_knowledge_manager().get_world_book_entries_for_user(user_id)
             for entry in user_entries:
                 if entry['id'] not in added_entry_ids:
                     all_wb_entries.append(entry)
                     added_entry_ids.add(entry['id'])
 
-        text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+        text_triggered_entries = get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
         for entry in text_triggered_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)

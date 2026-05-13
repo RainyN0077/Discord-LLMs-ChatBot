@@ -16,7 +16,7 @@ from discord.ext import commands
 from .utils import TokenCalculator, split_message, transform_memories_for_prompt, matches_trigger_keywords
 from .usage_tracker import usage_tracker
 from .core_logic.usage_manager import UsageManager
-from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
+from .core_logic.knowledge_manager import get_knowledge_manager
 from .debug_capture_store import add_capture
 from .llm_providers.factory import get_llm_provider
 from .ocr_service import (
@@ -165,7 +165,7 @@ def process_memory_tags(message: discord.Message, text: str, bot_config: Dict[st
             user_name = message.author.name
             
             try:
-                ingest_result = knowledge_manager.ingest_memory_candidate(
+                ingest_result = get_knowledge_manager().ingest_memory_candidate(
                     content=stripped_content,
                     timestamp=timestamp,
                     user_id=user_id,
@@ -325,7 +325,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         return full_response
 
     plugin_manager = PluginManager(config.get("plugins", {}), get_llm_response)
-    knowledge_manager.init_db() # Ensure DB is ready
+    knowledge_mgr = get_knowledge_manager()
     usage_manager = UsageManager(token_calculator)
     auto_message_counts: Dict[int, int] = {}
     repeat_streaks: Dict[int, Dict[str, Any]] = {}
@@ -444,7 +444,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
             recall_max_age_days = max(1, min(3650, int(config.get("auto_memory_recall_max_age_days", 365))))
         except (TypeError, ValueError):
             recall_max_age_days = 365
-        relevant_memories = knowledge_manager.get_relevant_memories(
+        relevant_memories = get_knowledge_manager().get_relevant_memories(
             query_text=message.content or "",
             top_k=recall_top_k,
             char_limit=recall_char_limit,
