@@ -377,6 +377,31 @@ class KnowledgeManager:
 
         return {"status": "staged", "candidate_id": candidate_id, "score": score, "seen_count": seen_count, "distinct_user_count": distinct_users}
 
+    def check_duplicate_memory(self, normalized: str) -> Optional[int]:
+        with self.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
+            row = c.fetchone()
+            if row:
+                return int(row["id"])
+            c.execute(
+                "SELECT promoted_memory_id FROM memory_candidates WHERE normalized_content=? AND promoted=1 AND promoted_memory_id IS NOT NULL LIMIT 1",
+                (normalized,),
+            )
+            row = c.fetchone()
+            if row and row["promoted_memory_id"]:
+                return int(row["promoted_memory_id"])
+        return None
+
+    def check_duplicate_world_book(self, normalized: str) -> Optional[int]:
+        with self.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT id FROM world_book WHERE LOWER(content) = ? LIMIT 1", (normalized,))
+            row = c.fetchone()
+            if row:
+                return int(row["id"])
+        return None
+
     def get_all_memories(self) -> List[Dict[str, Any]]:
         with self.get_conn() as conn:
             c = conn.cursor()
@@ -412,7 +437,7 @@ class KnowledgeManager:
                         rows.append(d)
                         seen.add(int(d["id"]))
                 except sqlite3.Error:
-                    pass
+                    logger.warning("FTS5 query failed for memory recall (query tokens: %s)", list(q_tokens)[:10])
             c.execute(
                 """
                 SELECT m.*, COALESCE(ms.recall_count,0) AS recall_count, 0 AS fts_rank
@@ -629,7 +654,10 @@ class KnowledgeManager:
         return out
 
     def _find_world_book_candidates_via_fts(self, query_tokens: List[str]) -> List[Dict[str, Any]]:
-        match_query = " OR ".join(f'"{t}"' for t in query_tokens)
+        def _fts5_quote(token: str) -> str:
+            safe = token.replace('"', '""')
+            return f'"{safe}"'
+        match_query = " OR ".join(_fts5_quote(t) for t in query_tokens)
         with self.get_conn() as conn:
             c = conn.cursor()
             c.execute(
@@ -662,4 +690,11 @@ class KnowledgeManager:
         return matched
 
 
-knowledge_manager = KnowledgeManager()
+_knowledge_manager: Optional[KnowledgeManager] = None
+
+
+def get_knowledge_manager() -> KnowledgeManager:
+    global _knowledge_manager
+    if _knowledge_manager is None:
+        _knowledge_manager = KnowledgeManager()
+    return _knowledge_manager

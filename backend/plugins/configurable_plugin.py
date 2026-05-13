@@ -4,7 +4,7 @@ import re
 from typing import Dict, Any, Optional, Tuple, List
 
 import discord
-from ..app.utils import _execute_http_request, _format_with_placeholders
+from app.utils import _execute_http_request, _format_with_placeholders
 from .base import BasePlugin
 
 logger = logging.getLogger(__name__)

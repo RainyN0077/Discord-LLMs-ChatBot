@@ -1,4 +1,5 @@
 # backend/plugins/manager.py
+import asyncio
 import inspect
 import logging
 import importlib
@@ -129,6 +130,8 @@ class PluginManager:
                         logger.info(f"Plugin '{plugin.name}' triggered in append mode.")
                         triggered_appends.extend(data_to_append)
 
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.error(f"Error processing message with plugin '{plugin.name}': {e}", exc_info=True)
         
@@ -136,4 +139,3 @@ class PluginManager:
             return 'append', triggered_appends
         
         return None
-

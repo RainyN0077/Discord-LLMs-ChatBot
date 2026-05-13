@@ -1,4 +1,5 @@
 # backend/app/llm_providers/base.py
+import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 import logging
@@ -16,6 +17,9 @@ class LLMProvider(ABC):
         self.model = config.get("model_name")
         self.stream = config.get("stream_response", True)
         self.custom_params = {param["name"]: param["value"] for param in config.get("custom_parameters", [])}
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} model={self.model!r}>"
         
     @abstractmethod
     async def get_response_stream(

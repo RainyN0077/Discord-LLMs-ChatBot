@@ -3,6 +3,7 @@ import openai
 import base64
 import json
 import logging
+import os
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 
 from .base import LLMProvider
@@ -15,6 +16,7 @@ class OpenAIProvider(LLMProvider):
     """
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        os.environ.setdefault("OPENAI_LOG", "warning")
         base_url = config.get("openai_base_url") or self.base_url
         self.client = openai.AsyncOpenAI(api_key=self.api_key, base_url=base_url)
 

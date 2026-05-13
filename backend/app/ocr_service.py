@@ -144,7 +144,7 @@ async def extract_ocr_text(
     image_list = _build_image_list(valid_images)
     try:
         user_prompt = prompt_template.format(image_count=len(valid_images), image_list=image_list)
-    except Exception:
+    except (KeyError, ValueError, TypeError, AttributeError):
         logger.warning("Invalid OCR prompt template detected. Falling back to default template.")
         user_prompt = DEFAULT_OCR_PROMPT_TEMPLATE.format(image_count=len(valid_images), image_list=image_list)
 

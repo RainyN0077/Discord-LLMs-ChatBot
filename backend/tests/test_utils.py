@@ -326,30 +326,42 @@ class TestTokenCalculator:
 
 class TestIsInternalUrl:
     """Tests for SSRF protection in _is_internal_url."""
-    def test_localhost_is_internal(self):
+    @pytest.mark.asyncio
+    async def test_localhost_is_internal(self):
         from app.utils import _is_internal_url
-        assert _is_internal_url("http://localhost:8080/api") is True
+        is_blocked, ips, hostname = await _is_internal_url("http://localhost:8080/api")
+        assert is_blocked is True
 
-    def test_loopback_is_internal(self):
+    @pytest.mark.asyncio
+    async def test_loopback_is_internal(self):
         from app.utils import _is_internal_url
-        assert _is_internal_url("http://127.0.0.1:3000") is True
+        is_blocked, ips, hostname = await _is_internal_url("http://127.0.0.1:3000")
+        assert is_blocked is True
 
-    def test_private_10_is_internal(self):
+    @pytest.mark.asyncio
+    async def test_private_10_is_internal(self):
         from app.utils import _is_internal_url
-        assert _is_internal_url("http://10.0.0.1/api") is True
+        is_blocked, ips, hostname = await _is_internal_url("http://10.0.0.1/api")
+        assert is_blocked is True
 
-    def test_private_192_168_is_internal(self):
+    @pytest.mark.asyncio
+    async def test_private_192_168_is_internal(self):
         from app.utils import _is_internal_url
-        assert _is_internal_url("http://192.168.1.1") is True
+        is_blocked, ips, hostname = await _is_internal_url("http://192.168.1.1")
+        assert is_blocked is True
 
-    def test_public_url_is_not_internal(self):
+    @pytest.mark.asyncio
+    async def test_public_url_is_not_internal(self):
         from app.utils import _is_internal_url
         from unittest.mock import patch
-        with patch("socket.gethostbyname", return_value="93.184.216.34"):
-            result = _is_internal_url("https://example.com")
-            assert result is False
+        with patch("socket.getaddrinfo", return_value=[(None, None, 0, "", ("93.184.216.34", 0))]):
+            is_blocked, ips, hostname = await _is_internal_url("https://example.com")
+            assert is_blocked is False
 
-    def test_invalid_url_is_blocked(self):
+    @pytest.mark.asyncio
+    async def test_invalid_url_is_blocked(self):
         from app.utils import _is_internal_url
-        assert _is_internal_url("") is True
-        assert _is_internal_url("not-a-valid-url") is True
+        is_blocked, ips, hostname = await _is_internal_url("")
+        assert is_blocked is True
+        is_blocked, ips, hostname = await _is_internal_url("not-a-valid-url")
+        assert is_blocked is True

@@ -24,7 +24,7 @@ class UsageTracker:
     def _load_data(self) -> Dict[str, Any]:
         if os.path.exists(self.data_file):
             try:
-                with open(self.data_file, 'r') as f:
+                with open(self.data_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     metadata = data.get("metadata", {})
                     if "channel_users" not in metadata:
@@ -44,8 +44,12 @@ class UsageTracker:
                         }, data.get("daily", {})),
                         "metadata": metadata
                     }
-            except Exception as e:
-                print(f"Error loading usage data: {e}")
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error("Error loading usage data from %s: %s. Backing up corrupt file.", self.data_file, e)
+                try:
+                    os.replace(self.data_file, self.data_file + ".corrupt")
+                except OSError:
+                    pass
         return {
             "daily": defaultdict(lambda: {
                 "requests": 0, 
@@ -74,8 +78,13 @@ class UsageTracker:
                 "daily": dict(self.usage_data["daily"]),
                 "metadata": self.usage_data["metadata"]
             }
-            with open(self.data_file, 'w') as f:
-                json.dump(data_to_save, f, indent=2)
+            tmp_file = self.data_file + ".tmp"
+            await asyncio.to_thread(self._write_json_atomic, tmp_file, data_to_save)
+
+    def _write_json_atomic(self, tmp_file: str, data: dict) -> None:
+        with open(tmp_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_file, self.data_file)
     
     async def record_usage(
         self, 
@@ -224,13 +233,23 @@ class UsageTracker:
                 guild_data["models"][model_key]["output_tokens"] += output_tokens
             
         # 异步保存
-        asyncio.create_task(self._safe_save())
+        self._schedule_save()
 
     async def _safe_save(self):
         try:
             await self.save_data()
         except Exception as e:
             logger.error(f"Failed to save usage data: {e}", exc_info=True)
+
+    def _schedule_save(self) -> None:
+        task = asyncio.create_task(self._safe_save())
+        task.add_done_callback(self._on_save_done)
+
+    def _on_save_done(self, task: asyncio.Task) -> None:
+        try:
+            task.result()
+        except Exception as e:
+            logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
     async def get_statistics(self, period: str = "today", view: str = "user", timezone_str: str = "UTC") -> Dict[str, Any]:
         async with self.lock:

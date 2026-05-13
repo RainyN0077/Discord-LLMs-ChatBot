@@ -10,37 +10,44 @@ from app.config_cache import (
     save_config,
     invalidate_cache,
     DEFAULT_CONFIG,
-    _set_defaults_recursive,
+    _merge_defaults,
 )
 
 
-class TestSetDefaultsRecursive:
+class TestMergeDefaults:
     def test_adds_missing_keys(self):
         config = {}
         default = {"a": 1, "b": 2}
-        _set_defaults_recursive(default, config)
-        assert config == {"a": 1, "b": 2}
+        result = _merge_defaults(default, config)
+        assert result == {"a": 1, "b": 2}
 
     def test_preserves_existing_values(self):
         config = {"a": 100}
         default = {"a": 1, "b": 2}
-        _set_defaults_recursive(default, config)
-        assert config["a"] == 100
-        assert config["b"] == 2
+        result = _merge_defaults(default, config)
+        assert result["a"] == 100
+        assert result["b"] == 2
 
     def test_nested_dict_recursive(self):
         config = {"outer": {"inner1": "keep_me"}}
         default = {"outer": {"inner1": "default1", "inner2": "default2"}}
-        _set_defaults_recursive(default, config)
-        assert config["outer"]["inner1"] == "keep_me"
-        assert config["outer"]["inner2"] == "default2"
+        result = _merge_defaults(default, config)
+        assert result["outer"]["inner1"] == "keep_me"
+        assert result["outer"]["inner2"] == "default2"
 
     def test_nested_default_copies_all(self):
         config = {}
         default = {"a": {"b": {"c": 1}}, "d": 2}
-        _set_defaults_recursive(default, config)
-        assert config["a"]["b"]["c"] == 1
-        assert config["d"] == 2
+        result = _merge_defaults(default, config)
+        assert result["a"]["b"]["c"] == 1
+        assert result["d"] == 2
+
+    def test_original_config_unmodified(self):
+        config = {"a": 100}
+        original = dict(config)
+        default = {"a": 1, "b": 2}
+        _merge_defaults(default, config)
+        assert config == original
 
 
 class TestLoadConfig:

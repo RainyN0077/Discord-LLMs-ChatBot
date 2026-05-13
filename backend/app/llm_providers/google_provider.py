@@ -1,6 +1,7 @@
 # backend/app/llm_providers/google_provider.py
 import json
 import logging
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from google import genai
@@ -18,6 +19,8 @@ class GoogleProvider(LLMProvider):
 
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
+        os.environ.setdefault("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false")
         self.client = genai.Client(api_key=self.api_key)
 
     @staticmethod

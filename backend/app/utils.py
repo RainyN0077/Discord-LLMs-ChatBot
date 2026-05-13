@@ -6,9 +6,10 @@ import asyncio
 import ipaddress
 import socket
 from urllib.parse import urlparse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Callable, Awaitable
 import re
 from datetime import datetime
+from xml.sax.saxutils import escape as _xml_escape
 import pytz # Timezone library
 
 import discord
@@ -18,8 +19,8 @@ class Stub:
     def __init__(self, **kwargs):
         self.__dict__.update(kwargs)
 
-def _async_stub(return_value=None):
-    async def _fn(*args, **kwargs):
+def _async_stub(return_value: Any = None) -> Callable[..., Awaitable[Any]]:
+    async def _fn(*args: Any, **kwargs: Any) -> Any:
         return return_value
     return _fn
 
@@ -311,22 +312,34 @@ async def download_image(url: str, max_size_mb: int = 100) -> bytes | None:
 # --- 插件 HTTP 请求工具 ---
 
 # [SECURITY] Add utility to check for internal/private IPs to prevent SSRF
-def _is_internal_url(url: str) -> bool:
-    """Checks if a URL resolves to a private, local, or reserved IP address."""
+async def _is_internal_url(url: str) -> Tuple[bool, List[str], str]:
+    """Checks if a URL resolves to a private, local, or reserved IP address.
+    Returns (is_blocked, resolved_ips, hostname) to prevent DNS rebinding TOCTOU."""
     try:
-        hostname = urlparse(url).hostname
+        parsed = urlparse(url)
+        hostname = parsed.hostname
         if not hostname:
-            return True # Cannot resolve hostname, block by default
+            return True, [], ""
 
-        ip_str = socket.gethostbyname(hostname)
-        ip = ipaddress.ip_address(ip_str)
-        return ip.is_private or ip.is_loopback or ip.is_reserved
+        try:
+            ipaddress.ip_address(hostname)
+            ips = [hostname]
+        except ValueError:
+            loop = asyncio.get_event_loop()
+            addrinfo = await loop.run_in_executor(None, socket.getaddrinfo, hostname, None)
+            ips = sorted(set(info[4][0] for info in addrinfo))
+
+        for ip_str in ips:
+            ip = ipaddress.ip_address(ip_str)
+            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                return True, ips, hostname
+        return False, ips, hostname
     except (socket.gaierror, ValueError) as e:
         logger.warning(f"Could not resolve or parse IP for URL '{url}': {e}")
-        return True # Block if resolution fails
+        return True, [], ""
     except Exception as e:
         logger.error(f"Unexpected error during URL validation for '{url}': {e}", exc_info=True)
-        return True # Block on any other error
+        return True, [], ""
 
 def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
     if not isinstance(template_str, str): return ''
@@ -353,27 +366,52 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
         logger.warning(f"Plugin '{plugin_name}' has no URL configured.")
         return None
 
-    # [SECURITY] SSRF Protection
     allow_internal = http_conf.get('allow_internal_requests', False)
-    if not allow_internal and _is_internal_url(url):
-        error_msg = f"Error: Request to internal or private IP address is blocked for security reasons. URL: {url}"
-        logger.error(f"Plugin '{plugin_name}' attempted to access a blocked internal URL. {error_msg}")
-        return error_msg
+    resolved_ips: List[str] = []
+    original_hostname = ""
+    if not allow_internal:
+        is_blocked, resolved_ips, original_hostname = await _is_internal_url(url)
+        if is_blocked:
+            error_msg = f"Error: Request to internal or private IP address is blocked for security reasons. URL: {url}"
+            logger.error(f"Plugin '{plugin_name}' attempted to access a blocked internal URL. {error_msg}")
+            return error_msg
+
     headers_str = _format_with_placeholders(http_conf.get('headers', '{}'), message, args)
     body_str = _format_with_placeholders(http_conf.get('body_template', '{}'), message, args)
+
+    MAX_BODY_SIZE = 64 * 1024
+    if len(body_str) > MAX_BODY_SIZE:
+        error_msg = f"Error: Request body exceeds maximum size of {MAX_BODY_SIZE} bytes."
+        logger.error(f"Plugin '{plugin_name}' {error_msg}")
+        return error_msg
+
     try:
-        headers = json.loads(headers_str) if headers_str.strip() else {}
+        headers = await asyncio.to_thread(json.loads, headers_str) if headers_str.strip() else {}
         if body_str.strip() and 'content-type' not in (h.lower() for h in headers):
             headers['Content-Type'] = 'application/json'
+
+        if resolved_ips and original_hostname:
+            parsed = urlparse(url)
+            ip_to_use = resolved_ips[0]
+            if parsed.port:
+                url = parsed._replace(netloc=f"{ip_to_use}:{parsed.port}").geturl()
+            else:
+                url = parsed._replace(netloc=ip_to_use).geturl()
+            headers['Host'] = original_hostname
+
         async with aiohttp.ClientSession(headers=headers) as session:
             request_kwargs = {}
             if method in ['POST', 'PUT', 'PATCH']:
                 try:
-                    request_kwargs['json'] = json.loads(body_str)
+                    request_kwargs['json'] = await asyncio.to_thread(json.loads, body_str)
                 except json.JSONDecodeError:
                     request_kwargs['data'] = body_str
             async with session.request(method, url, **request_kwargs) as response:
+                MAX_RESPONSE_SIZE = 1 * 1024 * 1024
                 response_text = await response.text()
+                if len(response_text) > MAX_RESPONSE_SIZE:
+                    logger.warning(f"Plugin '{plugin_name}' response truncated from {len(response_text)} to {MAX_RESPONSE_SIZE} bytes.")
+                    response_text = response_text[:MAX_RESPONSE_SIZE]
                 if 200 <= response.status < 300:
                     logger.info(f"Plugin '{plugin_name}' HTTP request to {url} successful.")
                     return response_text
@@ -390,12 +428,17 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
         logger.error(f"An unexpected error occurred in plugin '{plugin_name}': {e}", exc_info=True)
         return f"Error: An unexpected error occurred while running the plugin."
 
+def escape_xml(text: str) -> str:
+    return _xml_escape(str(text or ""), {'"': '&quot;', "'": '&apos;'})
+
+
 # --- Memory Transformation ---
 
 def transform_memories_for_prompt(memories: List[Dict[str, Any]], target_timezone_str: str = 'UTC') -> List[str]:
     """
     Transforms raw memory entries from the database into human-readable strings for the LLM prompt.
     It converts the stored UTC timestamp to a target timezone.
+    All content is XML-escaped to prevent prompt injection through memory content.
     """
     transformed_memories = []
     
@@ -412,44 +455,31 @@ def transform_memories_for_prompt(memories: List[Dict[str, Any]], target_timezon
         tag_match = re.search(r'\[memory\s+(.*?)\]', content)
         
         if not tag_match:
-            # If no tag, return content as-is
-            transformed_memories.append(content)
+            transformed_memories.append(escape_xml(content))
             continue
 
         tag_content = tag_match.group(1)
-        # Regex to parse attributes from the tag content
         attributes = dict(re.findall(r'(\w+)="(.*?)"', tag_content))
         
         original_timestamp_str = attributes.get('timestamp')
         user_name = attributes.get('user_name', 'Unknown')
         
         if not original_timestamp_str:
-            # If tag is malformed without a timestamp, strip the tag and return content
             clean_content = content.replace(tag_match.group(0), '').strip()
-            transformed_memories.append(clean_content)
+            transformed_memories.append(escape_xml(clean_content))
             continue
             
         try:
-            # Parse the UTC timestamp from ISO format
             utc_timestamp = datetime.fromisoformat(original_timestamp_str.replace('Z', '+00:00'))
-            
-            # Convert to target timezone
             local_timestamp = utc_timestamp.astimezone(target_tz)
-            
-            # Format for display
             formatted_time = local_timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')
-            
-            # Create the natural language prefix
             nl_prefix = f"[由 {user_name} 在 {formatted_time} 记录]"
-            
-            # Replace the structured tag with the natural language prefix
             final_content = content.replace(tag_match.group(0), nl_prefix).strip()
-            transformed_memories.append(final_content)
+            transformed_memories.append(escape_xml(final_content))
             
         except (ValueError, TypeError) as e:
             logger.error(f"Could not parse or convert timestamp '{original_timestamp_str}': {e}")
-            # Fallback: just strip the tag
             clean_content = content.replace(tag_match.group(0), '').strip()
-            transformed_memories.append(clean_content)
+            transformed_memories.append(escape_xml(clean_content))
 
     return transformed_memories

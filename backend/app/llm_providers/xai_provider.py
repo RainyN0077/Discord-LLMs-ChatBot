@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import os
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from xai_sdk.chat import image as xai_image
@@ -18,6 +19,7 @@ logger = logging.getLogger(__name__)
 class XAIProvider(LLMProvider):
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
         base_url = config.get("grok_base_url") or self.base_url
         self.client = create_xai_async_client(api_key=self.api_key, base_url=base_url)
 

@@ -63,9 +63,13 @@ async def collect_and_download_images(message: discord.Message) -> List[Dict[str
         if replied_images:
             logger.info(f"Found {len(replied_images)} images in replied message from {replied_msg.author}")
 
+    seen_urls: set = set()
     downloaded_images: List[Dict[str, Any]] = []
     for descriptor in image_descriptors:
         url = descriptor["url"]
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
         img_data = await download_image(url)
         if img_data:
             downloaded_images.append({**descriptor, "bytes": img_data})

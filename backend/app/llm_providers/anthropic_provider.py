@@ -3,6 +3,7 @@ import anthropic
 import base64
 import json
 import logging
+import os
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional
 
 from .base import LLMProvider
@@ -15,6 +16,7 @@ class AnthropicProvider(LLMProvider):
     """
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
+        os.environ.setdefault("ANTHROPIC_LOG", "warning")
         base_url = config.get("anthropic_base_url") or self.base_url
         self.client = anthropic.AsyncAnthropic(api_key=self.api_key, base_url=base_url)
         # Anthropic's API requires max_tokens, so we set a default if not provided.

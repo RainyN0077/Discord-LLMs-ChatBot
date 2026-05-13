@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Tuple
 
 import discord
 
@@ -15,7 +15,7 @@ async def build_full_context(
     message: discord.Message,
     memory_cutoffs: Dict[int, Any],
     injected_data: Optional[str] = None,
-) -> Tuple[str, str, List[Dict[str, str]], List[discord.Message]]:
+) -> Tuple[str, str, List[Dict[str, str]], List[discord.Message], Optional[str], Optional[Dict[str, Any]]]:
     role_name, role_config = None, None
     if isinstance(message.author, discord.Member):
         role_name, role_config = get_highest_configured_role(
@@ -41,4 +41,4 @@ async def build_full_context(
         message, bot, config, role_config, injected_data
     )
 
-    return system_prompt, final_formatted_content, history_for_llm, history_messages
+    return system_prompt, final_formatted_content, history_for_llm, history_messages, role_name, role_config

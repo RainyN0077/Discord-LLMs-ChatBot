@@ -154,9 +154,9 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     test_km = KnowledgeManager(db_path=str(test_db_path))
 
     import app.core_logic.knowledge_manager as km_mod
-    monkeypatch.setattr(km_mod, "knowledge_manager", test_km)
+    monkeypatch.setattr(km_mod, "get_knowledge_manager", lambda: test_km)
     import app.routers.memory as mem_mod
-    monkeypatch.setattr(mem_mod, "knowledge_manager", test_km)
+    monkeypatch.setattr(mem_mod, "get_knowledge_manager", lambda: test_km)
 
     from unittest.mock import AsyncMock, MagicMock
     import sys

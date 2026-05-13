@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import discord
 
-from app.core_logic.knowledge_manager import knowledge_manager
+from app.core_logic.knowledge_manager import get_knowledge_manager
 from .base import BasePlugin
 
 logger = logging.getLogger(__name__)
@@ -154,14 +154,16 @@ class MemoryPlugin(BasePlugin):
             return json.dumps({"status": "error", "message": "Missing context."})
 
         try:
+            km = get_knowledge_manager()
             threshold = self._resolve_threshold(config, "memory_dedup_threshold")
             if threshold > 0:
-                all_memories = knowledge_manager.get_all_memories()
-                if self._is_duplicate(content, all_memories, threshold, "content"):
+                normalized = km._normalize(content)
+                existing_id = km.check_duplicate_memory(normalized)
+                if existing_id:
                     return json.dumps({"status": "duplicate_found", "message": "A similar memory entry already exists."})
 
             timestamp = datetime.now(timezone.utc).isoformat()
-            ingest_result = knowledge_manager.ingest_memory_candidate(
+            ingest_result = km.ingest_memory_candidate(
                 content=content,
                 timestamp=timestamp,
                 user_id=str(message.author.id),
@@ -240,10 +242,12 @@ class MemoryPlugin(BasePlugin):
             return json.dumps({"status": "error", "message": "Missing context."})
 
         try:
+            km = get_knowledge_manager()
             threshold = self._resolve_threshold(config, "world_book_dedup_threshold")
             if threshold > 0:
-                all_entries = knowledge_manager.get_all_world_book_entries()
-                if self._is_duplicate(content, all_entries, threshold, "content"):
+                normalized = self._normalize_for_compare(content).lower()
+                existing_id = km.check_duplicate_world_book(normalized)
+                if existing_id:
                     return json.dumps({"status": "duplicate_found", "message": "A similar world book entry already exists."})
 
             linked_user_id = None
@@ -288,7 +292,7 @@ class MemoryPlugin(BasePlugin):
                 else:
                     user_search_log = f"Could not find a user matching '{subject_of_knowledge}'."
 
-            entry_id = knowledge_manager.add_world_book_entry(
+            entry_id = km.add_world_book_entry(
                 keywords=keywords,
                 content=content,
                 linked_user_id=linked_user_id,

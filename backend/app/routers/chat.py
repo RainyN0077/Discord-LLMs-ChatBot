@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import binascii
 import logging
 from typing import Any, Dict, List, Optional
 from pathlib import Path
@@ -60,7 +61,7 @@ def _decode_direct_chat_attachments(attachments) -> List[Dict[str, Any]]:
             raw_base64 = raw_base64.split(",", 1)[1]
         try:
             data = base64.b64decode(raw_base64, validate=True)
-        except Exception:
+        except (binascii.Error, ValueError, TypeError):
             raise HTTPException(status_code=400, detail=f"Attachment '{item.name}' is not valid base64 data.")
 
         size = len(data)

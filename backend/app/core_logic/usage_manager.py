@@ -1,9 +1,10 @@
 # backend/app/core_logic/usage_manager.py
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Set
 
 import discord
 
@@ -18,8 +19,15 @@ class UsageManager:
     """
     def __init__(self, token_calculator: TokenCalculator):
         self._usage_tracker: Dict[int, Dict[str, Any]] = {}
-        self._user_locks = defaultdict(asyncio.Lock)
+        self._user_locks: Dict[int, asyncio.Lock] = {}
         self._token_calculator = token_calculator
+
+    def _get_lock(self, user_id: int) -> asyncio.Lock:
+        lock = self._user_locks.get(user_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._user_locks[user_id] = lock
+        return lock
 
     def _get_initial_usage_data(self) -> Dict[str, Any]:
         """返回一个初始化的用户用量字典。"""
@@ -44,7 +52,7 @@ class UsageManager:
             if now - last_timestamp > timedelta(minutes=refresh_minutes):
                 return True
         
-        # 检查Token数刷新周期 (旧称char_limit)
+        # 检查Token数刷新周期
         if role_config.get('enable_char_limit'):
             refresh_minutes = role_config.get('char_refresh_minutes', 60)
             if now - last_timestamp > timedelta(minutes=refresh_minutes):
@@ -57,7 +65,7 @@ class UsageManager:
         获取用户的当前用量数据。如果需要，会自动重置配额。
         这是一个原子操作。
         """
-        async with self._user_locks[user_id]:
+        async with self._get_lock(user_id):
             current_usage = self._usage_tracker.get(user_id)
             
             if not current_usage:
@@ -82,11 +90,10 @@ class UsageManager:
             if (current_usage.get('message_count', 0) + 1) > limit:
                 return f"Sorry, your message quota ({limit} messages) would be exceeded. Please try again later."
 
-        # 检查Token数限制 (旧称char_limit)
+        # 检查Token数限制
         if role_config.get('enable_char_limit'):
-            token_limit = role_config.get('char_limit', 0)
-            # 预算一些输出token，以防止请求因微小超出而被拒绝
-            output_budget = role_config.get('char_output_budget', 500)
+            token_limit = role_config.get('token_limit') or role_config.get('char_limit', 0)
+            output_budget = role_config.get('token_output_budget') or role_config.get('char_output_budget', 500)
             
             # 兼容旧的'chars'命名
             tokens_used = current_usage.get('total_tokens') or current_usage.get('chars', 0)
@@ -101,7 +108,7 @@ class UsageManager:
         """
         在LLM响应后，精确更新用户的用量。这是一个原子操作。
         """
-        async with self._user_locks[user_id]:
+        async with self._get_lock(user_id):
             usage = self._usage_tracker.get(user_id)
             if not usage:
                  # 如果用量数据不存在，可能是因为机器人重启了。创建一个新的。
