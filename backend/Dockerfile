@@ -7,8 +7,7 @@ WORKDIR /app
 # 复制 requirements.txt 并安装依赖
 # 这一步保持不变
 COPY backend/requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # --- 【【【核心修改区】】】 ---
 
