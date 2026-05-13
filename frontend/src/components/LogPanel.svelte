@@ -339,6 +339,10 @@
         word-break: break-all;
     }
 
+    .log-output-wrapper pre code {
+        display: block;
+    }
+
     .timestamp {
         color: #9e9e9e;
         margin-right: 1em;
