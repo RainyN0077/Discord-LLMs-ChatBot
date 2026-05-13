@@ -6,24 +6,21 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .bot import run_bot
+from .bot_manager import BotManager
 from .utils import setup_logging
 from . import state
 
 logger = logging.getLogger(__name__)
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    loop = asyncio.get_event_loop()
-    state.bot_task = loop.create_task(run_bot(state.MEMORY_CUTOFFS))
+    state.bot_manager = BotManager()
+    await state.bot_manager.load_all()
     yield
-    if state.bot_task and not state.bot_task.done():
-        state.bot_task.cancel()
-        try:
-            await state.bot_task
-        except asyncio.CancelledError:
-            print("Bot task successfully cancelled.")
+    await state.bot_manager.shutdown()
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -45,6 +42,7 @@ from .routers.usage import router as usage_router
 from .routers.plugins import router as plugins_router
 from .routers.models_test import router as models_test_router
 from .routers.logs import router as logs_router
+from .routers.bots import router as bots_router
 
 app.include_router(config_router)
 app.include_router(chat_router)
@@ -54,3 +52,4 @@ app.include_router(usage_router)
 app.include_router(plugins_router)
 app.include_router(models_test_router)
 app.include_router(logs_router)
+app.include_router(bots_router)

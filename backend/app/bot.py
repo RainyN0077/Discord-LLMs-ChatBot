@@ -671,3 +671,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         _release_bot_process_lock(bot_process_lock)
 
 
+async def run_bot_instance(instance) -> None:
+    """Bridge function: delegates to the BotInstance's _run_discord() method."""
+    await instance._run_discord()
+
+

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -14,9 +13,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_first_bot_config():
+    mgr = state.bot_manager
+    if mgr and mgr._instances:
+        first = next(iter(mgr._instances.values()))
+        return first.config
+    return load_config()
+
+
 @router.get("/api/config")
 async def get_config_endpoint():
-    config_data = load_config()
+    config_data = _get_first_bot_config()
     try:
         Config.parse_obj(config_data)
         logger.info("Config validation successful")
@@ -29,24 +36,38 @@ async def get_config_endpoint():
 
 @router.post("/api/config", dependencies=[Depends(get_api_key)])
 async def update_config_endpoint(config_data: Config):
-    from ..bot import run_bot
-    try:
-        config_dict = config_data.dict(by_alias=True)
-        config_dict.pop("_validation_warning", None)
-        save_config(config_dict)
+    mgr = state.bot_manager
+    if not mgr:
+        try:
+            config_dict = config_data.model_dump(by_alias=True)
+            config_dict.pop("_validation_warning", None)
+            save_config(config_dict)
+            return {"message": "Configuration saved (no bot manager running)."}
+        except Exception as e:
+            logger.error(f"Failed to save config: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An internal error occurred while saving the configuration.")
 
-        if state.bot_task and not state.bot_task.done():
-            state.bot_task.cancel()
-            try:
-                await state.bot_task
-            except asyncio.CancelledError:
-                pass
+    config_dict = config_data.model_dump(by_alias=True)
+    config_dict.pop("_validation_warning", None)
+    bot_id = config_dict.get("bot_id") or "default"
 
-        loop = asyncio.get_event_loop()
-        state.bot_task = loop.create_task(run_bot(state.MEMORY_CUTOFFS))
-
-        logger.info("Configuration updated and bot restarted successfully")
-        return {"message": "Configuration updated and bot restarted."}
-    except Exception as e:
-        logger.error(f"Failed to update configuration: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="An internal error occurred while updating the configuration.")
+    if bot_id in mgr._instances:
+        instance = mgr._instances[bot_id]
+        try:
+            merged = {**instance.config, **config_dict}
+            instance.save_config(merged)
+            instance.load_config()
+            if instance.config.get("enabled", True):
+                await mgr.restart(bot_id)
+            logger.info("Configuration updated and bot restarted successfully")
+            return {"message": "Configuration updated and bot restarted.", "bot_id": bot_id}
+        except Exception as e:
+            logger.error(f"Failed to update configuration: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An internal error occurred while updating the configuration.")
+    else:
+        try:
+            save_config(config_dict)
+            return {"message": "Configuration saved (bot not yet in manager)."}
+        except Exception as e:
+            logger.error(f"Failed to save configuration: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail="An internal error occurred while saving the configuration.")

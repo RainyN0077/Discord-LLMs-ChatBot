@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from pathlib import Path
 
 from pydantic import BaseModel, Field, ConfigDict
@@ -73,7 +73,31 @@ class ScopedPrompts(BaseModel):
     channels: Dict[str, ScopedPromptItem] = Field(default_factory=dict)
 
 
+class BotInstanceStatus(BaseModel):
+    bot_id: str
+    bot_name: str
+    platform: str
+    enabled: bool
+    status: str = "stopped"
+    uptime_seconds: Optional[float] = None
+
+
+class CreateBotRequest(BaseModel):
+    bot_id: str = Field(..., pattern=r'^[a-z0-9_-]+$')
+    bot_name: str = "Unnamed Bot"
+    platform: Literal["discord", "qq"] = "discord"
+    enabled: bool = True
+    discord_token: str = ""
+    llm_provider: str = "openai"
+    api_key: str = ""
+    model_name: str = "gpt-4o"
+
+
 class Config(BaseModel):
+    bot_id: str = Field(default="", pattern=r'^[a-z0-9_-]*$')
+    bot_name: str = "Unnamed Bot"
+    platform: Literal["discord", "qq"] = "discord"
+    enabled: bool = True
     discord_token: str
     llm_provider: str
     api_key: str

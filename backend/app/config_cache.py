@@ -12,11 +12,14 @@ logger = logging.getLogger(__name__)
 DATA_DIR = Path.cwd() / "data"
 DATA_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = DATA_DIR / "config.json"
+BOTS_DIR = DATA_DIR / "bots"
+BOTS_DIR.mkdir(exist_ok=True)
 
 _cache: Optional[Dict[str, Any]] = None
 _cache_mtime: float = 0.0
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    'bot_id': '', 'bot_name': 'Unnamed Bot', 'platform': 'discord', 'enabled': True,
     'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
     'openai_base_url': None, 'anthropic_base_url': None, 'grok_base_url': None,
     'model_name': 'gpt-4o',
@@ -124,3 +127,19 @@ def invalidate_cache() -> None:
     global _cache, _cache_mtime
     _cache = None
     _cache_mtime = 0.0
+
+
+def get_bot_dir(bot_id: str) -> Path:
+    return BOTS_DIR / bot_id
+
+
+def get_bot_config_path(bot_id: str) -> Path:
+    return get_bot_dir(bot_id) / "config.json"
+
+
+def get_bot_knowledge_path(bot_id: str) -> Path:
+    return get_bot_dir(bot_id) / "knowledge.sqlite"
+
+
+def get_bot_usage_path(bot_id: str) -> Path:
+    return get_bot_dir(bot_id) / "usage_data.json"

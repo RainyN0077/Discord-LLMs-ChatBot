@@ -318,3 +318,54 @@ export async function savePricingConfig(pricingData) {
         body: JSON.stringify(pricingData),
     });
 }
+
+// --- Bot Manager API ---
+export async function fetchBots() {
+    return apiFetch(`${BASE_URL}/bots`);
+}
+
+export async function createBot(config) {
+    return apiFetch(`${BASE_URL}/bots`, {
+        method: 'POST',
+        body: JSON.stringify(config),
+    });
+}
+
+export async function deleteBot(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function startBot(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/start`, {
+        method: 'POST',
+    });
+}
+
+export async function stopBot(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/stop`, {
+        method: 'POST',
+    });
+}
+
+export async function restartBot(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/restart`, {
+        method: 'POST',
+    });
+}
+
+export async function fetchBotConfig(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/config`);
+}
+
+export async function updateBotConfig(botId, config) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/config`, {
+        method: 'PUT',
+        body: JSON.stringify(config),
+    });
+}
+
+export async function fetchBotLogs(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/logs`);
+}

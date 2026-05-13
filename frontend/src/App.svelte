@@ -7,6 +7,7 @@
     import ControlPanel from './pages/ControlPanel.svelte';
     import DirectChat from './pages/DirectChat.svelte';
     import PersonaHub from './pages/PersonaHub.svelte';
+    import BotManager from './pages/BotManager.svelte';
 
     let activePage = 'panel';
     let theme = 'light';
@@ -73,6 +74,9 @@
     <button class:active={activePage === 'persona'} on:click={() => activePage = 'persona'}>
         {$t('appNav.personaHub')}
     </button>
+    <button class:active={activePage === 'bots'} on:click={() => activePage = 'bots'}>
+        Bots
+    </button>
 </div>
 
 <div class="lang-switcher">
@@ -90,6 +94,8 @@
     <ControlPanel {applyFont} />
 {:else if activePage === 'chat'}
     <DirectChat />
+{:else if activePage === 'bots'}
+    <BotManager />
 {:else}
     <PersonaHub />
 {/if}
