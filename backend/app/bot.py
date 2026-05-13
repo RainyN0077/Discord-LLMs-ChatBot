@@ -13,21 +13,19 @@ from typing import Any, Dict, List, Optional, TextIO, Tuple, AsyncGenerator
 import discord
 from discord.ext import commands
 
-from .utils import TokenCalculator, download_image, split_message, transform_memories_for_prompt, matches_trigger_keywords
+from .utils import TokenCalculator, split_message, transform_memories_for_prompt, matches_trigger_keywords
 from .usage_tracker import usage_tracker
-from .core_logic.persona_manager import determine_bot_persona, build_system_prompt, get_highest_configured_role
-from .core_logic.context_builder import build_context_history, format_user_message_for_llm
 from .core_logic.usage_manager import UsageManager
 from .core_logic.knowledge_manager import knowledge_manager # Import the singleton instance
 from .debug_capture_store import add_capture
 from .llm_providers.factory import get_llm_provider
 from .ocr_service import (
-    extract_ocr_text,
-    get_ocr_timeout_seconds,
-    has_ocr_model_config,
     is_multimodal_llm,
 )
 from plugins.manager import PluginManager
+from .handlers.automation import track_auto_interject, track_repeat_parrot, reset_channel_automation_state
+from .handlers.image_processor import collect_and_download_images, process_ocr_for_images, collect_image_descriptors
+from .handlers.context_assembler import build_full_context
 
 logger = logging.getLogger(__name__)
 
@@ -145,62 +143,6 @@ def _release_bot_process_lock(handle: Optional[TextIO]) -> None:
 
 def load_bot_config():
     return load_config()
-
-def collect_image_descriptors(msg: discord.Message, source_label: str) -> List[Dict[str, str]]:
-    """
-    Collect all image-like content in a message with enough metadata to either
-    send it directly to a multimodal LLM or route it through OCR first.
-    """
-    descriptors: List[Dict[str, str]] = []
-
-    def add_descriptor(url: Optional[str], kind: str) -> None:
-        if not url:
-            return
-        descriptors.append(
-            {
-                "url": str(url),
-                "source": source_label,
-                "label": f"{source_label} / {kind}",
-            }
-        )
-
-    for attachment in msg.attachments:
-        if attachment.content_type and attachment.content_type.startswith('image/'):
-            add_descriptor(attachment.url, "attachment")
-    
-    for embed in msg.embeds:
-        if embed.image and embed.image.url:
-            add_descriptor(embed.image.url, "embed-image")
-        if embed.thumbnail and embed.thumbnail.url:
-            add_descriptor(embed.thumbnail.url, "embed-thumbnail")
-    
-    for sticker in msg.stickers:
-        add_descriptor(str(sticker.url), "sticker")
-
-    emoji_matches = re.finditer(r'<a?:\w+:\d+>', msg.content)
-    for match in emoji_matches:
-        try:
-            emoji = discord.PartialEmoji.from_str(match.group(0))
-            if emoji.url:
-                add_descriptor(str(emoji.url), "custom-emoji")
-        except Exception as e:
-            logger.warning(f"Could not parse emoji from string '{match.group(0)}': {e}")
-
-    deduped_descriptors: List[Dict[str, str]] = []
-    seen_urls = set()
-    for item in descriptors:
-        url = item["url"]
-        if url in seen_urls:
-            continue
-        seen_urls.add(url)
-        deduped_descriptors.append(item)
-    return deduped_descriptors
-
-
-def build_ocr_prompt_block(ocr_text: str) -> str:
-    return f"[Image OCR Context]\n<ocr_output>\n{ocr_text}\n</ocr_output>"
-
-
 
 def process_memory_tags(message: discord.Message, text: str, bot_config: Dict[str, Any]) -> str:
     """
@@ -389,88 +331,13 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     repeat_streaks: Dict[int, Dict[str, Any]] = {}
 
     def _reset_channel_automation_state(channel_id: int) -> None:
-        auto_message_counts[channel_id] = 0
-        repeat_streaks.pop(channel_id, None)
+        reset_channel_automation_state(channel_id, auto_message_counts, repeat_streaks)
 
-    def _track_auto_interject(message: discord.Message, bot_config: Dict[str, Any]) -> bool:
-        if not bot_config.get("auto_interject_enabled", False):
-            return False
+    def _track_auto_interject_call(message: discord.Message, bot_config: Dict[str, Any]) -> bool:
+        return track_auto_interject(message, bot_config, auto_message_counts)
 
-        try:
-            interval = max(1, int(bot_config.get("auto_interject_interval", 20)))
-            min_length = max(0, int(bot_config.get("auto_interject_min_length", 0)))
-        except (TypeError, ValueError):
-            interval = 20
-            min_length = 0
-
-        content = (message.content or "").strip()
-        if len(content) < min_length:
-            return False
-
-        channel_id = message.channel.id
-        auto_message_counts[channel_id] = auto_message_counts.get(channel_id, 0) + 1
-        return auto_message_counts[channel_id] >= interval
-
-    def _normalize_repeat_content(message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, str]]:
-        raw_content = message.content or ""
-        trim_whitespace = bool(bot_config.get("repeat_parrot_trim_whitespace", True))
-        case_sensitive = bool(bot_config.get("repeat_parrot_case_sensitive", False))
-
-        try:
-            min_length = max(0, int(bot_config.get("repeat_parrot_min_length", 2)))
-        except (TypeError, ValueError):
-            min_length = 2
-
-        comparable_content = raw_content.strip() if trim_whitespace else raw_content
-        if len(comparable_content) < min_length:
-            return None
-
-        normalized = comparable_content if case_sensitive else comparable_content.lower()
-        if not normalized:
-            return None
-
-        return comparable_content, normalized
-
-    def _track_repeat_parrot(message: discord.Message, bot_config: Dict[str, Any]) -> Optional[str]:
-        if not bot_config.get("repeat_parrot_enabled", False):
-            return None
-
-        normalized_content = _normalize_repeat_content(message, bot_config)
-        channel_id = message.channel.id
-        if not normalized_content:
-            repeat_streaks.pop(channel_id, None)
-            return None
-
-        display_content, comparable_content = normalized_content
-        previous_state = repeat_streaks.get(channel_id)
-
-        if previous_state and previous_state.get("normalized") == comparable_content:
-            previous_state["count"] += 1
-            previous_state["user_ids"].add(str(message.author.id))
-            state = previous_state
-        else:
-            state = {
-                "normalized": comparable_content,
-                "content": display_content,
-                "count": 1,
-                "user_ids": {str(message.author.id)},
-                "parroted": False,
-            }
-            repeat_streaks[channel_id] = state
-
-        try:
-            threshold = max(2, int(bot_config.get("repeat_parrot_threshold", 3)))
-        except (TypeError, ValueError):
-            threshold = 3
-
-        require_multiple_users = bool(bot_config.get("repeat_parrot_require_multiple_users", True))
-        has_required_users = len(state["user_ids"]) >= 2 if require_multiple_users else True
-
-        if not state["parroted"] and state["count"] >= threshold and has_required_users:
-            state["parroted"] = True
-            return state["content"]
-
-        return None
+    def _track_repeat_parrot_call(message: discord.Message, bot_config: Dict[str, Any]) -> Optional[str]:
+        return track_repeat_parrot(message, bot_config, repeat_streaks)
 
     @bot.event
     async def on_ready():
@@ -483,8 +350,8 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
         # Load config at the top of the handler so every downstream step uses fresh values.
         config = load_bot_config()
-        auto_interject_triggered = _track_auto_interject(message, config)
-        repeat_parrot_content = _track_repeat_parrot(message, config)
+        auto_interject_triggered = _track_auto_interject_call(message, config)
+        repeat_parrot_content = _track_repeat_parrot_call(message, config)
         
                 # Trigger detection
         trigger_keywords = config.get("trigger_keywords", [])
@@ -554,97 +421,15 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
         
         logger.info(f"[instance={INSTANCE_ID}] Acquired lock for triggering message {message.id}. Processing...")
         
-        # Collect image inputs from the current message and any replied message.
-        image_descriptors = collect_image_descriptors(message, "Current message")
-        if message.reference and isinstance(message.reference.resolved, discord.Message):
-            replied_msg = message.reference.resolved
-            replied_images = collect_image_descriptors(replied_msg, f"Replied message from {replied_msg.author}")
-            image_descriptors.extend(replied_images)
-            if replied_images:
-                logger.info(f"[instance={INSTANCE_ID}] Found {len(replied_images)} images in replied message from {replied_msg.author}")
-        downloaded_images: List[Dict[str, Any]] = []
-        for descriptor in image_descriptors:
-            url = descriptor["url"]
-            img_data = await download_image(url)
-            if img_data:
-                downloaded_images.append({**descriptor, "bytes": img_data})
-                logger.info(f"[instance={INSTANCE_ID}] Successfully downloaded image from {url}")
+        downloaded_images = await collect_and_download_images(message)
         llm_images = [item["bytes"] for item in downloaded_images]
         
-        # Core prompt assembly: context, persona, and final user payload.
-        role_name, role_config = (None, None); 
-        if isinstance(message.author, discord.Member):
-            role_name, role_config = get_highest_configured_role(message.author, config.get("role_based_config", {})) or (None, None)
+        system_prompt, final_formatted_content, history_for_llm, history_messages = await build_full_context(
+            bot, config, message, memory_cutoffs, injected_data
+        )
         
-        cutoff_timestamp = memory_cutoffs.get(message.channel.id)
-        history_messages, history_for_llm = await build_context_history(bot, config, message, cutoff_timestamp)
-        specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(config, str(message.channel.id), str(message.guild.id) if message.guild else None, role_name, role_config)
-        system_prompt = await build_system_prompt(bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log)
-        final_formatted_content = format_user_message_for_llm(message, bot, config, role_config, injected_data)
-
         if downloaded_images and not is_multimodal_llm(config):
-            if has_ocr_model_config(config):
-                timeout_seconds = get_ocr_timeout_seconds(config)
-                try:
-                    extraction_task = extract_ocr_text(downloaded_images, config)
-                    if timeout_seconds is None:
-                        ocr_text, ocr_usage = await extraction_task
-                    else:
-                        ocr_text, ocr_usage = await asyncio.wait_for(extraction_task, timeout=timeout_seconds)
-                    if ocr_text:
-                        final_formatted_content = f"{final_formatted_content}\n\n{build_ocr_prompt_block(ocr_text)}"
-                        logger.info(
-                            "[instance=%s] OCR extracted text for %s images using %s/%s.",
-                            INSTANCE_ID,
-                            len(downloaded_images),
-                            config.get("ocr_provider", ""),
-                            config.get("ocr_model_name", ""),
-                        )
-                        if ocr_usage:
-                            logger.info(
-                                "[instance=%s] OCR usage data: input=%s output=%s",
-                                INSTANCE_ID,
-                                ocr_usage.get("input_tokens", 0),
-                                ocr_usage.get("output_tokens", 0),
-                            )
-                    else:
-                        logger.warning(
-                            "[instance=%s] OCR returned empty output for %s images. Falling back to image note only.",
-                            INSTANCE_ID,
-                            len(downloaded_images),
-                        )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        "[instance=%s] OCR preprocessing timed out after %s seconds for message %s.",
-                        INSTANCE_ID,
-                        timeout_seconds,
-                        message.id,
-                    )
-                    final_formatted_content = (
-                        f"{final_formatted_content}\n\n"
-                        f"{build_ocr_prompt_block('OCR解析超时，你没有成功获取到图片内容')}"
-                    )
-                except Exception as ocr_error:
-                    logger.error(
-                        "[instance=%s] OCR preprocessing failed for message %s: %s",
-                        INSTANCE_ID,
-                        message.id,
-                        ocr_error,
-                        exc_info=True,
-                    )
-                    final_formatted_content = (
-                        f"{final_formatted_content}\n\n"
-                        f"{build_ocr_prompt_block('OCR preprocessing failed. Images were attached but could not be transcribed.')}"
-                    )
-            else:
-                logger.warning(
-                    "[instance=%s] Main model is text-only but OCR is not configured. Images will not be transcribed.",
-                    INSTANCE_ID,
-                )
-                final_formatted_content = (
-                    f"{final_formatted_content}\n\n"
-                    f"{build_ocr_prompt_block('Images were attached, but OCR is not configured for the current text-only LLM.')}"
-                )
+            final_formatted_content = await process_ocr_for_images(downloaded_images, config, final_formatted_content)
         
         # --- [NEW] Memory Retrieval and Injection ---
         try:
