@@ -170,7 +170,8 @@ class TokenCalculator:
             elif provider == "google":
                 return max(1, int(len(full_text) / 3.5))
             else:
-                return len(full_text)
+                encoding = tiktoken.get_encoding("cl100k_base")
+                return len(encoding.encode(full_text))
                 
         except Exception as e:
             logger.warning(f"Token calculation for messages failed for provider {provider}: {e}. Falling back to len().")
@@ -182,9 +183,16 @@ class TokenCalculator:
         if not text: return 0
         try:
             if provider in {"openai", "grok"}: return len(self._get_openai_tokenizer(model).encode(text))
-            elif provider == "anthropic" and self._anthropic_client: return self._anthropic_client.count_tokens(text)
-            elif provider == "google": return max(1, int(len(text) / 3.5))
-            else: return len(text)
+            elif provider == "anthropic" and self._anthropic_client:
+                return self._anthropic_client.count_tokens(text)
+            elif provider == "google":
+                return max(1, int(len(text) / 3.5))
+            elif provider == "anthropic":
+                encoding = tiktoken.get_encoding("cl100k_base")
+                return len(encoding.encode(text))
+            else:
+                encoding = tiktoken.get_encoding("cl100k_base")
+                return len(encoding.encode(text))
         except Exception as e:
             logger.warning(f"Token calculation failed for provider {provider}: {e}. Falling back to len().")
             return len(text)
