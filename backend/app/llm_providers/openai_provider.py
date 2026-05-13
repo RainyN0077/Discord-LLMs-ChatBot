@@ -65,9 +65,7 @@ class OpenAIProvider(LLMProvider):
             if self.stream:
                 full_response = ""
                 tool_calls = []
-                full_response = ""
-                tool_calls = []
-                usage = None # Initialize usage
+                usage = None
                 
                 async for chunk in response:
                     if hasattr(chunk, 'usage') and chunk.usage:
