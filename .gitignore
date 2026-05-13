@@ -17,6 +17,15 @@ data/
 frontend/.env*
 .env
 
+# Test config files (may contain real API keys)
+test-configs/
+
+# Redis persistence data
+redis_data/
+
+# Configuration backup files
+*.backup
+
 # Local development runtime files
 .local-run/
 
