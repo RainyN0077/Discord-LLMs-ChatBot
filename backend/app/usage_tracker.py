@@ -1,11 +1,14 @@
 # backend/app/usage_tracker.py
 import json
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import asyncio
 from collections import defaultdict
 import pytz
+
+logger = logging.getLogger(__name__)
 
 class UsageTracker:
     def __init__(self, data_file="data/usage_data.json"):
@@ -221,7 +224,13 @@ class UsageTracker:
                 guild_data["models"][model_key]["output_tokens"] += output_tokens
             
         # 异步保存
-        asyncio.create_task(self.save_data())
+        asyncio.create_task(self._safe_save())
+
+    async def _safe_save(self):
+        try:
+            await self.save_data()
+        except Exception as e:
+            logger.error(f"Failed to save usage data: {e}", exc_info=True)
     
     async def get_statistics(self, period: str = "today", view: str = "user", timezone_str: str = "UTC") -> Dict[str, Any]:
         async with self.lock:
