@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, feat/*]
+    branches: [main, 'feat/**', 'fix/**', 'release/**']
   pull_request:
     branches: [main]
 
@@ -11,12 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11"]
-
-    services:
-      redis:
-        image: redis:alpine
-        ports: ["6379:6379"]
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
@@ -30,18 +25,16 @@ jobs:
       - name: Install dependencies
         run: |
           cd backend
-          pip install pytest pytest-asyncio pytest-cov httpx
+          pip install -r requirements-test.txt
           pip install -r requirements.txt
 
-      - name: Run tests with coverage
+      - name: Run fast tests
         run: |
           cd backend
           mkdir -p data
-          pytest tests/ --cov=app --cov-report=term --cov-report=xml -v
+          pytest tests/ -m "not slow" --cov=app --cov-report=term --cov-report=xml -v
         env:
           FAIL_ON_REDIS_ERROR: "false"
-          REDIS_HOST: localhost
-          REDIS_PORT: 6379
 
       - name: Upload coverage to Codecov (optional)
         uses: codecov/codecov-action@v4

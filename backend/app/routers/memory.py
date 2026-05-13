@@ -50,7 +50,7 @@ async def add_memory_item(item: MemoryItem):
 
         user_id = item.user_id or "manual_user"
         user_name = item.user_name or "WebUI"
-        source = item.source or "手动添加"
+        source = item.source or "manual_add"
 
         item_id = knowledge_manager.add_memory(
             content=item.content,
@@ -130,6 +130,8 @@ async def add_worldbook_item(item: WorldBookItem):
             linked_user_id=item.linked_user_id,
         )
         return {**item.dict(), "id": item_id}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to add world book item: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -148,6 +150,8 @@ async def update_worldbook_item(item_id: int, item: WorldBookItem):
         if not success:
             raise HTTPException(status_code=404, detail="World book item not found")
         return {**item.dict(), "id": item_id}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update world book item: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

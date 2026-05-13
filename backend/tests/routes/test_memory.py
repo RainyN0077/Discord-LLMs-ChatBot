@@ -98,7 +98,7 @@ class TestWorldBookRoutes:
     async def test_update_worldbook_not_found(self, app_client, auth_headers):
         payload = {"keywords": "test", "content": "test", "enabled": True}
         response = await app_client.put("/api/worldbook/99999", json=payload, headers=auth_headers)
-        assert response.status_code == 500
+        assert response.status_code == 404
 
     async def test_update_worldbook_success(self, app_client, auth_headers):
         r = await app_client.post("/api/worldbook", json={"keywords": "old", "content": "Old content"}, headers=auth_headers)

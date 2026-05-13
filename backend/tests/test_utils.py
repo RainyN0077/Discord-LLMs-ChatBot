@@ -1,4 +1,6 @@
 import pytest
+
+pytestmark = [pytest.mark.unit]
 from app.utils import (
     Stub,
     _async_stub,
@@ -11,7 +13,6 @@ from app.utils import (
     matches_trigger_keywords,
     TokenCalculator,
 )
-
 
 class TestStub:
     def test_attribute_assignment(self):
@@ -109,10 +110,10 @@ class TestJsonSafe:
         assert isinstance(result, str)
 
     def test_non_ascii_keys(self):
-        data = {"键": "值"}
+        data = {"\u952e": "\u503c"}
         result = _json_safe(data)
-        assert "键" in result
-        assert result["键"] == "值"
+        assert "\u952e" in result
+        assert result["\u952e"] == "\u503c"
 
 
 class TestSafeStrList:
@@ -138,7 +139,7 @@ class TestSafeDictList:
     def test_none_returns_empty(self):
         assert _safe_dict_list(None) == []
 
-    def test_string_returns_wrapped(self):
+    def test_list_of_scalars_returns_wrapped_dicts(self):
         result = _safe_dict_list([1, 2, 3])
         assert result == [{"_value": 1}, {"_value": 2}, {"_value": 3}]
 
@@ -257,6 +258,7 @@ class TestMatchesTriggerKeywords:
         caplog.set_level(logging.WARNING)
         result = matches_trigger_keywords("hello", ["[invalid"], match_mode="regex")
         assert result is False
+        assert len(caplog.records) >= 1
 
     def test_default_mode_is_contains(self):
         assert matches_trigger_keywords("test hello world", ["hello"]) is True
@@ -320,3 +322,34 @@ class TestTokenCalculator:
         result = self.calc.get_token_count("Hello world", "anthropic", "claude-3-haiku")
         assert isinstance(result, int)
         assert result > 0
+
+
+class TestIsInternalUrl:
+    """Tests for SSRF protection in _is_internal_url."""
+    def test_localhost_is_internal(self):
+        from app.utils import _is_internal_url
+        assert _is_internal_url("http://localhost:8080/api") is True
+
+    def test_loopback_is_internal(self):
+        from app.utils import _is_internal_url
+        assert _is_internal_url("http://127.0.0.1:3000") is True
+
+    def test_private_10_is_internal(self):
+        from app.utils import _is_internal_url
+        assert _is_internal_url("http://10.0.0.1/api") is True
+
+    def test_private_192_168_is_internal(self):
+        from app.utils import _is_internal_url
+        assert _is_internal_url("http://192.168.1.1") is True
+
+    def test_public_url_is_not_internal(self):
+        from app.utils import _is_internal_url
+        from unittest.mock import patch
+        with patch("socket.gethostbyname", return_value="93.184.216.34"):
+            result = _is_internal_url("https://example.com")
+            assert result is False
+
+    def test_invalid_url_is_blocked(self):
+        from app.utils import _is_internal_url
+        assert _is_internal_url("") is True
+        assert _is_internal_url("not-a-valid-url") is True

@@ -9,7 +9,7 @@ class TestUsageRoutes:
 
     async def test_get_usage_stats_today(self, app_client, auth_headers):
         response = await app_client.get("/api/usage/stats?period=today&view=user", headers=auth_headers)
-        assert response.status_code in (200, 500)
+        assert response.status_code == 200
 
     async def test_get_pricing_requires_auth(self, app_client):
         response = await app_client.get("/api/usage/pricing")
