@@ -32,29 +32,37 @@
         }
     };
 
-    const logParserRegex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+\[[^\]]+\]\s+-\s+(INFO|WARNING|ERROR|CRITICAL)\s+-\s+/;
+    const timestampRegex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/;
+    const levelRegex = /\]\s+-\s+(INFO|WARNING|ERROR|CRITICAL)\s+-\s+/;
 
-    $: parsedLogs = (($rawLogs, $timezoneStore, renderedLogLimit), () => {
-        const allLines = ($rawLogs || '').split('\n').filter(line => line.trim() !== '');
-        hiddenLogCount = Math.max(0, allLines.length - renderedLogLimit);
-        const visibleLines = hiddenLogCount > 0 ? allLines.slice(-renderedLogLimit) : allLines;
+    $: _rawLogs = $rawLogs;
+    $: _timezone = $timezoneStore;
+    $: _limit = renderedLogLimit;
+
+    $: parsedLogs = (() => {
+        const allLines = (_rawLogs || '').split('\n').filter(line => line.trim() !== '');
+        hiddenLogCount = Math.max(0, allLines.length - _limit);
+        const visibleLines = hiddenLogCount > 0 ? allLines.slice(-_limit) : allLines;
         return visibleLines.map(line => {
-            const match = line.match(logParserRegex);
-            const originalTimestamp = match ? match[1] : null;
-            const level = match ? match[2] : 'UNKNOWN';
-            const messageText = match ? line.substring(match[0].length) : line;
+            const tsMatch = line.match(timestampRegex);
+            const lvMatch = line.match(levelRegex);
+            const originalTimestamp = tsMatch ? tsMatch[1] : null;
+            const level = lvMatch ? lvMatch[1] : 'UNKNOWN';
+            let messageText = line;
+            if (lvMatch) {
+                messageText = line.substring(lvMatch.index + lvMatch[0].length);
+            } else if (tsMatch) {
+                messageText = line.substring(tsMatch[0].length).trim();
+            }
             return {
                 level, message: messageText,
                 originalLine: line,
-                formattedTimestamp: originalTimestamp ? formatTimestamp(originalTimestamp, $timezoneStore) : '...'
+                formattedTimestamp: originalTimestamp ? formatTimestamp(originalTimestamp, _timezone) : '...'
             };
         });
     })();
 
-    $: filteredLogs = (() => {
-        if (logLevelFilter === 'ALL') return parsedLogs;
-        return parsedLogs.filter(log => log.level === logLevelFilter);
-    })();
+    $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
 
     async function getLogs() {
         try {
