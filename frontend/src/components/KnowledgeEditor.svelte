@@ -425,6 +425,16 @@
         <input id="auto-memory-direct-promote-ai-tag" type="checkbox" bind:checked={$behaviorConfig.auto_memory_direct_promote_ai_tag}>
       </div>
 
+      <div class="setting-item">
+        <label for="memory-embedding-enabled">{$t('knowledge.settings.memoryEmbeddingEnabled')}</label>
+        <input id="memory-embedding-enabled" type="checkbox" bind:checked={$behaviorConfig.memory_embedding_enabled}>
+      </div>
+
+      <div class="setting-item">
+        <label for="memory-rerank-enabled">{$t('knowledge.settings.memoryRerankEnabled')}</label>
+        <input id="memory-rerank-enabled" type="checkbox" bind:checked={$behaviorConfig.memory_rerank_enabled}>
+      </div>
+
       <button on:click={saveConfig}>{$t('knowledge.settings.save')}</button>
     </div>
   {/if}

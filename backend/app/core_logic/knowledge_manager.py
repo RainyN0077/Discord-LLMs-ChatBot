@@ -72,6 +72,8 @@ class KnowledgeManager:
         if memory_cols and "normalized_content" not in memory_cols:
             cursor.execute("ALTER TABLE memory ADD COLUMN normalized_content TEXT")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_normalized_content ON memory(normalized_content)")
+        if memory_cols and "embedding" not in memory_cols:
+            cursor.execute("ALTER TABLE memory ADD COLUMN embedding BLOB")
 
     def _safe_int(self, value: Any, default: int, lo: int, hi: int) -> int:
         try:
@@ -408,11 +410,37 @@ class KnowledgeManager:
             c.execute("SELECT * FROM memory ORDER BY timestamp DESC")
             return [dict(r) for r in c.fetchall()]
 
-    def get_relevant_memories(self, query_text: str, top_k: int = 12, char_limit: int = 2200, max_age_days: int = 365) -> List[Dict[str, Any]]:
+    def _get_memory_embedding(self, memory_id: int) -> Optional[List[float]]:
+        with self.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("SELECT embedding FROM memory WHERE id=?", (memory_id,))
+            row = c.fetchone()
+            if row and row["embedding"]:
+                import struct
+                data = row["embedding"]
+                try:
+                    n = len(data) // 8
+                    return list(struct.unpack(f">{n}d", data))
+                except struct.error:
+                    return None
+        return None
+
+    def _set_memory_embedding(self, memory_id: int, embedding: List[float]) -> None:
+        import struct
+        data = struct.pack(f">{len(embedding)}d", *embedding)
+        with self.get_conn() as conn:
+            c = conn.cursor()
+            c.execute("UPDATE memory SET embedding=? WHERE id=?", (data, memory_id))
+            conn.commit()
+
+    async def get_relevant_memories(self, query_text: str, top_k: int = 12, char_limit: int = 2200, max_age_days: int = 365, config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         top_k = max(1, min(50, int(top_k)))
         char_limit = max(300, min(20000, int(char_limit)))
         max_age_days = max(1, min(3650, int(max_age_days)))
         q_tokens = set(self._tokens(query_text, 20))
+        use_embedding = bool(config.get("memory_embedding_enabled", False)) if config else False
+        use_rerank = bool(config.get("memory_rerank_enabled", False)) if config else False
+
         rows: List[Dict[str, Any]] = []
         seen: Set[int] = set()
         with self.get_conn() as conn:
@@ -451,6 +479,61 @@ class KnowledgeManager:
                 mid = int(d["id"])
                 if mid not in seen:
                     rows.append(d)
+
+        # --- Embedding semantic filtering ---
+        if use_embedding and rows and config:
+            try:
+                from .embedding_service import get_embedding, cosine_similarity
+                query_emb = await get_embedding(query_text, config)
+
+                if query_emb:
+                    emb_candidates: List[Tuple[float, Dict[str, Any]]] = []
+                    for row in rows:
+                        mid = int(row["id"])
+                        cached = self._get_memory_embedding(mid)
+                        if cached is None:
+                            plain = self._strip_tag(str(row.get("content", "")))
+                            if not plain:
+                                continue
+                            try:
+                                new_emb = await get_embedding(plain, config)
+                                if new_emb:
+                                    self._set_memory_embedding(mid, new_emb)
+                                    cached = new_emb
+                            except Exception:
+                                pass
+                        if cached:
+                            sim = cosine_similarity(query_emb, cached)
+                            emb_candidates.append((sim, row))
+                    emb_candidates.sort(key=lambda x: x[0], reverse=True)
+                    keep = min(top_k * 3, len(emb_candidates))
+                    rows = [row for _, row in emb_candidates[:keep]]
+                    seen = {int(r["id"]) for r in rows}
+            except Exception:
+                logger.warning("Embedding filtering failed, falling back to FTS5 results", exc_info=True)
+
+        # --- Rerank fine-ranking ---
+        if use_rerank and rows and config:
+            try:
+                from .rerank_service import rerank as rerank_fn
+                candidates_text: List[str] = []
+                candidates_map: list = []
+                for row in rows:
+                    plain = self._strip_tag(str(row.get("content", "")))
+                    if not plain:
+                        continue
+                    candidates_text.append(plain)
+                    candidates_map.append(row)
+                if candidates_text:
+                    reranked = await rerank_fn(query_text, candidates_text, config, top_n=top_k)
+                    if reranked:
+                        rows = []
+                        for idx, _score in reranked:
+                            if idx < len(candidates_map):
+                                rows.append(candidates_map[idx])
+            except Exception:
+                logger.warning("Rerank failed, falling back to embedding/FTS5 results", exc_info=True)
+
         now = datetime.now(timezone.utc)
         scored: List[Tuple[float, Dict[str, Any]]] = []
         for row in rows:

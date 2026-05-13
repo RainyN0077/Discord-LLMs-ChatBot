@@ -62,6 +62,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'repeat_parrot_require_multiple_users': True,
     'memory_dedup_threshold': 0.0,
     'world_book_dedup_threshold': 0.0,
+    'memory_embedding_enabled': False,
+    'memory_rerank_enabled': False,
     'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
     'context_mode': 'channel',
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},

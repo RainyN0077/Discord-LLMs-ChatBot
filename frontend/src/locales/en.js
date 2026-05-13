@@ -553,6 +553,8 @@ export default {
       autoMemoryPromoteDistinctUsers: 'Promote after N distinct users',
       autoMemoryQualityThreshold: 'Auto-promotion quality threshold',
       autoMemoryDirectPromoteAiTag: 'Directly promote <memory> tags from model output',
+      memoryEmbeddingEnabled: 'Enable semantic embedding for memory recall',
+      memoryRerankEnabled: 'Enable rerank for memory recall (requires embedding)',
       autoMemoryRecallTopK: 'Memory recall top K',
       autoMemoryRecallCharLimit: 'Memory recall character budget',
       autoMemoryRecallMaxAgeDays: 'Memory max age (days)',

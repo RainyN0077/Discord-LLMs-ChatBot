@@ -112,7 +112,9 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
                 auto_memory_direct_promote_ai_tag: !!loadedConfig.auto_memory_direct_promote_ai_tag,
                 auto_memory_recall_top_k: loadedConfig.auto_memory_recall_top_k ?? 12,
                 auto_memory_recall_char_limit: loadedConfig.auto_memory_recall_char_limit ?? 2200,
-                auto_memory_recall_max_age_days: loadedConfig.auto_memory_recall_max_age_days ?? 365
+                auto_memory_recall_max_age_days: loadedConfig.auto_memory_recall_max_age_days ?? 365,
+                memory_embedding_enabled: !!loadedConfig.memory_embedding_enabled,
+                memory_rerank_enabled: !!loadedConfig.memory_rerank_enabled
             });
             contextConfig.set({
                 context_mode: loadedConfig.context_mode || 'channel',

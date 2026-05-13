@@ -1,4 +1,5 @@
-﻿import pytest
+﻿import asyncio
+import pytest
 
 pytestmark = [pytest.mark.unit]
 from app.core_logic.knowledge_manager import KnowledgeManager
@@ -383,12 +384,12 @@ class TestFTS5Search:
         test_db.add_memory(content="Dragons are extinct in this realm", timestamp="2024-01-02T00:00:00Z", user_id="1", user_name="GM", source="manual")
         test_db.add_memory(content="The king's name is Arthur", timestamp="2024-01-03T00:00:00Z", user_id="2", user_name="Player", source="manual")
 
-        results = test_db.get_relevant_memories("capital city name", top_k=5)
+        results = asyncio.run(test_db.get_relevant_memories("capital city name", top_k=5))
         assert isinstance(results, list)
 
     def test_get_relevant_memories_no_match(self, test_db):
         test_db.add_memory(content="The ocean is deep", timestamp="2024-01-01T00:00:00Z", user_id="1", user_name="U", source="manual")
-        results = test_db.get_relevant_memories("xyzzy foobar nonexistent", top_k=5)
+        results = asyncio.run(test_db.get_relevant_memories("xyzzy foobar nonexistent", top_k=5))
         assert isinstance(results, list)
 
     def test_memory_search_respects_top_k(self, test_db):
@@ -401,5 +402,5 @@ class TestFTS5Search:
                 source="manual",
             )
 
-        results = test_db.get_relevant_memories("keyword test memory", top_k=3, char_limit=10000)
+        results = asyncio.run(test_db.get_relevant_memories("keyword test memory", top_k=3, char_limit=10000))
         assert len(results) <= 3

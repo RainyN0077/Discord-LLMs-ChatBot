@@ -216,6 +216,7 @@ async def build_system_prompt(
         "6. Core Duty & Tool Use: converse naturally and call tools when needed.",
         "   - `add_to_memory(content: str)` for durable user facts and preferences.",
         "   - `add_to_world_book(keywords: str, content: str, subject_of_knowledge: str = \"\")` for factual knowledge/lore.",
+        "   - <user_info> output tag for world knowledge about a specific user: <user_info>id=DISCORD_USER_ID;keywords=topic1, topic2;content=Facts about this person</user_info>. Use the user's Discord ID for the id field.",
         "7. Tool Response Handling: if tool status is `duplicate_found`, reply naturally that information already exists.",
         "8. Web Search: you may request or use web-search context when external info is needed.",
         "9. Final Objective: produce a direct, helpful response and invoke necessary tools in parallel.",

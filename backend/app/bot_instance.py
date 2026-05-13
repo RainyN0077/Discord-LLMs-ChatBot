@@ -151,9 +151,10 @@ class BotInstance:
         from .handlers.automation import track_auto_interject, track_repeat_parrot, reset_channel_automation_state
         from .handlers.image_processor import collect_and_download_images, process_ocr_for_images
         from .handlers.context_assembler import build_full_context
+        from .handlers.message_queue import MessageQueue
         from .bot import (
             INSTANCE_ID, redis_client, _try_acquire_bot_process_lock,
-            _release_bot_process_lock, process_memory_tags,
+            _release_bot_process_lock, process_knowledge_tags,
             strip_thinking_sections, strip_dsml_tool_blocks,
             contains_dsml_tool_blocks, token_calculator as shared_token_calc,
         )
@@ -230,6 +231,235 @@ class BotInstance:
         async def on_ready():
             logger.info(f"[instance={INSTANCE_ID}] {bot.user} has connected for bot '{self.bot_id}'!")
 
+        message_queue = MessageQueue()
+        _channel_processors: Dict[str, asyncio.Task] = {}
+
+        async def _handle_triggered_message(ctx: dict) -> None:
+            message: discord.Message = ctx["message"]
+            trigger_sources: List[str] = ctx["trigger_sources"]
+            injected_data: Optional[str] = ctx["injected_data"]
+            plugin_append_blocks: List[str] = ctx["plugin_append_blocks"]
+            _cfg = _instance.config
+
+            lock_key = f"discord:message_lock:{message.id}"
+            is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
+            if not is_lock_acquired:
+                logger.info(f"Message {message.id} already being processed. Skipping.")
+                return
+
+            logger.info(f"Processing message {message.id} for bot '{_instance.bot_id}'.")
+
+            downloaded_images = await collect_and_download_images(message)
+            llm_images = [item["bytes"] for item in downloaded_images]
+
+            system_prompt, final_formatted_content, history_for_llm, history_messages, role_name, role_config = await build_full_context(
+                bot, _cfg, message, _instance.memory_cutoffs, injected_data
+            )
+
+            if downloaded_images and not is_multimodal_llm(_cfg):
+                final_formatted_content = await process_ocr_for_images(downloaded_images, _cfg, final_formatted_content)
+
+            try:
+                recall_top_k = max(1, min(50, int(_cfg.get("auto_memory_recall_top_k", 12))))
+            except (TypeError, ValueError):
+                recall_top_k = 12
+            try:
+                recall_char_limit = max(300, min(20000, int(_cfg.get("auto_memory_recall_char_limit", 2200))))
+            except (TypeError, ValueError):
+                recall_char_limit = 2200
+            try:
+                recall_max_age_days = max(1, min(3650, int(_cfg.get("auto_memory_recall_max_age_days", 365))))
+            except (TypeError, ValueError):
+                recall_max_age_days = 365
+            relevant_memories = await _instance._knowledge_manager.get_relevant_memories(
+                query_text=message.content or "",
+                top_k=recall_top_k, char_limit=recall_char_limit, max_age_days=recall_max_age_days,
+                config=_cfg,
+            )
+            if relevant_memories:
+                transformed_memories = transform_memories_for_prompt(relevant_memories, target_timezone_str='UTC')
+                memory_knowledge = "\n".join(transformed_memories)
+                system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+                logger.info("Injected %s relevant memories for bot '%s'.", len(transformed_memories), _instance.bot_id)
+
+            role_config = _resolve_role_config(message, _cfg)
+
+            if role_config:
+                user_usage = await _instance._usage_manager.check_quota_and_get_usage(message.author.id, role_config)
+                estimated_input_tokens = shared_token_calc.get_token_count_for_messages(
+                    [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}],
+                    _cfg.get("llm_provider"), _cfg.get("model_name")
+                )
+                quota_error = await _instance._usage_manager.check_pre_request_quota(message.author.id, role_config, user_usage, estimated_input_tokens)
+                if quota_error:
+                    _reset_channel_automation_state(message.channel.id)
+                    await message.reply(quota_error, mention_author=False)
+                    return
+
+            llm_messages = [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}]
+            usage_data = None
+
+            try:
+                full_response = ""
+                usage_data = None
+                final_response_stages: List[str] = []
+                async with message.channel.typing():
+                    response_message = None
+
+                    async def _render_llm_response(response_generator: AsyncGenerator) -> Tuple[str, Optional[Dict[str, int]], List[str]]:
+                        nonlocal response_message
+                        _full_response = ""
+                        _usage_data = None
+                        _final_responses: List[str] = []
+                        async for response_type, data in response_generator:
+                            if response_type == "partial":
+                                content_chunks = split_message(data, 2000)
+                                current_chunk = content_chunks[0] if content_chunks else ""
+                                if response_message is None and current_chunk.strip():
+                                    response_message = await message.reply(current_chunk, mention_author=False)
+                                elif response_message and current_chunk and current_chunk != response_message.content:
+                                    try:
+                                        await response_message.edit(content=current_chunk)
+                                    except discord.errors.HTTPException:
+                                        pass
+                            elif response_type == "final":
+                                _full_response = str(data or "")
+                                _final_responses.append(_full_response)
+                            elif response_type == "usage":
+                                _usage_data = data
+                        return _full_response, _usage_data, _final_responses
+
+                    llm_provider = get_llm_provider(_cfg)
+                    tools = _instance._plugin_manager.get_all_tools()
+                    tool_functions = _instance._plugin_manager.get_all_tool_functions(message, _cfg)
+                    used_tools_in_attempt = False
+                    try:
+                        logger.info(f"Attempting LLM call for message {message.id} with {len(tools)} tools.")
+                        response_gen_with_tools = llm_provider.get_response_stream(
+                            llm_messages, llm_images if is_multimodal_llm(_cfg) else None,
+                            tools=tools, tool_functions=tool_functions
+                        )
+                        full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_with_tools)
+                        used_tools_in_attempt = bool(tools)
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
+                            logger.warning(f"Malformed tool call for message {message.id}. Retrying without tools. Error: {e}")
+                            response_gen_no_tools = llm_provider.get_response_stream(
+                                llm_messages, llm_images if is_multimodal_llm(_cfg) else None, tools=[], tool_functions={}
+                            )
+                            full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
+                        else:
+                            raise e
+
+                    if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
+                        logger.warning(f"Detected leaked DSML tool blocks in message {message.id}. Retrying without tools.")
+                        response_gen_no_tools = llm_provider.get_response_stream(
+                            llm_messages, llm_images if is_multimodal_llm(_cfg) else None, tools=[], tool_functions={}
+                        )
+                        full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
+
+                    error_reason = None
+                    if not full_response or not full_response.strip():
+                        error_reason = "LLM returned an empty response."
+                    elif full_response.startswith("LLM_PROVIDER_ERROR:"):
+                        error_reason = full_response
+
+                    if error_reason:
+                        logger.error(f"Response error for user '{message.author.name}': {error_reason}")
+                        error_msg_template = _cfg.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
+                        final_error_msg = error_msg_template.format(reason=error_reason)
+                        _reset_channel_automation_state(message.channel.id)
+                        if response_message:
+                            await response_message.edit(content=final_error_msg)
+                        else:
+                            await message.reply(final_error_msg, mention_author=False)
+                        return
+
+                    cleaned_response = await process_knowledge_tags(message, full_response, _cfg)
+                    cleaned_response = strip_dsml_tool_blocks(cleaned_response)
+                    cleaned_response = strip_thinking_sections(cleaned_response)
+
+                    await add_capture({
+                        "trigger_message_id": str(message.id),
+                        "channel_id": str(message.channel.id),
+                        "guild_id": str(message.guild.id) if message.guild else None,
+                        "user_id": str(message.author.id),
+                        "user_name": message.author.name,
+                        "user_display_name": getattr(message.author, "display_name", message.author.name),
+                        "trigger_sources": trigger_sources,
+                        "plugin_outputs": plugin_append_blocks,
+                        "raw_user_message": str(message.content or ""),
+                        "formatted_user_request": final_formatted_content,
+                        "system_prompt": system_prompt,
+                        "history_for_llm": history_for_llm,
+                        "llm_messages": llm_messages,
+                        "intermediate_llm_responses": final_response_stages[:-1],
+                        "raw_llm_response": full_response,
+                        "cleaned_llm_response": cleaned_response,
+                        "usage": usage_data,
+                        "provider": str(_cfg.get("llm_provider", "")),
+                        "model": str(_cfg.get("model_name", "")),
+                    })
+
+                    if response_message:
+                        final_chunks = split_message(cleaned_response, 2000)
+                        await response_message.edit(content=final_chunks[0] if final_chunks else "")
+                        for chunk in final_chunks[1:]:
+                            await message.channel.send(chunk)
+                    else:
+                        final_chunks = split_message(cleaned_response, 2000)
+                        for i, chunk in enumerate(final_chunks):
+                            if i == 0 and chunk.strip():
+                                await message.reply(chunk, mention_author=False)
+                            elif i > 0:
+                                await message.channel.send(chunk)
+
+                    _reset_channel_automation_state(message.channel.id)
+
+                if usage_data:
+                    input_tokens = usage_data.get("input_tokens", 0)
+                    output_tokens = usage_data.get("output_tokens", 0)
+                    logger.info(f"Using official usage data: Input={input_tokens}, Output={output_tokens}")
+                else:
+                    input_tokens = shared_token_calc.get_token_count_for_messages(llm_messages, _cfg.get("llm_provider"), _cfg.get("model_name"))
+                    output_tokens = shared_token_calc.get_token_count(full_response, _cfg.get("llm_provider"), _cfg.get("model_name"))
+                    logger.warning(f"No usage data from provider. Using estimated tokens: Input={input_tokens}, Output={output_tokens}")
+
+                role_id_for_log = role_config.get('id') if role_config else None
+                role_name_for_log = role_config.get('title') if role_config else None
+                await _instance._usage_tracker.record_usage(
+                    provider=_cfg.get("llm_provider"), model=_cfg.get("model_name"),
+                    input_tokens=input_tokens, output_tokens=output_tokens,
+                    user_id=str(message.author.id), user_name=message.author.name,
+                    user_display_name=message.author.display_name,
+                    role_id=role_id_for_log, role_name=role_name_for_log,
+                    channel_id=str(message.channel.id), channel_name=message.channel.name,
+                    guild_id=str(message.guild.id) if message.guild else None,
+                    guild_name=message.guild.name if message.guild else None
+                )
+                if role_config:
+                    await _instance._usage_manager.update_post_request_usage(
+                        user_id=message.author.id, input_tokens=input_tokens, output_tokens=output_tokens
+                    )
+
+            except Exception as e:
+                logger.error(f"Error processing message: {e}", exc_info=True)
+                error_msg = _cfg.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
+                _reset_channel_automation_state(message.channel.id)
+                await message.reply(error_msg, mention_author=False)
+
+        async def _ensure_channel_processor(channel_id_str: str) -> None:
+            if channel_id_str in _channel_processors and not _channel_processors[channel_id_str].done():
+                return
+            cid = channel_id_str
+            task = asyncio.create_task(
+                message_queue.process_channel(cid, _handle_triggered_message)
+            )
+            _channel_processors[cid] = task
+            task.add_done_callback(lambda t, c=cid: _channel_processors.pop(c, None))
+            logger.info(f"Started queue processor for channel {cid} for bot '{self.bot_id}'")
+
         @bot.event
         async def on_message(message):
             nonlocal config
@@ -292,212 +522,20 @@ class BotInstance:
             if plugin_append_triggered:
                 trigger_sources.append("plugin_append")
 
-            lock_key = f"discord:message_lock:{message.id}"
-            is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
-            if not is_lock_acquired:
-                logger.info(f"Message {message.id} already being processed. Skipping.")
+            channel_id_str = str(message.channel.id)
+            ctx = {
+                "message": message,
+                "trigger_sources": trigger_sources,
+                "injected_data": injected_data,
+                "plugin_append_blocks": plugin_append_blocks,
+            }
+
+            enqueued = await message_queue.enqueue(channel_id_str, ctx)
+            if not enqueued:
+                await message.reply("Bot is busy, please try later.", mention_author=False)
                 return
 
-            logger.info(f"Processing message {message.id} for bot '{_instance.bot_id}'.")
-
-            downloaded_images = await collect_and_download_images(message)
-            llm_images = [item["bytes"] for item in downloaded_images]
-
-            system_prompt, final_formatted_content, history_for_llm, history_messages, role_name, role_config = await build_full_context(
-                bot, config, message, _instance.memory_cutoffs, injected_data
-            )
-
-            if downloaded_images and not is_multimodal_llm(config):
-                final_formatted_content = await process_ocr_for_images(downloaded_images, config, final_formatted_content)
-
-            try:
-                recall_top_k = max(1, min(50, int(config.get("auto_memory_recall_top_k", 12))))
-            except (TypeError, ValueError):
-                recall_top_k = 12
-            try:
-                recall_char_limit = max(300, min(20000, int(config.get("auto_memory_recall_char_limit", 2200))))
-            except (TypeError, ValueError):
-                recall_char_limit = 2200
-            try:
-                recall_max_age_days = max(1, min(3650, int(config.get("auto_memory_recall_max_age_days", 365))))
-            except (TypeError, ValueError):
-                recall_max_age_days = 365
-            relevant_memories = _instance._knowledge_manager.get_relevant_memories(
-                query_text=message.content or "",
-                top_k=recall_top_k, char_limit=recall_char_limit, max_age_days=recall_max_age_days,
-            )
-            if relevant_memories:
-                transformed_memories = transform_memories_for_prompt(relevant_memories, target_timezone_str='UTC')
-                memory_knowledge = "\n".join(transformed_memories)
-                system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
-                logger.info("Injected %s relevant memories for bot '%s'.", len(transformed_memories), _instance.bot_id)
-
-            role_config = _resolve_role_config(message, config)
-
-            if role_config:
-                user_usage = await _instance._usage_manager.check_quota_and_get_usage(message.author.id, role_config)
-                estimated_input_tokens = shared_token_calc.get_token_count_for_messages(
-                    [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}],
-                    config.get("llm_provider"), config.get("model_name")
-                )
-                quota_error = await _instance._usage_manager.check_pre_request_quota(message.author.id, role_config, user_usage, estimated_input_tokens)
-                if quota_error:
-                    _reset_channel_automation_state(message.channel.id)
-                    await message.reply(quota_error, mention_author=False)
-                    return
-
-            llm_messages = [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}]
-            usage_data = None
-
-            try:
-                full_response = ""
-                usage_data = None
-                final_response_stages: List[str] = []
-                async with message.channel.typing():
-                    response_message = None
-
-                    async def _render_llm_response(response_generator: AsyncGenerator) -> Tuple[str, Optional[Dict[str, int]], List[str]]:
-                        nonlocal response_message
-                        _full_response = ""
-                        _usage_data = None
-                        _final_responses: List[str] = []
-                        async for response_type, data in response_generator:
-                            if response_type == "partial":
-                                content_chunks = split_message(data, 2000)
-                                current_chunk = content_chunks[0] if content_chunks else ""
-                                if response_message is None and current_chunk.strip():
-                                    response_message = await message.reply(current_chunk, mention_author=False)
-                                elif response_message and current_chunk and current_chunk != response_message.content:
-                                    try:
-                                        await response_message.edit(content=current_chunk)
-                                    except discord.errors.HTTPException:
-                                        pass
-                            elif response_type == "final":
-                                _full_response = str(data or "")
-                                _final_responses.append(_full_response)
-                            elif response_type == "usage":
-                                _usage_data = data
-                        return _full_response, _usage_data, _final_responses
-
-                    llm_provider = get_llm_provider(config)
-                    tools = _instance._plugin_manager.get_all_tools()
-                    tool_functions = _instance._plugin_manager.get_all_tool_functions(message, config)
-                    used_tools_in_attempt = False
-                    try:
-                        logger.info(f"Attempting LLM call for message {message.id} with {len(tools)} tools.")
-                        response_gen_with_tools = llm_provider.get_response_stream(
-                            llm_messages, llm_images if is_multimodal_llm(config) else None,
-                            tools=tools, tool_functions=tool_functions
-                        )
-                        full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_with_tools)
-                        used_tools_in_attempt = bool(tools)
-                    except Exception as e:
-                        error_str = str(e).lower()
-                        if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
-                            logger.warning(f"Malformed tool call for message {message.id}. Retrying without tools. Error: {e}")
-                            response_gen_no_tools = llm_provider.get_response_stream(
-                                llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-                            )
-                            full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
-                        else:
-                            raise e
-
-                    if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
-                        logger.warning(f"Detected leaked DSML tool blocks in message {message.id}. Retrying without tools.")
-                        response_gen_no_tools = llm_provider.get_response_stream(
-                            llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-                        )
-                        full_response, usage_data, final_response_stages = await _render_llm_response(response_gen_no_tools)
-
-                    error_reason = None
-                    if not full_response or not full_response.strip():
-                        error_reason = "LLM returned an empty response."
-                    elif full_response.startswith("LLM_PROVIDER_ERROR:"):
-                        error_reason = full_response
-
-                    if error_reason:
-                        logger.error(f"Response error for user '{message.author.name}': {error_reason}")
-                        error_msg_template = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
-                        final_error_msg = error_msg_template.format(reason=error_reason)
-                        _reset_channel_automation_state(message.channel.id)
-                        if response_message:
-                            await response_message.edit(content=final_error_msg)
-                        else:
-                            await message.reply(final_error_msg, mention_author=False)
-                        return
-
-                    cleaned_response = process_memory_tags(message, full_response, config)
-                    cleaned_response = strip_dsml_tool_blocks(cleaned_response)
-                    cleaned_response = strip_thinking_sections(cleaned_response)
-
-                    await add_capture({
-                        "trigger_message_id": str(message.id),
-                        "channel_id": str(message.channel.id),
-                        "guild_id": str(message.guild.id) if message.guild else None,
-                        "user_id": str(message.author.id),
-                        "user_name": message.author.name,
-                        "user_display_name": getattr(message.author, "display_name", message.author.name),
-                        "trigger_sources": trigger_sources,
-                        "plugin_outputs": plugin_append_blocks,
-                        "raw_user_message": str(message.content or ""),
-                        "formatted_user_request": final_formatted_content,
-                        "system_prompt": system_prompt,
-                        "history_for_llm": history_for_llm,
-                        "llm_messages": llm_messages,
-                        "intermediate_llm_responses": final_response_stages[:-1],
-                        "raw_llm_response": full_response,
-                        "cleaned_llm_response": cleaned_response,
-                        "usage": usage_data,
-                        "provider": str(config.get("llm_provider", "")),
-                        "model": str(config.get("model_name", "")),
-                    })
-
-                    if response_message:
-                        final_chunks = split_message(cleaned_response, 2000)
-                        await response_message.edit(content=final_chunks[0] if final_chunks else "")
-                        for chunk in final_chunks[1:]:
-                            await message.channel.send(chunk)
-                    else:
-                        final_chunks = split_message(cleaned_response, 2000)
-                        for i, chunk in enumerate(final_chunks):
-                            if i == 0 and chunk.strip():
-                                await message.reply(chunk, mention_author=False)
-                            elif i > 0:
-                                await message.channel.send(chunk)
-
-                    _reset_channel_automation_state(message.channel.id)
-
-                if usage_data:
-                    input_tokens = usage_data.get("input_tokens", 0)
-                    output_tokens = usage_data.get("output_tokens", 0)
-                    logger.info(f"Using official usage data: Input={input_tokens}, Output={output_tokens}")
-                else:
-                    input_tokens = shared_token_calc.get_token_count_for_messages(llm_messages, config.get("llm_provider"), config.get("model_name"))
-                    output_tokens = shared_token_calc.get_token_count(full_response, config.get("llm_provider"), config.get("model_name"))
-                    logger.warning(f"No usage data from provider. Using estimated tokens: Input={input_tokens}, Output={output_tokens}")
-
-                role_id_for_log = role_config.get('id') if role_config else None
-                role_name_for_log = role_config.get('title') if role_config else None
-                await _instance._usage_tracker.record_usage(
-                    provider=config.get("llm_provider"), model=config.get("model_name"),
-                    input_tokens=input_tokens, output_tokens=output_tokens,
-                    user_id=str(message.author.id), user_name=message.author.name,
-                    user_display_name=message.author.display_name,
-                    role_id=role_id_for_log, role_name=role_name_for_log,
-                    channel_id=str(message.channel.id), channel_name=message.channel.name,
-                    guild_id=str(message.guild.id) if message.guild else None,
-                    guild_name=message.guild.name if message.guild else None
-                )
-                if role_config:
-                    await _instance._usage_manager.update_post_request_usage(
-                        user_id=message.author.id, input_tokens=input_tokens, output_tokens=output_tokens
-                    )
-
-            except Exception as e:
-                logger.error(f"Error processing message: {e}", exc_info=True)
-                error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
-                _reset_channel_automation_state(message.channel.id)
-                await message.reply(error_msg, mention_author=False)
+            await _ensure_channel_processor(channel_id_str)
 
         try:
             self.status = "running"

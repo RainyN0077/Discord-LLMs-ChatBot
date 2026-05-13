@@ -370,7 +370,9 @@ export default {
       memoryDedupThreshold: '记忆库查重阈值',
       worldBookDedupThreshold: '世界书查重阈值',
       dedupDescription: '设置查重阈值。0% 表示关闭查重，100% 只阻止完全相同的内容。推荐值为 80-90%。',
-      save: '保存查重设置'
+      save: '保存查重设置',
+      memoryEmbeddingEnabled: '启用语义嵌入增强记忆召回',
+      memoryRerankEnabled: '启用重排序增强记忆召回（需先启用嵌入）',
     },
     confirmDeleteMemory: '确定要删除这条记忆吗？',
     confirmDeleteWorldBook: '确定要删除这个世界书条目吗？',

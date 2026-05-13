@@ -133,7 +133,9 @@ export const behaviorConfig = writable({
     auto_memory_direct_promote_ai_tag: false,
     auto_memory_recall_top_k: 12,
     auto_memory_recall_char_limit: 2200,
-    auto_memory_recall_max_age_days: 365
+    auto_memory_recall_max_age_days: 365,
+    memory_embedding_enabled: false,
+    memory_rerank_enabled: false
 });
 
 export const contextConfig = writable({
@@ -289,7 +291,9 @@ export async function fetchConfig(options = {}) {
                 auto_memory_direct_promote_ai_tag: !!mergedConfig.auto_memory_direct_promote_ai_tag,
                 auto_memory_recall_top_k: mergedConfig.auto_memory_recall_top_k ?? 12,
                 auto_memory_recall_char_limit: mergedConfig.auto_memory_recall_char_limit ?? 2200,
-                auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365
+                auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365,
+                memory_embedding_enabled: !!mergedConfig.memory_embedding_enabled,
+                memory_rerank_enabled: !!mergedConfig.memory_rerank_enabled
             });
             contextConfig.set({
                 context_mode: mergedConfig.context_mode,
