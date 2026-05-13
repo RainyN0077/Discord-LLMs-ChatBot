@@ -21,7 +21,7 @@ A highly customizable Discord chatbot with multi-provider LLM support, a web con
 - Usage dashboard with token stats and model pricing
 - Secure plugin system with external trigger endpoint
 - Quota management (`!myquota`)
-- Docker deployment and Windows/Linux local dev scripts
+- Docker deployment and cross-platform local dev launcher
 
 ---
 
@@ -50,63 +50,25 @@ Services:
 - Backend API: `http://localhost:8093`
 - Redis: internal service in compose network
 
-### Windows local (non-Docker)
-
-PowerShell:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-local.ps1
-```
-
-CMD:
-
-```bat
-.\scripts\windows\start-local.bat
-```
-
-Stop local processes:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-local.ps1
-```
-
-or
-
-```bat
-.\scripts\windows\stop-local.bat
-```
-
-What local scripts do:
-- Create `backend/.venv` if missing
-- Install backend dependencies from `backend/requirements.txt`
-- Install frontend dependencies (`npm install`) if npm is available
-- Start backend on `8093` and frontend dev server on `8094`
-
-### Linux local (non-Docker)
-
-Foreground mode (easy debugging):
+### Local (non-Docker, all platforms)
 
 ```bash
-bash ./scripts/linux/start-local-foreground.sh
+python run.py start              # Start backend + frontend in background
+python run.py start --foreground  # Start in foreground (single terminal)
+python run.py start --backend-only
+python run.py start --frontend-only
+python run.py stop               # Stop all
+python run.py restart            # Restart all
+python run.py status             # Show process status
+python run.py install            # Install/sync dependencies only
 ```
 
-Background mode (`nohup`, with logs/PID files):
-
-```bash
-bash ./scripts/linux/start-local-nohup.sh
-```
-
-`tmux` mode (separate windows for backend/frontend):
-
-```bash
-bash ./scripts/linux/start-local-tmux.sh
-```
-
-Stop local processes:
-
-```bash
-bash ./scripts/linux/stop-local.sh
-```
+What `run.py` does:
+- Creates `backend/.venv` if missing
+- Installs backend dependencies from `backend/requirements.txt`
+- Installs frontend dependencies (`npm install`) if npm is available
+- Starts backend on `8093` with hot‑reload and frontend Vite dev server on `8094`
+- Manages PID files and logs under `.local-run/`
 
 ---
 
@@ -226,6 +188,7 @@ python -m pip install -r requirements.txt
   - `scripts/linux/start-local-nohup.sh`
   - `scripts/linux/start-local-tmux.sh`
   - `scripts/linux/stop-local.sh`
+- Replaced all platform scripts with unified cross-platform `run.py` launcher
 
 ---
 
@@ -299,64 +262,25 @@ docker compose up --build -d
 - 后端 API：`http://localhost:8093`
 - Redis：运行在 compose 网络内部
 
-#### Windows 本地开发（非 Docker）
+#### 本地开发（非 Docker，全平台）
 
-PowerShell：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\start-local.ps1
+```bash
+python run.py start              # 后台启动后端+前端
+python run.py start --foreground  # 前台模式（Ctrl+C 停止）
+python run.py start --backend-only
+python run.py start --frontend-only
+python run.py stop               # 停止所有
+python run.py restart            # 重启
+python run.py status             # 查看状态
+python run.py install            # 仅安装/同步依赖
 ```
 
-CMD：
-
-```bat
-.\scripts\windows\start-local.bat
-```
-
-停止本地进程：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\windows\stop-local.ps1
-```
-
-或：
-
-```bat
-.\scripts\windows\stop-local.bat
-```
-
-本地脚本会自动：
-
+`run.py` 会自动：
 - 在缺失时创建 `backend/.venv`
-- 安装 `backend/requirements.txt` 中的后端依赖
+- 从 `backend/requirements.txt` 安装后端依赖
 - 如果检测到 npm，则安装前端依赖
-- 在 `8093` 启动后端、在 `8094` 启动前端开发服务器
-
-#### Linux 本地开发（非 Docker）
-
-前台调试模式：
-
-```bash
-bash ./scripts/linux/start-local-foreground.sh
-```
-
-后台模式（`nohup`，带日志和 PID 文件）：
-
-```bash
-bash ./scripts/linux/start-local-nohup.sh
-```
-
-`tmux` 模式（前后端分窗口）：
-
-```bash
-bash ./scripts/linux/start-local-tmux.sh
-```
-
-停止本地进程：
-
-```bash
-bash ./scripts/linux/stop-local.sh
-```
+- 在 `8093` 启动后端（含热重载）、在 `8094` 启动前端 Vite 开发服务器
+- PID 文件和日志存放在 `.local-run/` 下
 
 ### 快速开始
 

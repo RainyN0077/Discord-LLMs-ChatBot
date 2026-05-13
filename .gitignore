@@ -17,6 +17,9 @@ data/
 frontend/.env*
 .env
 
+# Local development runtime files
+.local-run/
+
 # --- Docker ---
 # No Docker specific files to ignore for now, data directory covers it.
 
