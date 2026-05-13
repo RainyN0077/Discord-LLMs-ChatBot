@@ -10,9 +10,17 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 from collections import deque
 import secrets
-from unittest.mock import AsyncMock, MagicMock
 import discord
 from pathlib import Path
+
+class Stub:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+def _async_stub(return_value=None):
+    async def _fn(*args, **kwargs):
+        return return_value
+    return _fn
 
 from fastapi import FastAPI, HTTPException, Response, Depends, Security, Header
 from fastapi.middleware.cors import CORSMiddleware
@@ -531,7 +539,7 @@ def _build_direct_chat_attachment_context(attachments: List[Dict[str, Any]]) -> 
 def _build_mock_attachments(attachments: List[Dict[str, Any]]) -> List[Any]:
     mock_attachments: List[Any] = []
     for item in attachments:
-        mock_attachment = MagicMock()
+        mock_attachment = Stub()
         mock_attachment.content_type = item.get("content_type")
         mock_attachment.filename = item.get("name")
         mock_attachments.append(mock_attachment)
@@ -696,17 +704,17 @@ async def trigger_plugin_endpoint(request: PluginTriggerRequest):
     if not target_plugin:
         raise HTTPException(status_code=404, detail=f"Plugin '{request.plugin_name}' not found or is disabled.")
     
-    mock_message = MagicMock()
+    mock_message = Stub()
     mock_message.content = request.message_content or ""
-    mock_author = MagicMock()
+    mock_author = Stub()
     mock_author.id = request.author_id or 0
     mock_author.name = request.author_name or "API"
     mock_author.display_name = request.author_display_name or request.author_name or "API"
     mock_message.author = mock_author
-    mock_channel = MagicMock()
+    mock_channel = Stub()
     mock_channel.id = request.channel_id or "0"
     mock_message.channel = mock_channel
-    mock_guild = MagicMock()
+    mock_guild = Stub()
     mock_guild.id = request.guild_id or "0"
     mock_message.guild = mock_guild
     args_str = json.dumps(request.args)
@@ -741,22 +749,22 @@ async def simulate_debugger_run(request: DebuggerRequest):
         role_config,
     )
 
-    mock_author = MagicMock(spec=discord.Member)
+    mock_author = Stub()
     mock_author.id = int(request.user_id)
     mock_author.name = f"debug-user-{request.user_id}"
     mock_author.display_name = mock_author.name
     mock_author.roles = []
 
-    mock_channel = MagicMock(spec=discord.TextChannel)
+    mock_channel = Stub()
     mock_channel.id = int(request.channel_id)
 
     mock_guild = None
     if request.guild_id:
-        mock_guild = MagicMock(spec=discord.Guild)
+        mock_guild = Stub()
         mock_guild.id = int(request.guild_id)
         mock_channel.guild = mock_guild
 
-    mock_message = MagicMock(spec=discord.Message)
+    mock_message = Stub()
     mock_message.author = mock_author
     mock_message.channel = mock_channel
     mock_message.guild = mock_guild
@@ -766,8 +774,8 @@ async def simulate_debugger_run(request: DebuggerRequest):
     mock_message.attachments = []
     mock_message.reference = None
 
-    mock_bot = MagicMock(spec=discord.Client)
-    mock_bot.fetch_user = AsyncMock(return_value=mock_author)
+    mock_bot = Stub()
+    mock_bot.fetch_user = _async_stub(return_value=mock_author)
 
     system_prompt = await build_system_prompt(
         mock_bot,
@@ -835,27 +843,27 @@ async def direct_chat(request: DirectChatRequest):
             if role_config:
                 role_name = role_config.get("title")
 
-        mock_author = MagicMock(spec=discord.Member)
+        mock_author = Stub()
         mock_author.id = user_id_int
         mock_author.name = f"debug-user-{debug_context.user_id}"
         mock_author.display_name = mock_author.name
         mock_author.bot = False
         mock_author.roles = []
 
-        mock_channel = MagicMock(spec=discord.TextChannel)
+        mock_channel = Stub()
         mock_channel.id = channel_id_int
 
         mock_guild = None
         if guild_id_int is not None:
-            mock_guild = MagicMock(spec=discord.Guild)
+            mock_guild = Stub()
             mock_guild.id = guild_id_int
-            mock_guild.get_member = MagicMock(return_value=None)
+            mock_guild.get_member = Stub()
             mock_channel.guild = mock_guild
 
-        mock_bot = MagicMock(spec=discord.Client)
-        mock_bot.user = MagicMock()
+        mock_bot = Stub()
+        mock_bot.user = Stub()
         mock_bot.user.id = 999999999999999999
-        mock_bot.fetch_user = AsyncMock(return_value=mock_author)
+        mock_bot.fetch_user = _async_stub(return_value=mock_author)
 
         active_directives_log: List[str] = []
         specific_persona_prompt, situational_prompt, active_directives_log = determine_bot_persona(
@@ -870,7 +878,7 @@ async def direct_chat(request: DirectChatRequest):
             (msg for msg in reversed(request.messages) if (msg.role or "").lower().strip() == "user"),
             request.messages[-1],
         )
-        prompt_message = MagicMock(spec=discord.Message)
+        prompt_message = Stub()
         prompt_message.author = mock_author
         prompt_message.channel = mock_channel
         prompt_message.guild = mock_guild
@@ -900,7 +908,7 @@ async def direct_chat(request: DirectChatRequest):
                 llm_messages.append({"role": "assistant", "content": str(msg.content or "")})
                 continue
 
-            mock_user_message = MagicMock(spec=discord.Message)
+            mock_user_message = Stub()
             mock_user_message.author = mock_author
             mock_user_message.channel = mock_channel
             mock_user_message.guild = mock_guild
