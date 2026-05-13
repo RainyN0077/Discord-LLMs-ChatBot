@@ -13,6 +13,47 @@ import pytz # Timezone library
 
 import discord
 import aiohttp
+
+class Stub:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+def _async_stub(return_value=None):
+    async def _fn(*args, **kwargs):
+        return return_value
+    return _fn
+
+def _safe_text(value) -> str:
+    text = str(value or "")
+    return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+
+def _json_safe(value):
+    if value is None:
+        return None
+    if isinstance(value, (str, int, float, bool)):
+        return value if not isinstance(value, str) else _safe_text(value)
+    if isinstance(value, dict):
+        return {_safe_text(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, set)):
+        return [_json_safe(v) for v in value]
+    return _safe_text(value)
+
+def _safe_str_list(value) -> list:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    return [_safe_text(item) for item in value]
+
+def _safe_dict_list(value) -> list:
+    if not isinstance(value, (list, tuple, set)):
+        return []
+    safe_items = []
+    for item in value:
+        sanitized = _json_safe(item)
+        if isinstance(sanitized, dict):
+            safe_items.append(sanitized)
+        else:
+            safe_items.append({"_value": sanitized})
+    return safe_items
 import tiktoken
 import anthropic
 from logging.handlers import RotatingFileHandler
