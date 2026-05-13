@@ -3,7 +3,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from .ocr_service import DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS
 
@@ -13,8 +13,7 @@ DATA_DIR = Path.cwd() / "data"
 DATA_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = DATA_DIR / "config.json"
 
-_cache: Optional[Dict[str, Any]] = None
-_cache_mtime: float = 0.0
+_cache_entry: Optional[Tuple[Dict[str, Any], float]] = None
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
@@ -64,63 +63,70 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'custom_parameters': [], 'plugins': {},
     'api_secret_key': secrets.token_hex(32),
+    'qq_bot': {
+        'enabled': False,
+        'napcat_http_url': 'http://127.0.0.1:3000',
+        'napcat_ws_port': 8095,
+        'napcat_ws_path': '/qq/ws',
+        'trigger_keywords': [],
+        'auto_interject_enabled': False,
+        'repeat_parrot_enabled': False,
+        'max_split_length': 2000,
+        'allowed_group_ids': [],
+        'blocked_group_ids': [],
+    },
 }
 
 
-def _set_defaults_recursive(default: dict, config: dict) -> None:
+def _merge_defaults(default: dict, config: dict) -> dict:
+    result = config.copy()
     for key, value in default.items():
-        if isinstance(value, dict):
-            config.setdefault(key, {})
-            _set_defaults_recursive(value, config[key])
-        else:
-            config.setdefault(key, value)
+        if key not in result:
+            result[key] = value
+        elif isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_defaults(value, result[key])
+    return result
 
 
 def load_config() -> Dict[str, Any]:
-    global _cache, _cache_mtime
+    global _cache_entry
     try:
         mtime = os.path.getmtime(CONFIG_FILE)
     except OSError:
         mtime = 0.0
 
-    if _cache is not None and mtime == _cache_mtime:
-        return _cache
+    if _cache_entry is not None and mtime == _cache_entry[1]:
+        return _cache_entry[0]
 
     if not os.path.exists(CONFIG_FILE):
         logger.warning(f"Config file not found at {CONFIG_FILE}. Creating a default one.")
         save_config(DEFAULT_CONFIG)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = os.path.getmtime(CONFIG_FILE)
-        return _cache
+        _cache_entry = (dict(DEFAULT_CONFIG), os.path.getmtime(CONFIG_FILE))
+        return _cache_entry[0]
 
     try:
         with open(CONFIG_FILE, "r", encoding='utf-8') as f:
             data = json.load(f)
-        _set_defaults_recursive(DEFAULT_CONFIG, data)
-        _cache = data
-        _cache_mtime = mtime
+        data = _merge_defaults(DEFAULT_CONFIG, data)
+        _cache_entry = (data, mtime)
         return data
     except json.JSONDecodeError as e:
         logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
+        _cache_entry = (dict(DEFAULT_CONFIG), 0.0)
+        return _cache_entry[0]
     except Exception as e:
         logger.error(f"FATAL: Unexpected error loading config.json: {e}", exc_info=True)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
+        _cache_entry = (dict(DEFAULT_CONFIG), 0.0)
+        return _cache_entry[0]
 
 
 def save_config(config_data: Dict[str, Any]) -> None:
-    global _cache, _cache_mtime
+    global _cache_entry
     with open(CONFIG_FILE, "w", encoding='utf-8') as f:
         json.dump(config_data, f, indent=2, ensure_ascii=False)
-    _cache = config_data
-    _cache_mtime = os.path.getmtime(CONFIG_FILE)
+    _cache_entry = (config_data, os.path.getmtime(CONFIG_FILE))
 
 
 def invalidate_cache() -> None:
-    global _cache, _cache_mtime
-    _cache = None
-    _cache_mtime = 0.0
+    global _cache_entry
+    _cache_entry = None

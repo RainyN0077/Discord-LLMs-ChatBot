@@ -1,12 +1,13 @@
 # backend/app/core_logic/context_builder.py
 import json
 import re
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
 from ..utils import escape_content, matches_trigger_keywords
-from .knowledge_manager import knowledge_manager
+from .knowledge_manager import get_knowledge_manager
 
 # --- Constants for structured prompts ---
 # Using constants makes the code cleaner, easier to read, and simplifies future modifications.
@@ -236,13 +237,13 @@ def format_user_message_for_llm(
         relevant_user_ids.update(keyword_mentioned_ids)
 
         for user_id in relevant_user_ids:
-            user_entries = knowledge_manager.get_world_book_entries_for_user(user_id)
+            user_entries = get_knowledge_manager().get_world_book_entries_for_user(user_id)
             for entry in user_entries:
                 if entry['id'] not in added_entry_ids:
                     all_wb_entries.append(entry)
                     added_entry_ids.add(entry['id'])
 
-        text_triggered_entries = knowledge_manager.find_world_book_entries_for_text(final_text_content)
+        text_triggered_entries = get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
         for entry in text_triggered_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)
@@ -272,4 +273,47 @@ def format_user_message_for_llm(
     # --- End of new section ---
 
     return USER_REQUEST_BLOCK_TPL.format(parts="\n\n".join(request_block_parts))
+
+
+async def build_context_history_from_platform(
+    messages: List[Dict[str, Any]],
+    config: Dict[str, Any],
+    cutoff_timestamp: Optional[datetime] = None,
+) -> List[Dict[str, str]]:
+    settings = config.get("channel_context_settings", {})
+    msg_limit = settings.get("message_limit", 10)
+    char_limit = settings.get("char_limit", 4000)
+    unlimited_context_length = bool(settings.get("unlimited_context_length", False))
+    unlimited_message_count = bool(settings.get("unlimited_message_count", False))
+
+    if config.get("context_mode", "none") == "none":
+        return []
+
+    if not unlimited_message_count and msg_limit <= 0:
+        return []
+
+    formatted: List[Dict[str, str]] = []
+    total_chars = 0
+
+    for msg in reversed(messages):
+        if not unlimited_message_count and len(formatted) >= msg_limit:
+            break
+
+        author_id = msg.get("author_id", "unknown")
+        content = msg.get("content", "")
+        clean_content = msg.get("clean_content", content)
+        is_bot = msg.get("is_bot", False)
+
+        text = MESSAGE_FORMAT_TPL.format(author_id=author_id, content=escape_content(clean_content), image_note="")
+
+        if not unlimited_context_length:
+            if total_chars + len(text) > char_limit:
+                break
+            total_chars += len(text)
+
+        role = "assistant" if is_bot else "user"
+        formatted.append({"role": role, "content": text})
+
+    formatted.reverse()
+    return formatted
 

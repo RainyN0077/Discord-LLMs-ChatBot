@@ -17,13 +17,22 @@ async def lifespan(app: FastAPI):
     setup_logging()
     loop = asyncio.get_event_loop()
     state.bot_task = loop.create_task(run_bot(state.MEMORY_CUTOFFS))
+
+    from .config_cache import load_config
+    config = load_config()
+    if config.get("qq_bot", {}).get("enabled", False):
+        from .bot_qq import run_qq_bot
+        state.qq_bot_task = loop.create_task(run_qq_bot(config))
+
     yield
-    if state.bot_task and not state.bot_task.done():
-        state.bot_task.cancel()
-        try:
-            await state.bot_task
-        except asyncio.CancelledError:
-            print("Bot task successfully cancelled.")
+
+    for task in [state.bot_task, state.qq_bot_task]:
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 app = FastAPI(lifespan=lifespan)
 

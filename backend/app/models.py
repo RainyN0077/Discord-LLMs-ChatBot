@@ -14,6 +14,7 @@ class Persona(BaseModel):
 
 
 class RoleConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     id: Optional[str] = None
     title: str = ""
     prompt: str = ""
@@ -22,9 +23,9 @@ class RoleConfig(BaseModel):
     message_refresh_minutes: int = Field(60, ge=1)
     message_output_budget: int = Field(1, ge=1)
     enable_char_limit: bool = False
-    char_limit: int = Field(0, ge=0)
+    token_limit: int = Field(0, ge=0, alias="char_limit")
     char_refresh_minutes: int = Field(60, ge=1)
-    char_output_budget: int = Field(300, ge=0)
+    token_output_budget: int = Field(300, ge=0, alias="char_output_budget")
     display_color: str = "#ffffff"
 
 
@@ -331,6 +332,19 @@ TEXT_ATTACHMENT_MIME_EXACT = {
     "application/x-yaml",
     "application/yaml",
 }
+class QQBotConfig(BaseModel):
+    enabled: bool = False
+    napcat_http_url: str = "http://127.0.0.1:3000"
+    napcat_ws_port: int = 8095
+    napcat_ws_path: str = "/qq/ws"
+    trigger_keywords: List[str] = Field(default_factory=list)
+    auto_interject_enabled: bool = False
+    repeat_parrot_enabled: bool = False
+    max_split_length: int = Field(2000, ge=100, le=5000)
+    allowed_group_ids: List[str] = Field(default_factory=list)
+    blocked_group_ids: List[str] = Field(default_factory=list)
+
+
 DIRECT_CHAT_MAX_ATTACHMENTS = 10
 DIRECT_CHAT_MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 DIRECT_CHAT_MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024
