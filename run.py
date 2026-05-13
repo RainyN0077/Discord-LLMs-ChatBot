@@ -29,6 +29,11 @@ import sys
 import time
 from pathlib import Path
 
+try:
+    import httpx
+except ImportError:
+    httpx = None
+
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
@@ -168,6 +173,57 @@ def _kill(pid: int) -> bool:
         return False
 
 
+async def _wait_for_backend(timeout: float = 60.0) -> bool:
+    """Wait for backend HTTP server to respond (application ready)."""
+    url = f"http://localhost:{BACKEND_PORT}/"
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        for proc in CHILD_PROCS:
+            if proc.returncode is not None and proc.returncode != 0:
+                return False
+        if _port_open(BACKEND_PORT):
+            if httpx:
+                try:
+                    async with httpx.AsyncClient(timeout=2.0) as client:
+                        r = await client.get(url)
+                        if r.status_code < 500:
+                            return True
+                except Exception:
+                    pass
+            else:
+                return True
+        await asyncio.sleep(0.5)
+
+    _log("backend", f"Timed out after {timeout:.0f}s", colour="Y")
+    return False
+
+
+def _wait_for_backend_sync(timeout: float = 60.0) -> bool:
+    """Synchronous version for background mode."""
+    url = f"http://localhost:{BACKEND_PORT}/"
+    deadline = time.monotonic() + timeout
+
+    while time.monotonic() < deadline:
+        if not _port_open(BACKEND_PORT):
+            time.sleep(0.5)
+            continue
+        if httpx:
+            try:
+                import httpx as _httpx
+                r = _httpx.get(url, timeout=2.0)
+                if r.status_code < 500:
+                    return True
+            except Exception:
+                pass
+            time.sleep(0.5)
+            continue
+        return True
+
+    _log("backend", f"Timed out after {timeout:.0f}s", colour="Y")
+    return False
+
+
 # ── commands ─────────────────────────────────────────────────────────
 def do_install() -> None:
     vp = _ensure_venv()
@@ -234,27 +290,49 @@ async def _stream(proc: asyncio.subprocess.Process, tag: str, colour: str) -> No
 
 async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> None:
     global CHILD_PROCS
+    CHILD_PROCS = []
     tasks: list[asyncio.Task] = []
-    for tag, args, cwd, env_extra in procs:
+
+    backend_entry = None
+    frontend_entry = None
+    for entry in procs:
+        if entry[0] == "backend":
+            backend_entry = entry
+        elif entry[0] == "frontend":
+            frontend_entry = entry
+
+    if backend_entry:
+        tag, args, cwd, env_extra = backend_entry
         env = dict(os.environ, **env_extra)
-        colour = {"backend": "B", "frontend": "W"}.get(tag, "C")
-        if IS_WINDOWS:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                cwd=cwd, env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
-        else:
-            proc = await asyncio.create_subprocess_exec(
-                *args,
-                cwd=cwd, env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-            )
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=cwd, env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
         CHILD_PROCS.append(proc)
         _log(tag, f"Started (PID {proc.pid})", colour="G")
-        tasks.append(asyncio.create_task(_stream(proc, tag, colour)))
+        tasks.append(asyncio.create_task(_stream(proc, tag, "B")))
+
+        _log("launcher", "Waiting for backend to become ready...", colour="C")
+        ready = await _wait_for_backend()
+        if ready:
+            _log("backend", "Ready – application fully started", colour="G")
+        else:
+            _log("backend", "Not responding yet – starting frontend anyway", colour="Y")
+
+    if frontend_entry:
+        tag, args, cwd, env_extra = frontend_entry
+        env = dict(os.environ, **env_extra)
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            cwd=cwd, env=env,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        CHILD_PROCS.append(proc)
+        _log(tag, f"Started (PID {proc.pid})", colour="G")
+        tasks.append(asyncio.create_task(_stream(proc, tag, "W")))
 
     if not tasks:
         return
@@ -364,6 +442,12 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
             "REDIS_PORT": os.getenv("REDIS_PORT", "6379"),
             "FAIL_ON_REDIS_ERROR": os.getenv("FAIL_ON_REDIS_ERROR", "false"),
         }, BACKEND_PORT)
+
+    backend_started = frontend_only or _wait_for_backend_sync()
+    if backend_started:
+        _log("backend", "Ready – application fully started", colour="G")
+    elif not frontend_only:
+        _log("backend", "Not responding yet – starting frontend anyway", colour="Y")
 
     if not backend_only:
         npm = _find_npm()

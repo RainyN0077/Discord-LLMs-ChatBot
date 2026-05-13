@@ -422,5 +422,52 @@ export default {
     },
     searchPlaceholder: '按关键词搜索...',
     noResults: '没有找到匹配的条目。'
+  },
+  importExport: {
+    export: '导出',
+    exportTitle: '导出配置为 JSON',
+    import: '导入',
+    importTitle: '从 JSON 文件导入配置',
+    exportSuccess: '配置已导出。',
+    exportFailed: '导出失败：{error}',
+    importTitle_Dialog: '导入配置',
+    importPrompt: '导入 Bot 配置',
+    overwriteExisting: '覆盖已有 Bot',
+    confirmImport: '确认导入',
+    importing: '导入中...',
+    importSuccess: '配置导入成功！',
+    importFailed: '导入失败：{error}',
+    invalidFileType: '请选择 .json 配置文件。',
+    invalidJson: '无效的 JSON 文件：{error}',
+    cancel: '取消'
+  },
+  botManager: {
+    title: 'Bot 管理器',
+    loading: '加载中...',
+    noBots: '暂无 Bot。',
+    newBot: '+ 新建 Bot',
+    createBot: '创建 Bot',
+    creating: '创建中...',
+    cancel: '取消',
+    start: '启动',
+    stop: '停止',
+    restart: '重启',
+    delete: '删除',
+    deleteConfirm: '确定要删除 "{botId}" 及其所有数据吗？此操作不可撤销。',
+    expand: '展开',
+    collapse: '收起',
+    status: {
+      running: '运行中',
+      stopped: '已停止',
+      starting: '启动中',
+      error: '异常'
+    }
+  },
+  configPanel: {
+    saveAndRestart: '保存并重启',
+    saving: '保存中...',
+    selectBot: '请选择一个 Bot',
+    configFor: '配置：{botId}',
+    loadingConfig: '正在加载 {botId} 的配置...'
   }
 };

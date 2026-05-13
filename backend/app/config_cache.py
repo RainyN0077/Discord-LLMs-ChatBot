@@ -47,7 +47,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'rerank_model_name': 'gpt-4.1-mini',
     'system_prompt': 'You are a helpful assistant...',
     'blocked_prompt_response': '...',
-    'bot_nickname': 'Endless',
+    'bot_nickname': 'Bot',
     'trigger_keywords': [], 'stream_response': True,
     'trigger_match_mode': 'contains',
     'trigger_case_sensitive': False,

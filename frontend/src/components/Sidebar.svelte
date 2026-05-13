@@ -1,7 +1,7 @@
 <!-- src/components/Sidebar.svelte -->
 <script>
     import { onMount, createEventDispatcher } from 'svelte';
-    import { t } from '../i18n.js';
+    import { t, get as t_get } from '../i18n.js';
     import {
         fetchBots, createBot, deleteBot,
         startBot, stopBot, restartBot,
@@ -75,7 +75,7 @@
 
     async function handleDelete(botId, e) {
         e.stopPropagation();
-        if (!confirm(`Delete bot "${botId}" and all its data? This cannot be undone.`)) return;
+        if (!confirm(t_get('botManager.deleteConfirm', { botId }))) return;
         try {
             await deleteBot(botId);
             if (selectedBotId === botId) {
@@ -131,9 +131,9 @@
 <aside class="sidebar" class:collapsed>
     <div class="sidebar-header">
         {#if !collapsed}
-            <span class="sidebar-title">Bot Manager</span>
+            <span class="sidebar-title">{$t('botManager.title')}</span>
         {/if}
-        <button class="collapse-btn" on:click={() => collapsed = !collapsed} title={collapsed ? '展开' : '收起'}>
+        <button class="collapse-btn" on:click={() => collapsed = !collapsed} title={collapsed ? $t('botManager.expand') : $t('botManager.collapse')}>
             {collapsed ? '▶' : '◀'}
         </button>
     </div>
@@ -141,11 +141,11 @@
     {#if !collapsed}
         <div class="sidebar-content">
             {#if loading}
-                <div class="sidebar-status">Loading...</div>
+                <div class="sidebar-status">{$t('botManager.loading')}</div>
             {:else if error}
                 <div class="sidebar-status error">{error}</div>
             {:else if bots.length === 0}
-                <div class="sidebar-status">No bots yet.</div>
+                <div class="sidebar-status">{$t('botManager.noBots')}</div>
             {:else}
                 <div class="bot-list">
                     {#each bots as bot (bot.bot_id)}
@@ -159,12 +159,12 @@
                             <span class="bot-platform" class:discord={bot.platform === 'discord' || !bot.platform} class:qq={bot.platform === 'qq'}>{bot.platform || 'discord'}</span>
                             <div class="bot-item-actions" role="presentation" on:click|stopPropagation>
                                 {#if bot.status !== 'running'}
-                                    <button class="mini-btn start" on:click={(e) => handleStart(bot.bot_id, e)} title="Start">▶</button>
+                                    <button class="mini-btn start" on:click={(e) => handleStart(bot.bot_id, e)} title={$t('botManager.start')}>▶</button>
                                 {:else}
-                                    <button class="mini-btn stop" on:click={(e) => handleStop(bot.bot_id, e)} title="Stop">■</button>
-                                    <button class="mini-btn restart" on:click={(e) => handleRestart(bot.bot_id, e)} title="Restart">↻</button>
+                                    <button class="mini-btn stop" on:click={(e) => handleStop(bot.bot_id, e)} title={$t('botManager.stop')}>■</button>
+                                    <button class="mini-btn restart" on:click={(e) => handleRestart(bot.bot_id, e)} title={$t('botManager.restart')}>↻</button>
                                 {/if}
-                                <button class="mini-btn delete" on:click={(e) => handleDelete(bot.bot_id, e)} title="Delete">×</button>
+                                <button class="mini-btn delete" on:click={(e) => handleDelete(bot.bot_id, e)} title={$t('botManager.delete')}>×</button>
                             </div>
                         </button>
                     {/each}
@@ -173,10 +173,10 @@
 
             <div class="sidebar-footer">
                 {#if !showCreateForm}
-                    <button class="create-btn" on:click={() => showCreateForm = true}>+ New Bot</button>
+                    <button class="create-btn" on:click={() => showCreateForm = true}>{$t('botManager.newBot')}</button>
                 {:else}
                     <div class="create-form">
-                        <h4>Create New Bot</h4>
+                        <h4>{$t('botManager.createBot')}</h4>
                         {#if createError}
                             <div class="create-error">{createError}</div>
                         {/if}
@@ -197,10 +197,10 @@
                         <input type="text" bind:value={createData.model_name} placeholder="Model name (gpt-4o)" />
                         <div class="create-actions">
                             <button class="create-submit" on:click={handleCreate} disabled={creating}>
-                                {creating ? 'Creating...' : 'Create'}
+                                {creating ? $t('botManager.creating') : $t('botManager.createBot')}
                             </button>
                             <button class="create-cancel" on:click={() => { showCreateForm = false; createError = ''; }}>
-                                Cancel
+                                {$t('botManager.cancel')}
                             </button>
                         </div>
                     </div>

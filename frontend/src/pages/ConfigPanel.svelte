@@ -151,9 +151,9 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         if (!botId) return;
         try {
             await exportBotConfig(botId);
-            showStatus('Config exported.', 'success');
+            showStatus(t_get('importExport.exportSuccess'), 'success');
         } catch (e) {
-            showStatus('Export failed: ' + e.message, 'error');
+            showStatus(t_get('importExport.exportFailed', { error: e.message }), 'error');
         }
     }
 
@@ -166,7 +166,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         if (!file) return;
 
         if (!file.name.endsWith('.json')) {
-            showStatus('Please select a .json config file.', 'error');
+            showStatus(t_get('importExport.invalidFileType'), 'error');
             return;
         }
 
@@ -177,7 +177,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
             importPendingBotId = data.bot_id || '';
             showImportConfirm = true;
         } catch (e) {
-            showStatus('Invalid JSON file: ' + e.message, 'error');
+            showStatus(t_get('importExport.invalidJson', { error: e.message }), 'error');
         } finally {
             event.target.value = '';
         }
@@ -191,10 +191,10 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
             const blob = new Blob([JSON.stringify(importPendingData, null, 2)], { type: 'application/json' });
             const file = new File([blob], 'config.json', { type: 'application/json' });
             const result = await importBotConfig(file, importOverwrite);
-            showStatus(result.message || 'Config imported successfully!', 'success');
+            showStatus(result.message || t_get('importExport.importSuccess'), 'success');
             importOverwrite = false;
         } catch (e) {
-            showStatus('Import failed: ' + e.message, 'error');
+            showStatus(t_get('importExport.importFailed', { error: e.message }), 'error');
         } finally {
             isImporting = false;
             importPendingData = null;
@@ -610,17 +610,17 @@ async function resetFont() {
 
 <div class="config-panel">
     <div class="config-header">
-        <h2>{botId ? `Config: ${botId}` : 'Select a bot'}</h2>
+        <h2>{botId ? $t('configPanel.configFor', { botId }) : $t('configPanel.selectBot')}</h2>
         <div class="header-actions">
-            <button class="export-btn" on:click={handleExport} disabled={!botId} title="Export config as JSON">
-                &#8615; Export
+            <button class="export-btn" on:click={handleExport} disabled={!botId} title={$t('importExport.exportTitle')}>
+                &#8615; {$t('importExport.export')}
             </button>
-            <button class="import-btn" on:click={handleImportClick} disabled={isImporting} title="Import config from JSON file">
-                &#8614; Import
+            <button class="import-btn" on:click={handleImportClick} disabled={isImporting} title={$t('importExport.importTitle')}>
+                &#8614; {$t('importExport.import')}
             </button>
             <input type="file" accept=".json" bind:this={importFileInput} on:change={handleImportFile} class="hidden-input">
             <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
-                {isSaving ? 'Saving...' : 'Save & Restart'}
+                {isSaving ? $t('configPanel.saving') : $t('configPanel.saveAndRestart')}
             </button>
         </div>
     </div>
@@ -628,29 +628,29 @@ async function resetFont() {
     {#if showImportConfirm}
         <div class="import-confirm-overlay" on:click={cancelImport}>
             <div class="import-confirm-dialog" on:click|stopPropagation>
-                <h3>Import Config</h3>
-                <p>Import bot config for <strong>{importPendingBotId || 'unknown'}</strong>?</p>
+                <h3>{$t('importExport.importTitle_Dialog')}</h3>
+                <p>{$t('importExport.importPrompt')} <strong>{importPendingBotId || 'unknown'}</strong>?</p>
                 <label class="checkbox-inline fancy-checkbox" style="margin-bottom: 1rem;">
                     <input type="checkbox" bind:checked={importOverwrite}>
                     <span class="checkbox-box" aria-hidden="true"></span>
-                    <span class="checkbox-text">Overwrite existing bot</span>
+                    <span class="checkbox-text">{$t('importExport.overwriteExisting')}</span>
                 </label>
                 <div class="import-confirm-actions">
                     <button class="import-confirm-btn" on:click={confirmImport} disabled={isImporting}>
-                        {isImporting ? 'Importing...' : 'Confirm Import'}
+                        {isImporting ? $t('importExport.importing') : $t('importExport.confirmImport')}
                     </button>
-                    <button class="import-cancel-btn" on:click={cancelImport}>Cancel</button>
+                    <button class="import-cancel-btn" on:click={cancelImport}>{$t('importExport.cancel')}</button>
                 </div>
             </div>
         </div>
     {/if}
     
     {#if loadingConfig}
-        <div class="loading-state">Loading configuration for {botId}...</div>
+        <div class="loading-state">{botId ? $t('configPanel.loadingConfig', { botId }) : 'Loading...'}</div>
     {:else if configError}
         <div class="error-state">{configError}</div>
     {:else if !botId}
-        <div class="empty-state">Select a bot from the sidebar to configure it.</div>
+        <div class="empty-state">{$t('configPanel.selectBot')}</div>
     {:else}
         <div class="tabs">
             <button class:active={activeTab === 'core'} on:click={() => activeTab = 'core'}>{$t('tabs.core')}</button>

@@ -106,7 +106,7 @@ export const coreConfig = writable({
 });
 
 export const behaviorConfig = writable({
-    bot_nickname: 'Endless',
+    bot_nickname: 'Bot',
     system_prompt: '',
     blocked_prompt_response: '',
     trigger_keywords: [],

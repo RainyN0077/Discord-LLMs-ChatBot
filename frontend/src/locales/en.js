@@ -626,7 +626,54 @@ export default {
      linkedUserLabel: 'Linked User',
      noLinkedUser: 'None'
    },
-    searchPlaceholder: 'Search by keywords...',
+   searchPlaceholder: 'Search by keywords...',
     noResults: 'No matching entries found.'
+  },
+  importExport: {
+    export: 'Export',
+    exportTitle: 'Export config as JSON',
+    import: 'Import',
+    importTitle: 'Import config from JSON file',
+    exportSuccess: 'Config exported.',
+    exportFailed: 'Export failed: {error}',
+    importTitle_Dialog: 'Import Config',
+    importPrompt: 'Import bot config for',
+    overwriteExisting: 'Overwrite existing bot',
+    confirmImport: 'Confirm Import',
+    importing: 'Importing...',
+    importSuccess: 'Config imported successfully!',
+    importFailed: 'Import failed: {error}',
+    invalidFileType: 'Please select a .json config file.',
+    invalidJson: 'Invalid JSON file: {error}',
+    cancel: 'Cancel'
+  },
+  botManager: {
+    title: 'Bot Manager',
+    loading: 'Loading...',
+    noBots: 'No bots yet.',
+    newBot: '+ New Bot',
+    createBot: 'Create Bot',
+    creating: 'Creating...',
+    cancel: 'Cancel',
+    start: 'Start',
+    stop: 'Stop',
+    restart: 'Restart',
+    delete: 'Delete',
+    deleteConfirm: 'Delete bot "{botId}" and all its data? This cannot be undone.',
+    expand: 'Expand',
+    collapse: 'Collapse',
+    status: {
+      running: 'Running',
+      stopped: 'Stopped',
+      starting: 'Starting',
+      error: 'Error'
+    }
+  },
+  configPanel: {
+    saveAndRestart: 'Save & Restart',
+    saving: 'Saving...',
+    selectBot: 'Select a bot',
+    configFor: 'Config: {botId}',
+    loadingConfig: 'Loading configuration for {botId}...'
   }
 };
