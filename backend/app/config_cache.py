@@ -103,8 +103,7 @@ def load_config() -> Dict[str, Any]:
         with open(CONFIG_FILE, "r", encoding='utf-8') as f:
             data = json.load(f)
         _set_defaults_recursive(DEFAULT_CONFIG, data)
-        _cache = data
-        _cache_mtime = mtime
+        save_config(data)
         return data
     except json.JSONDecodeError as e:
         logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
