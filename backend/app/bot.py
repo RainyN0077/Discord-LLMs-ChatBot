@@ -83,13 +83,10 @@ except redis.exceptions.ConnectionError as e:
 
 
 from pathlib import Path
+from .config_cache import load_config, DATA_DIR
 
-# Keep the runtime data directory aligned with main.py.
-DATA_DIR = Path.cwd() / "data"
-CONFIG_FILE = DATA_DIR / "config.json"
 BOT_PROCESS_LOCK_FILE = DATA_DIR / "discord_bot.lock"
 bot_instance = None
-current_config = {}
 token_calculator = TokenCalculator()
 
 
@@ -147,11 +144,7 @@ def _release_bot_process_lock(handle: Optional[TextIO]) -> None:
         handle.close()
 
 def load_bot_config():
-    global current_config
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding='utf-8') as f:
-            current_config = json.load(f)
-    return current_config
+    return load_config()
 
 def collect_image_descriptors(msg: discord.Message, source_label: str) -> List[Dict[str, str]]:
     """
