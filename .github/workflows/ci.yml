@@ -32,9 +32,12 @@ jobs:
             --cov=app \
             --cov=plugins \
             --cov-report=term \
+            --cov-report=term-missing \
             --cov-report=xml \
             --cov-report=html \
-            --cov-fail-under=40 \
+            --cov-report=json \
+            --cov-fail-under=52 \
+            --durations=10 \
             -v
         env:
           FAIL_ON_REDIS_ERROR: "false"
