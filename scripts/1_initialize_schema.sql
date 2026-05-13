@@ -15,11 +15,15 @@ CREATE TABLE IF NOT EXISTS world_book (
 CREATE TABLE IF NOT EXISTS memory (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     content TEXT NOT NULL UNIQUE,
+    normalized_content TEXT,
     timestamp TEXT NOT NULL,
     user_id TEXT,
     user_name TEXT,
     source TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_memory_normalized_content
+ON memory(normalized_content);
 
 -- 2.1 创建 memory_candidates 表（自动记忆候选池）
 CREATE TABLE IF NOT EXISTS memory_candidates (

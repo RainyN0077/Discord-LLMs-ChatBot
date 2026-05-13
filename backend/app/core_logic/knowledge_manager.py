@@ -67,6 +67,12 @@ class KnowledgeManager:
             if "last_user_name" not in cols:
                 cursor.execute("ALTER TABLE memory_candidates ADD COLUMN last_user_name TEXT")
 
+        cursor.execute("PRAGMA table_info(memory)")
+        memory_cols = {row[1] for row in cursor.fetchall()}
+        if memory_cols and "normalized_content" not in memory_cols:
+            cursor.execute("ALTER TABLE memory ADD COLUMN normalized_content TEXT")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_normalized_content ON memory(normalized_content)")
+
     def _safe_int(self, value: Any, default: int, lo: int, hi: int) -> int:
         try:
             return max(lo, min(hi, int(value)))
@@ -180,10 +186,10 @@ class KnowledgeManager:
             row = c.fetchone()
             if row and row["promoted_memory_id"]:
                 return int(row["promoted_memory_id"])
-            c.execute("SELECT id, content FROM memory")
-            for r in c.fetchall():
-                if self._normalize(r["content"]) == normalized:
-                    return int(r["id"])
+            c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
+            row = c.fetchone()
+            if row:
+                return int(row["id"])
         return None
 
     # Memory CRUD
@@ -196,8 +202,8 @@ class KnowledgeManager:
             with self.get_conn() as conn:
                 c = conn.cursor()
                 c.execute(
-                    "INSERT INTO memory (content, timestamp, user_id, user_name, source) VALUES (?, ?, ?, ?, ?)",
-                    (tagged_content, timestamp, user_id, user_name, source),
+                    "INSERT INTO memory (content, normalized_content, timestamp, user_id, user_name, source) VALUES (?, ?, ?, ?, ?, ?)",
+                    (tagged_content, normalized, timestamp, user_id, user_name, source),
                 )
                 memory_id = c.lastrowid
                 c.execute(
