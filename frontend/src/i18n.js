@@ -1,4 +1,4 @@
-﻿// src/i18n.js
+// src/i18n.js
 import { writable, derived } from 'svelte/store';
 import en from './locales/en.js';
 import zh from './locales/zh.js';

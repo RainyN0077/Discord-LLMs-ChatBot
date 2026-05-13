@@ -1,4 +1,4 @@
-﻿<!-- src/App.svelte -->
+<!-- src/App.svelte -->
 <script>
     import { onMount } from 'svelte';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
