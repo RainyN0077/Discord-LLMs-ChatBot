@@ -61,6 +61,20 @@ async function apiFetch(url, options = {}) {
     }
 
     const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 403 && key && !options._noRetry) {
+        console.warn('Received 403 with current key, clearing and retrying without key...');
+        apiSecretKey = null;
+        try { localStorage.removeItem('llmConfig'); } catch (e) {}
+        await fetchConfig();
+        const newKey = getApiSecretKey();
+        if (newKey) {
+            headers['X-API-Key'] = newKey;
+            const retryResponse = await fetch(url, { ...options, headers, _noRetry: true });
+            return handleResponse(retryResponse);
+        }
+    }
+
     return handleResponse(response);
 }
 
@@ -108,7 +122,6 @@ async function handleResponse(response) {
 
 export async function fetchConfig() {
     console.log('Fetching config from backend...');
-    // Initial fetch might not have the key, so we handle it specially
     const tempKey = getApiSecretKey();
     const headers = {};
     if (tempKey) {
@@ -118,9 +131,10 @@ export async function fetchConfig() {
     const response = await fetch(`${BASE_URL}/config`, { headers });
     const result = await handleResponse(response);
 
-    // After a successful fetch, we MUST set the key for subsequent requests.
-    if (result.api_secret_key) {
+    if (result && result.api_secret_key) {
         setApiSecretKey(result.api_secret_key);
+    } else {
+        console.warn('Config response missing api_secret_key, key will remain unset');
     }
     console.log('Config fetched successfully.');
     return result;
