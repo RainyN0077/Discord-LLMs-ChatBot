@@ -168,7 +168,8 @@
     </div>
 
     {#if !collapsed}
-        <div class="resize-handle" role="separator" on:mousedown={handleDragStart}></div>
+        <!-- svelte-ignore a11y-no-static-element-interactions -->
+        <div class="resize-handle" role="separator" aria-orientation="horizontal" on:mousedown={handleDragStart}></div>
         {#if hiddenLogCount > 0}
             <div class="log-limit-note">Showing last {renderedLogLimit} lines ({hiddenLogCount} hidden)</div>
         {/if}

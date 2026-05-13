@@ -628,8 +628,10 @@ async function resetFont() {
     </div>
 
     {#if showImportConfirm}
-        <div class="import-confirm-overlay" on:click={cancelImport}>
-            <div class="import-confirm-dialog" on:click|stopPropagation>
+        <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+        <div class="import-confirm-overlay" role="dialog" aria-modal="true" tabindex="-1" on:click={cancelImport} on:keydown={(e) => e.key === 'Escape' && cancelImport()}>
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <div class="import-confirm-dialog" role="presentation" on:click|stopPropagation>
                 <h3>{$t('importExport.importTitle_Dialog')}</h3>
                 <p>{$t('importExport.importPrompt')} <strong>{importPendingBotId || 'unknown'}</strong>?</p>
                 <label class="checkbox-inline fancy-checkbox" style="margin-bottom: 1rem;">
