@@ -66,7 +66,7 @@ async function apiFetch(url, options = {}) {
 
 async function handleResponse(response) {
     // Special handling for fetching logs, which returns plain text
-    if (response.url.endsWith('/api/logs')) {
+    if (response.url.endsWith('/api/logs') || /\/api\/bots\/.+\/logs$/.test(response.url)) {
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(JSON.parse(errorText).detail || 'Failed to fetch logs');

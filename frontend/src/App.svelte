@@ -3,14 +3,20 @@
     import { onMount } from 'svelte';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang } from './i18n.js';
-    import { fetchConfig, saveConfig, statusMessage, statusType, isLoading, customFontName } from './lib/stores.js';
-    import ControlPanel from './pages/ControlPanel.svelte';
-    import DirectChat from './pages/DirectChat.svelte';
-    import PersonaHub from './pages/PersonaHub.svelte';
-    import BotManager from './pages/BotManager.svelte';
+    import { customFontName } from './lib/stores.js';
+    import { setApiSecretKey } from './lib/api.js';
+    import Sidebar from './components/Sidebar.svelte';
+    import ConfigPanel from './pages/ConfigPanel.svelte';
+    import LogPanel from './components/LogPanel.svelte';
 
-    let activePage = 'panel';
+    let selectedBotId = null;
     let theme = 'light';
+    let sidebarVisible = true;
+
+    function handleBotSelect(event) {
+        selectedBotId = event.detail;
+        if (window.innerWidth < 768) sidebarVisible = false;
+    }
 
     function applyFont(fontDataUrl, fontName) {
         const styleId = 'custom-font-style';
@@ -33,7 +39,18 @@
     }
 
     onMount(async () => {
-        fetchConfig({ startup: true });
+        try {
+            const response = await fetch('/api/config');
+            if (response.ok) {
+                const config = await response.json();
+                if (config.api_secret_key) {
+                    setApiSecretKey(config.api_secret_key);
+                }
+            }
+        } catch (e) {
+            console.warn('Could not pre-fetch config:', e);
+        }
+
         const storedTheme = localStorage.getItem('theme');
         if (storedTheme === 'dark' || storedTheme === 'light') {
             theme = storedTheme;
@@ -62,155 +79,143 @@
     function toggleTheme() {
         applyTheme(theme === 'dark' ? 'light' : 'dark');
     }
+
+    function toggleSidebar() {
+        sidebarVisible = !sidebarVisible;
+    }
 </script>
 
-<div class="page-switcher">
-    <button class:active={activePage === 'panel'} on:click={() => activePage = 'panel'}>
-        {$t('appNav.controlPanel')}
-    </button>
-    <button class:active={activePage === 'chat'} on:click={() => activePage = 'chat'}>
-        {$t('appNav.directChat')}
-    </button>
-    <button class:active={activePage === 'persona'} on:click={() => activePage = 'persona'}>
-        {$t('appNav.personaHub')}
-    </button>
-    <button class:active={activePage === 'bots'} on:click={() => activePage = 'bots'}>
-        Bots
-    </button>
-</div>
-
-<div class="lang-switcher">
-    <div class="segment segment-lang" aria-label="Language Switcher">
-        <div class="segment-thumb" class:to-right={$lang === 'en'}></div>
-        <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
-        <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
-    </div>
-    <button class="theme-toggle" on:click={toggleTheme} title={$t(theme === 'dark' ? 'appNav.themeLight' : 'appNav.themeDark')}>
-        {theme === 'dark' ? '☀' : '☾'}
-    </button>
-</div>
-
-{#if activePage === 'panel'}
-    <ControlPanel {applyFont} />
-{:else if activePage === 'chat'}
-    <DirectChat />
-{:else if activePage === 'bots'}
-    <BotManager />
-{:else}
-    <PersonaHub />
-{/if}
-
-{#if activePage === 'panel' || activePage === 'persona'}
-    <div class="save-footer">
-        <div class="status-container">
-            <div class="status {$statusType}" style:visibility={$statusMessage ? 'visible' : 'hidden'}>
-                {$statusMessage || '...'}
-            </div>
+<div class="app-shell">
+    <header class="app-header">
+        <div class="header-left">
+            <button class="hamburger-btn" on:click={toggleSidebar} aria-label="Toggle sidebar">
+                ☰
+            </button>
+            <span class="app-logo">BOT Manager</span>
         </div>
-        <button class="save-button" on:click={saveConfig} disabled={$isLoading}>
-            {$isLoading ? $t('buttons.saving') : $t('buttons.save')}
-        </button>
+        <div class="header-actions">
+            <div class="lang-switcher">
+                <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
+                <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
+            </div>
+            <button class="theme-toggle" on:click={toggleTheme} title={$t(theme === 'dark' ? 'appNav.themeLight' : 'appNav.themeDark')}>
+                {theme === 'dark' ? '☀' : '☾'}
+            </button>
+        </div>
+    </header>
+
+    <div class="app-body">
+        {#if sidebarVisible}
+            <Sidebar bind:selectedBotId on:select={handleBotSelect} />
+        {/if}
+        <main class="main-content">
+            <ConfigPanel {applyFont} botId={selectedBotId} />
+            <LogPanel botId={selectedBotId} />
+        </main>
     </div>
-{/if}
+</div>
 
 <style>
-    .page-switcher {
-        position: fixed;
-        top: .9rem;
-        left: .9rem;
-        display: flex;
-        gap: .5rem;
-        background-color: var(--floating-bg);
-        padding: .4rem;
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        border: 1px solid var(--floating-border);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
-        z-index: 1000;
+    :global(*) {
+        margin: 0;
+        box-sizing: border-box;
     }
 
-    .page-switcher button {
-        background-color: transparent;
+    :global(body) {
+        overflow: hidden;
+    }
+
+    .app-shell {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+    }
+
+    .app-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: .5rem 1rem;
+        background: var(--floating-bg);
+        border-bottom: 1px solid var(--floating-border);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+        z-index: 100;
+        flex-shrink: 0;
+        height: 46px;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+    }
+
+    .hamburger-btn {
+        display: none;
+        background: transparent;
+        border: none;
         color: var(--text-light);
-        padding: .5rem .95rem;
+        font-size: 1.2rem;
+        cursor: pointer;
+        padding: .2rem .35rem;
+        border-radius: 4px;
         box-shadow: none;
     }
 
-    .page-switcher button.active {
-        color: #fff;
-        font-weight: 700;
-        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
+    .hamburger-btn:hover {
+        color: var(--text-color);
+        background: var(--panel-muted-bg);
+    }
+
+    .app-logo {
+        font-weight: 800;
+        font-size: 1.1rem;
+        color: var(--primary-color);
+        letter-spacing: -0.02em;
+    }
+
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
     }
 
     .lang-switcher {
-        position: fixed;
-        top: .9rem;
-        right: .9rem;
         display: flex;
-        gap: .5rem;
-        background-color: var(--floating-bg);
-        padding: .4rem;
-        border-radius: 12px;
-        box-shadow: var(--shadow);
-        border: 1px solid var(--floating-border);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
-        z-index: 1000;
-        align-items: center;
-    }
-
-    .segment {
-        position: relative;
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: .25rem;
-        padding: .2rem;
-        border-radius: 10px;
+        gap: .15rem;
         background: var(--panel-muted-bg);
-        border: 1px solid var(--panel-muted-border);
-        min-width: 112px;
+        border-radius: 6px;
+        padding: .15rem;
     }
 
-    .segment-thumb {
-        position: absolute;
-        top: .2rem;
-        left: .2rem;
-        width: calc(50% - .25rem);
-        bottom: .2rem;
-        border-radius: 8px;
-        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
-        box-shadow: 0 6px 14px rgba(15, 23, 42, .2);
-        transform: translateX(0);
-        transition: transform .24s ease;
-    }
-
-    .segment-thumb.to-right {
-        transform: translateX(calc(100% + .05rem));
-    }
-
-    .segment button {
-        background-color: transparent;
+    .lang-switcher button {
+        background: transparent;
+        border: none;
         color: var(--text-light);
-        padding: .45rem .65rem;
+        padding: .25rem .45rem;
+        font-size: .78rem;
+        border-radius: 4px;
+        cursor: pointer;
         box-shadow: none;
-        position: relative;
-        z-index: 1;
     }
 
-    .segment button.active {
+    .lang-switcher button.active {
+        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
         color: #fff;
-        font-weight: 700;
     }
 
     .theme-toggle {
         background: transparent;
-        color: var(--text-light);
-        box-shadow: none;
-        padding: .45rem .7rem;
-        border-radius: 10px;
         border: 1px solid var(--border-color);
-        min-width: 42px;
+        color: var(--text-light);
+        padding: .25rem .55rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: .85rem;
+        box-shadow: none;
     }
 
     .theme-toggle:hover {
@@ -218,100 +223,64 @@
         border-color: var(--primary-color);
     }
 
-    .save-footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
+    .app-body {
         display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        gap: 1.5rem;
-        padding: .85rem clamp(1rem, 2.4vw, 2rem);
-        background: var(--footer-bg);
-        -webkit-backdrop-filter: blur(8px);
-        backdrop-filter: blur(8px);
-        border-top: 1px solid var(--footer-border);
-        z-index: 1001;
+        flex: 1;
+        overflow: hidden;
     }
 
-    .status-container {
-        flex-grow: 1;
+    .main-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: var(--bg-color);
+        min-width: 0;
         min-height: 0;
-        padding: 0;
-        margin: 0;
-        display: block;
     }
 
-    .status {
-        width: auto;
-        display: inline-block;
-        margin: 0;
-        padding: 0.75rem 1.25rem;
-        text-align: left;
-        border-radius: 10px;
-        border: 1px solid transparent;
-        box-shadow: var(--shadow-soft);
-    }
-
-    .status.success {
-        background-color: var(--success-bg);
-        color: var(--success-text);
-        border-color: rgba(0, 121, 107, .18);
-    }
-
-    .status.error {
-        background-color: var(--error-bg);
-        color: var(--error-text);
-        border-color: rgba(194, 24, 91, .18);
-    }
-
-    .status.info,
-    .status.loading-special {
-        background-color: var(--info-bg);
-        color: var(--info-text);
-        border-color: rgba(2, 119, 189, .18);
-    }
-
-    .save-button {
-        font-size: 1.1rem;
-        padding: .72rem 1.4rem;
-        background: linear-gradient(135deg, var(--save-color), #1a9156);
-        color: #fff;
-    }
-
-    @media (max-width: 880px) {
-        .page-switcher {
-            top: .65rem;
-            left: .65rem;
+    @media (max-width: 768px) {
+        .app-header {
+            padding: .4rem .65rem;
+            height: 40px;
         }
 
-        .page-switcher button,
-        .segment button,
+        .hamburger-btn {
+            display: block;
+        }
+
+        .app-logo {
+            font-size: .92rem;
+        }
+
+        .lang-switcher button {
+            padding: .18rem .3rem;
+            font-size: .7rem;
+        }
+
         .theme-toggle {
-            padding: .45rem .7rem;
-            font-size: .9rem;
+            padding: .2rem .4rem;
+            font-size: .75rem;
+        }
+    }
+
+    @media (max-width: 480px) {
+        .app-header {
+            padding: .3rem .5rem;
+            height: 38px;
         }
 
-        .lang-switcher {
-            top: .65rem;
-            right: .65rem;
+        .app-logo {
+            font-size: .82rem;
         }
 
-        .save-footer {
-            justify-content: space-between;
-            gap: .75rem;
-            padding: .7rem 1rem;
+        .lang-switcher button {
+            padding: .15rem .25rem;
+            font-size: .65rem;
         }
 
-        .status {
-            font-size: .88rem;
-            padding: .6rem .85rem;
-        }
-
-        .save-button {
-            font-size: .95rem;
-            white-space: nowrap;
+        .header-actions {
+            gap: .25rem;
         }
     }
 </style>

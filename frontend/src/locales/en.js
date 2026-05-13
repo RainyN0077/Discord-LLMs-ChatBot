@@ -7,10 +7,10 @@ export default {
     themeDark: 'Switch to dark mode',
     themeLight: 'Switch to light mode'
   },
-  title: 'Discord LLM Bot Control Panel',
+  title: 'BOT Manager',
   tabs: {
     core: 'Core Settings',
-    directives: 'Identity Directives',
+    directives: 'Identity & Behavior',
     automation: 'Automation',
     advanced: 'Advanced Tools'
   },

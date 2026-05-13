@@ -34,6 +34,7 @@
     --log-shell-bg: #1e1e1e;
     --log-text-color: #d4d4d4;
     --log-time-color: #9e9e9e;
+    --sidebar-active-indicator: #1f8bd6;
 }
 
 :root[data-theme='dark'] {
@@ -69,6 +70,7 @@
     --log-shell-bg: #101821;
     --log-text-color: #d2deea;
     --log-time-color: #8fa1b5;
+    --sidebar-active-indicator: #45a3e6;
 }
 
 /* Base Body Styles */

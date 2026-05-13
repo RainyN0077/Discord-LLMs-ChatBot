@@ -27,8 +27,6 @@ const zhOverrides = {
     },
     appNav: {
         controlPanel: '控制面板',
-        directChat: '直接对话',
-        personaHub: '身份管理',
         themeDark: '切换到深色模式',
         themeLight: '切换到浅色模式',
     },

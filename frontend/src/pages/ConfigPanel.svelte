@@ -1,4 +1,4 @@
-<!-- src/pages/ControlPanel.svelte -->
+<!-- src/pages/ConfigPanel.svelte -->
 <script>
     import '../styles/lists.css';
     import { t, get as t_get } from '../i18n.js';
@@ -11,18 +11,134 @@
         setKeywords,
         customFontName,
         showStatus,
-        timezoneStore
+        timezoneStore,
+        pluginsConfig,
+        userPersonas,
+        roleConfigs,
+        scopedPrompts,
+        isLoading,
+        statusMessage,
+        statusType,
+        saveConfig
     } from '../lib/stores.js';
-    import { clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
+    import { fetchBotConfig, updateBotConfig, clearMemory, fetchAvailableModels, testModel } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
 
     import Card from '../components/Card.svelte';
-    import LogViewer from '../components/LogViewer.svelte';
     import PluginEditor from '../components/PluginEditor.svelte';
     import SearchSettings from '../components/SearchSettings.svelte';
     import KnowledgeEditor from '../components/KnowledgeEditor.svelte';
 
+    export let botId = null;
     export let applyFont;
+
+    let loadingConfig = false;
+    let configError = '';
+    let isSaving = false;
+
+    let configLoadSeq = 0;
+
+    async function loadInstanceConfig(seq) {
+        if (seq !== configLoadSeq) return;
+        if (!botId) return;
+        loadingConfig = true;
+        configError = '';
+        try {
+            const loadedConfig = await fetchBotConfig(botId);
+            if (!loadedConfig) throw new Error('Empty config returned');
+            coreConfig.set({
+                discord_token: loadedConfig.discord_token || '',
+                llm_provider: loadedConfig.llm_provider || 'openai',
+                api_key: loadedConfig.api_key || '',
+                base_url: loadedConfig.base_url || '',
+                openai_base_url: loadedConfig.openai_base_url || loadedConfig.base_url || '',
+                anthropic_base_url: loadedConfig.anthropic_base_url || '',
+                grok_base_url: loadedConfig.grok_base_url || '',
+                model_name: loadedConfig.model_name || 'gpt-4o',
+                llm_is_multimodal: loadedConfig.llm_is_multimodal !== false,
+                ocr_provider: loadedConfig.ocr_provider || 'openai',
+                ocr_api_key: loadedConfig.ocr_api_key || '',
+                ocr_base_url: loadedConfig.ocr_base_url || '',
+                ocr_port: loadedConfig.ocr_port || '',
+                ocr_model_name: loadedConfig.ocr_model_name || '',
+                ocr_prompt_template: loadedConfig.ocr_prompt_template || '',
+                ocr_max_output_chars: loadedConfig.ocr_max_output_chars ?? 4000,
+                ocr_timeout_seconds: loadedConfig.ocr_timeout_seconds ?? 15,
+                ocr_timeout_disabled: !!loadedConfig.ocr_timeout_disabled,
+                embedding_provider: loadedConfig.embedding_provider || 'openai',
+                embedding_api_key: loadedConfig.embedding_api_key || '',
+                embedding_base_url: loadedConfig.embedding_base_url || '',
+                embedding_port: loadedConfig.embedding_port || '',
+                embedding_model_name: loadedConfig.embedding_model_name || 'text-embedding-3-small',
+                embedding_dimensions: loadedConfig.embedding_dimensions ?? 1536,
+                rerank_provider: loadedConfig.rerank_provider || 'openai',
+                rerank_api_key: loadedConfig.rerank_api_key || '',
+                rerank_base_url: loadedConfig.rerank_base_url || '',
+                rerank_port: loadedConfig.rerank_port || '',
+                rerank_model_name: loadedConfig.rerank_model_name || 'gpt-4.1-mini',
+                api_secret_key: loadedConfig.api_secret_key || ''
+            });
+            behaviorConfig.set({
+                bot_nickname: loadedConfig.bot_nickname || loadedConfig.bot_name || 'Endless',
+                system_prompt: loadedConfig.system_prompt || '',
+                blocked_prompt_response: loadedConfig.blocked_prompt_response || '',
+                trigger_keywords: loadedConfig.trigger_keywords || [],
+                trigger_match_mode: loadedConfig.trigger_match_mode || 'contains',
+                trigger_case_sensitive: !!loadedConfig.trigger_case_sensitive,
+                auto_interject_enabled: !!loadedConfig.auto_interject_enabled,
+                auto_interject_interval: loadedConfig.auto_interject_interval ?? 20,
+                auto_interject_min_length: loadedConfig.auto_interject_min_length ?? 0,
+                repeat_parrot_enabled: !!loadedConfig.repeat_parrot_enabled,
+                repeat_parrot_threshold: loadedConfig.repeat_parrot_threshold ?? 3,
+                repeat_parrot_case_sensitive: !!loadedConfig.repeat_parrot_case_sensitive,
+                repeat_parrot_trim_whitespace: loadedConfig.repeat_parrot_trim_whitespace !== false,
+                repeat_parrot_min_length: loadedConfig.repeat_parrot_min_length ?? 2,
+                repeat_parrot_require_multiple_users: loadedConfig.repeat_parrot_require_multiple_users !== false,
+                stream_response: loadedConfig.stream_response !== false,
+                memory_dedup_threshold: loadedConfig.memory_dedup_threshold ?? 0.0,
+                world_book_dedup_threshold: loadedConfig.world_book_dedup_threshold ?? 0.0,
+                auto_memory_enabled: loadedConfig.auto_memory_enabled !== false,
+                auto_memory_min_length: loadedConfig.auto_memory_min_length ?? 8,
+                auto_memory_cooldown_seconds: loadedConfig.auto_memory_cooldown_seconds ?? 45,
+                auto_memory_promote_min_observations: loadedConfig.auto_memory_promote_min_observations ?? 2,
+                auto_memory_promote_min_distinct_users: loadedConfig.auto_memory_promote_min_distinct_users ?? 1,
+                auto_memory_quality_threshold: loadedConfig.auto_memory_quality_threshold ?? 0.55,
+                auto_memory_direct_promote_ai_tag: !!loadedConfig.auto_memory_direct_promote_ai_tag,
+                auto_memory_recall_top_k: loadedConfig.auto_memory_recall_top_k ?? 12,
+                auto_memory_recall_char_limit: loadedConfig.auto_memory_recall_char_limit ?? 2200,
+                auto_memory_recall_max_age_days: loadedConfig.auto_memory_recall_max_age_days ?? 365
+            });
+            contextConfig.set({
+                context_mode: loadedConfig.context_mode || 'channel',
+                channel_context_settings: loadedConfig.channel_context_settings || { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
+                memory_context_settings: loadedConfig.memory_context_settings || { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false }
+            });
+            pluginsConfig.set(loadedConfig.plugins || {});
+            userPersonas.set(loadedConfig.user_personas || {});
+            roleConfigs.set(loadedConfig.role_based_config || {});
+            scopedPrompts.set(loadedConfig.scoped_prompts || { guilds: {}, channels: {} });
+            customParameters.set(loadedConfig.custom_parameters || []);
+        } catch (e) {
+            configError = String(e.message || e);
+        } finally {
+            loadingConfig = false;
+        }
+    }
+
+    $: if (botId) { const seq = ++configLoadSeq; loadInstanceConfig(seq); }
+
+    async function handleSave() {
+        isSaving = true;
+        showStatus('Saving...', 'info');
+        try {
+            await saveConfig();
+            showStatus('Configuration saved and bot restarted!', 'success');
+        } catch (e) {
+            showStatus('Save failed: ' + e.message, 'error');
+        } finally {
+            isSaving = false;
+        }
+    }
 
 
 
@@ -51,6 +167,15 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     let ocrTestResult = null;
     let isTestingOcr = false;
     let useManualOcrInput = false;
+
+    let prevLlmProvider = null;
+    let prevApiKey = null;
+    let prevEmbedProvider = null;
+    let prevEmbedKey = null;
+    let prevRerankProvider = null;
+    let prevRerankKey = null;
+    let prevOcrProvider = null;
+    let prevOcrKey = null;
     
     // A curated list of common timezones for the dropdown
     const commonTimezones = [
@@ -385,32 +510,51 @@ async function resetFont() {
     }
     
     // 当provider或API key改变时，重置状态
-    $: if ($coreConfig.llm_provider || $coreConfig.api_key) {
+    $: if ($coreConfig.llm_provider !== prevLlmProvider || $coreConfig.api_key !== prevApiKey) {
+        prevLlmProvider = $coreConfig.llm_provider;
+        prevApiKey = $coreConfig.api_key;
         availableModels = [];
         testResult = null;
         useManualInput = false;
     }
-    $: if ($coreConfig.embedding_provider || $coreConfig.embedding_api_key) {
+    $: if ($coreConfig.embedding_provider !== prevEmbedProvider || $coreConfig.embedding_api_key !== prevEmbedKey) {
+        prevEmbedProvider = $coreConfig.embedding_provider;
+        prevEmbedKey = $coreConfig.embedding_api_key;
         availableEmbeddingModels = [];
         embeddingTestResult = null;
         useManualEmbeddingInput = false;
     }
-    $: if ($coreConfig.rerank_provider || $coreConfig.rerank_api_key) {
+    $: if ($coreConfig.rerank_provider !== prevRerankProvider || $coreConfig.rerank_api_key !== prevRerankKey) {
+        prevRerankProvider = $coreConfig.rerank_provider;
+        prevRerankKey = $coreConfig.rerank_api_key;
         availableRerankModels = [];
         rerankTestResult = null;
         useManualRerankInput = false;
     }
-    $: if ($coreConfig.ocr_provider || $coreConfig.ocr_api_key || $coreConfig.llm_is_multimodal) {
+    $: if ($coreConfig.ocr_provider !== prevOcrProvider || $coreConfig.ocr_api_key !== prevOcrKey) {
+        prevOcrProvider = $coreConfig.ocr_provider;
+        prevOcrKey = $coreConfig.ocr_api_key;
         availableOcrModels = [];
         ocrTestResult = null;
         useManualOcrInput = false;
     }
 </script>
 
-<div class="page-container">
-    <main>
-        <h1>{$t('title')}</h1>
-        
+<div class="config-panel">
+    <div class="config-header">
+        <h2>{botId ? `Config: ${botId}` : 'Select a bot'}</h2>
+        <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
+            {isSaving ? 'Saving...' : 'Save & Restart'}
+        </button>
+    </div>
+    
+    {#if loadingConfig}
+        <div class="loading-state">Loading configuration for {botId}...</div>
+    {:else if configError}
+        <div class="error-state">{configError}</div>
+    {:else if !botId}
+        <div class="empty-state">Select a bot from the sidebar to configure it.</div>
+    {:else}
         <div class="tabs">
             <button class:active={activeTab === 'core'} on:click={() => activeTab = 'core'}>{$t('tabs.core')}</button>
             <button class:active={activeTab === 'directives'} on:click={() => activeTab = 'directives'}>{$t('tabs.directives')}</button>
@@ -944,25 +1088,60 @@ async function resetFont() {
             </div>
             {/if}
         {/if}
-    </main>
-    <aside class="log-viewer">
-        <LogViewer />
-    </aside>
+    {/if}
 </div>
 
 <style>
-    .tab-content {
-        display: flex;
-        flex-direction: column;
-        gap: 1.35rem;
+    .config-panel {
+        padding: 1rem 1.5rem;
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+        box-sizing: border-box;
     }
-    main h1 {
-        margin-top: .2rem;
-        padding: .85rem 1rem;
-        border-radius: 14px;
+
+    .config-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        flex-shrink: 0;
+    }
+
+    .config-header h2 {
+        margin: 0;
+        font-size: 1.2rem;
+        color: var(--text-color);
+        padding: .6rem 1rem;
+        border-radius: 10px;
         background: linear-gradient(135deg, rgba(31, 139, 214, .1), rgba(24, 138, 81, .08));
         border: 1px solid rgba(15, 23, 42, .08);
         box-shadow: var(--shadow-soft);
+    }
+
+    .save-btn {
+        padding: .6rem 1.4rem;
+        background: linear-gradient(135deg, var(--save-color), #1a9156);
+        color: #fff;
+        font-size: .95rem;
+        font-weight: 600;
+        border-radius: 10px;
+    }
+
+    .save-btn:disabled {
+        opacity: .6;
+        cursor: not-allowed;
+    }
+
+    .loading-state, .error-state, .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: var(--text-light);
+        font-size: 1rem;
+    }
+
+    .error-state {
+        color: var(--error-text);
     }
 
     .group-label {
@@ -1232,19 +1411,9 @@ async function resetFont() {
         }
     }
     
-    .page-container {
-        display: grid;
-        grid-template-columns: minmax(0, 1.85fr) minmax(360px, 1fr);
-        align-items: start;
-        gap: clamp(1rem, 2vw, 1.65rem);
-        max-width: 1700px;
-        margin: 0 auto;
-    }
-
-    main {
+    .tab-content {
         display: flex;
         flex-direction: column;
-        min-width: 0;
         gap: 1.35rem;
     }
     
@@ -1302,57 +1471,131 @@ async function resetFont() {
         flex-wrap: wrap;
     }
 
-    .log-viewer {
-        position: sticky;
-        top: .75rem;
-        min-width: 0;
-    }
-
     @media (max-width: 1280px) {
-      .page-container {
-          grid-template-columns: 1fr;
-      }
-
-      .log-viewer {
-          position: relative;
-          top: 0;
-          margin-top: .2rem;
-      }
     }
 
     @media (max-width: 900px) {
-      .provider-top-grid {
-          grid-template-columns: 1fr;
-      }
+        .config-panel {
+            padding: .75rem 1rem;
+        }
 
-      .tabs {
-          top: .5rem;
-      }
+        .config-header {
+            flex-wrap: wrap;
+            gap: .5rem;
+        }
 
-      .tabs button {
-          font-size: .9rem;
-          padding: .55rem .4rem;
-      }
+        .config-header h2 {
+            font-size: 1rem;
+            padding: .45rem .75rem;
+        }
 
-      .radio-group {
-          gap: 1rem;
-      }
+        .save-btn {
+            padding: .5rem 1rem;
+            font-size: .85rem;
+        }
 
-      .control-grid {
-          grid-template-columns: 1fr;
-          gap: .6rem;
-      }
+        .provider-top-grid {
+            grid-template-columns: 1fr;
+        }
 
-       .param-item {
-           grid-template-columns: 1fr;
-       }
+        .tabs {
+            top: .5rem;
+        }
 
-      .param-item > .remove-btn {
-          justify-self: start;
-      }
+        .tabs button {
+            font-size: .85rem;
+            padding: .5rem .35rem;
+        }
 
-       .action-container > * {
-           width: 100%;
-       }
+        .radio-group {
+            gap: 1rem;
+        }
+
+        .control-grid {
+            grid-template-columns: 1fr;
+            gap: .6rem;
+        }
+
+        .param-item {
+            grid-template-columns: 1fr;
+        }
+
+        .param-item > .remove-btn {
+            justify-self: start;
+        }
+
+        .action-container > * {
+            width: 100%;
+        }
+
+        .model-controls {
+            flex-direction: column;
+        }
+
+        .model-controls select,
+        .model-controls input {
+            width: 100%;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .config-panel {
+            padding: .5rem .6rem;
+        }
+
+        .config-header h2 {
+            font-size: .85rem;
+            padding: .35rem .6rem;
+            flex: 1;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .save-btn {
+            padding: .4rem .8rem;
+            font-size: .78rem;
+            border-radius: 8px;
+        }
+
+        .tabs {
+            border-radius: 10px;
+            padding: .25rem;
+            top: .35rem;
+        }
+
+        .tabs button {
+            font-size: .75rem;
+            padding: .4rem .25rem;
+            border-radius: 7px;
+        }
+
+        .tab-content {
+            gap: .8rem;
+        }
+
+        .automation-section {
+            gap: .5rem;
+        }
+
+        .inline-input {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .inline-input input[type="number"] {
+            max-width: 100%;
+        }
+
+        .setting-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: .35rem;
+        }
+
+        .setting-item select {
+            width: 100%;
+        }
     }
 </style>

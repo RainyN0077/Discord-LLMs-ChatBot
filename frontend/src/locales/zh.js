@@ -1,9 +1,9 @@
 // src/locales/zh.js
 export default {
-  title: 'Discord LLM Bot 控制面板',
+  title: 'BOT Manager',
   tabs: {
     core: '核心设置',
-    directives: '身份指令',
+    directives: '行为与身份',
     automation: '自动互动',
     advanced: '高级工具'
   },
