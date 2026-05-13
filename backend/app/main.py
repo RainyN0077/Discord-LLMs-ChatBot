@@ -370,6 +370,12 @@ class ClearMemoryRequest(BaseModel):
 class PluginTriggerRequest(BaseModel):
     plugin_name: str
     args: Dict[str, Any] = Field(default_factory=dict)
+    message_content: str = ""
+    author_id: int = 0
+    author_name: str = "API"
+    author_display_name: str = "API"
+    channel_id: str = "0"
+    guild_id: str = "0"
 
 class DebuggerRequest(BaseModel):
     user_id: str
@@ -780,7 +786,18 @@ async def trigger_plugin_endpoint(request: PluginTriggerRequest):
         raise HTTPException(status_code=404, detail=f"Plugin '{request.plugin_name}' not found or is disabled.")
     
     mock_message = MagicMock()
-    # ... setup mock_message ...
+    mock_message.content = request.message_content or ""
+    mock_author = MagicMock()
+    mock_author.id = request.author_id or 0
+    mock_author.name = request.author_name or "API"
+    mock_author.display_name = request.author_display_name or request.author_name or "API"
+    mock_message.author = mock_author
+    mock_channel = MagicMock()
+    mock_channel.id = request.channel_id or "0"
+    mock_message.channel = mock_channel
+    mock_guild = MagicMock()
+    mock_guild.id = request.guild_id or "0"
+    mock_message.guild = mock_guild
     args_str = json.dumps(request.args)
     action_type = target_plugin.get('action_type')
 
