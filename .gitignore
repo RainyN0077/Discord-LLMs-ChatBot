@@ -20,6 +20,15 @@ frontend/.env*
 # Local development runtime files
 .local-run/
 
+# Vite dev cache
+frontend/.vite/
+
+# pytest cache
+.pytest_cache/
+
+# Kilo project config
+.kilo/
+
 # --- Docker ---
 # No Docker specific files to ignore for now, data directory covers it.
 
