@@ -37,6 +37,10 @@ class TestBotsRoutes:
         assert response.status_code == 200
         result = response.json()
         assert result["bot_id"] == "new-bot"
+        state.bot_manager.create.assert_awaited_once()
+        call_args = state.bot_manager.create.call_args[0][0]
+        assert call_args["bot_id"] == "new-bot"
+        assert call_args["bot_name"] == "New Bot"
 
     async def test_create_bot_invalid_id(self, app_client, auth_headers):
         response = await app_client.post(
@@ -63,6 +67,7 @@ class TestBotsRoutes:
         state.bot_manager.delete = AsyncMock()
         response = await app_client.delete("/api/bots/test-bot", headers=auth_headers)
         assert response.status_code == 200
+        state.bot_manager.delete.assert_awaited_once_with("test-bot")
 
     async def test_delete_bot_not_found(self, app_client, auth_headers):
         state.bot_manager.get.return_value = None
@@ -76,6 +81,7 @@ class TestBotsRoutes:
         state.bot_manager.start = AsyncMock()
         response = await app_client.post("/api/bots/test-bot/start", headers=auth_headers)
         assert response.status_code == 200
+        state.bot_manager.start.assert_awaited_once_with("test-bot")
 
     async def test_stop_bot_success(self, app_client, auth_headers):
         mock_instance = MagicMock()
@@ -84,6 +90,7 @@ class TestBotsRoutes:
         state.bot_manager.stop = AsyncMock()
         response = await app_client.post("/api/bots/test-bot/stop", headers=auth_headers)
         assert response.status_code == 200
+        state.bot_manager.stop.assert_awaited_once_with("test-bot")
 
     async def test_restart_bot_success(self, app_client, auth_headers):
         mock_instance = MagicMock()
@@ -119,6 +126,8 @@ class TestBotsRoutes:
             headers=auth_headers,
         )
         assert response.status_code == 200
+        mock_instance.save_config.assert_called_once()
+        mock_instance.load_config.assert_called_once()
 
     async def test_get_bot_logs_no_file(self, app_client, auth_headers, tmp_path):
         mock_instance = MagicMock()

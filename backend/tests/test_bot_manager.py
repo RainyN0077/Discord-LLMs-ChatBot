@@ -82,7 +82,10 @@ class TestBotManager:
     async def test_delete_nonexistent(self, tmp_path, monkeypatch):
         _setup_bot_paths(monkeypatch, tmp_path)
         mgr = BotManager()
+        # Should not raise and should not modify instances
         await mgr.delete("nonexistent")
+        assert mgr._instances == {}
+        assert "nonexistent" not in mgr._instances
 
     @pytest.mark.asyncio
     async def test_start_bot_success(self):
