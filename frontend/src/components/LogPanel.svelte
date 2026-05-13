@@ -32,30 +32,29 @@
         }
     };
 
-    $: parsedLogs = (($rawLogs, $timezoneStore), () => {
+    const logParserRegex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)\s+\[[^\]]+\]\s+-\s+(INFO|WARNING|ERROR|CRITICAL)\s+-\s+/;
+
+    $: parsedLogs = (($rawLogs, $timezoneStore, renderedLogLimit), () => {
         const allLines = ($rawLogs || '').split('\n').filter(line => line.trim() !== '');
         hiddenLogCount = Math.max(0, allLines.length - renderedLogLimit);
         const visibleLines = hiddenLogCount > 0 ? allLines.slice(-renderedLogLimit) : allLines;
         return visibleLines.map(line => {
-            const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-            const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
-            const originalTimestamp = timestampMatch ? timestampMatch[1] : null;
-            const level = levelMatch ? levelMatch[1] : 'UNKNOWN';
-            let messageText = line;
-            if (levelMatch) {
-                messageText = line.substring(levelMatch.index + levelMatch[0].length);
-            } else if (timestampMatch) {
-                messageText = line.substring(timestampMatch[0].length).trim();
-            }
+            const match = line.match(logParserRegex);
+            const originalTimestamp = match ? match[1] : null;
+            const level = match ? match[2] : 'UNKNOWN';
+            const messageText = match ? line.substring(match[0].length) : line;
             return {
                 level, message: messageText,
                 originalLine: line,
-                formattedTimestamp: formatTimestamp(originalTimestamp, $timezoneStore)
+                formattedTimestamp: originalTimestamp ? formatTimestamp(originalTimestamp, $timezoneStore) : '...'
             };
         });
     })();
 
-    $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
+    $: filteredLogs = (() => {
+        if (logLevelFilter === 'ALL') return parsedLogs;
+        return parsedLogs.filter(log => log.level === logLevelFilter);
+    })();
 
     async function getLogs() {
         try {
@@ -166,7 +165,7 @@
             <div class="log-limit-note">Showing last {renderedLogLimit} lines ({hiddenLogCount} hidden)</div>
         {/if}
         <div class="log-output-wrapper">
-            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.originalLine + i)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{'\n'}{/each}</code></pre>
+            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log, i (log.originalLine + i)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
         </div>
     {/if}
 </div>
@@ -337,6 +336,7 @@
         margin-right: 1em;
     }
 
+    .log-line { display: block; }
     .log-line.INFO { color: #81c784; }
     .log-line.WARNING { color: #ffd54f; }
     .log-line.ERROR { color: #e57373; }
