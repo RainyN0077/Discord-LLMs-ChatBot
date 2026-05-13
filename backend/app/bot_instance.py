@@ -54,6 +54,9 @@ class BotInstance:
             if not data.get("api_secret_key"):
                 data["api_secret_key"] = secrets.token_hex(32)
                 logger.warning("api_secret_key was empty in per-bot config, generated a new one")
+            global_key = load_config().get("api_secret_key")
+            if global_key:
+                data["api_secret_key"] = global_key
         else:
             from copy import deepcopy
             data = deepcopy(DEFAULT_CONFIG)

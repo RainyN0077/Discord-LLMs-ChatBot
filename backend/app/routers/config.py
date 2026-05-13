@@ -15,10 +15,16 @@ router = APIRouter()
 
 def _get_first_bot_config():
     mgr = state.bot_manager
+    global_config = load_config()
+    global_key = global_config.get('api_secret_key')
     if mgr and mgr._instances:
         first = next(iter(mgr._instances.values()))
-        return first.config
-    return load_config()
+        cfg = dict(first.config)
+        if global_key and cfg.get('api_secret_key') != global_key:
+            cfg['api_secret_key'] = global_key
+            logger.debug('_get_first_bot_config: synced api_secret_key from global config')
+        return cfg
+    return global_config
 
 
 @router.get("/api/config")
