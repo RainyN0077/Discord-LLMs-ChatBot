@@ -1,0 +1,406 @@
+# backend/app/utils.py
+import json
+import logging
+import os
+import asyncio
+import ipaddress
+import socket
+from urllib.parse import urlparse
+from typing import List, Dict, Any, Optional
+import re
+from datetime import datetime
+import pytz # Timezone library
+
+import discord
+import aiohttp
+import tiktoken
+import anthropic
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# --- 日志系统设置 (最终优化版) ---
+import time
+def setup_logging():
+    # 移除所有现有的处理器，确保从干净的状态开始
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+        
+    # --- [核心修改点] ---
+    # 1. 使用 UTC 时间：通过设置 converter=time.gmtime
+    # 2. 输出 ISO 8601 格式并包含毫秒和'Z'，确保前端能明确解析
+    log_formatter = logging.Formatter(
+        fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%dT%H:%M:%S'
+    )
+    log_formatter.converter = time.gmtime
+    # --- [修改结束] ---
+
+    root_logger.setLevel(logging.INFO)
+    
+    # 1. 设置流处理器 (输出到控制台)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter)
+    root_logger.addHandler(stream_handler)
+
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
+        uvicorn_logger.setLevel(logging.INFO)
+    
+    # 2. 设置文件处理器 (输出到文件)
+    try:
+        # --- [核心修改] 使用在 main.py 中定义的 DATA_DIR 概念 ---
+        # 我们假设所有数据文件都应在 /app/data 目录中
+        data_dir = Path.cwd() / 'data'
+        log_dir = data_dir / 'logs'
+        log_dir.mkdir(exist_ok=True, parents=True)
+        log_file = log_dir / 'bot.log'
+
+        # 使用RotatingFileHandler
+        file_handler = RotatingFileHandler(
+            log_file, 
+            maxBytes=5*1024*1024, # 5MB
+            backupCount=5, 
+            encoding='utf-8'
+        )
+        file_handler.setFormatter(log_formatter)
+        root_logger.addHandler(file_handler)
+        
+        # 记录一条消息来确认文件处理器已设置
+        root_logger.info(f"File logging configured successfully to: {log_file}")
+        
+    except (PermissionError, IOError) as e:
+        root_logger.error(f"FATAL: Could not configure file logging due to a permission or I/O error: {e}", exc_info=True)
+    except Exception as e:
+        root_logger.error(f"FATAL: An unexpected error occurred during file logging setup: {e}", exc_info=True)
+
+
+# --- Token 计算器 ---
+class TokenCalculator:
+    def __init__(self):
+        self._openai_cache = {}
+        try:
+            self._anthropic_client = anthropic.Anthropic()
+        except Exception as e:
+            logger.warning(f"Could not initialize Anthropic client for token counting: {e}")
+            self._anthropic_client = None
+
+    def _get_openai_tokenizer(self, model_name: str):
+        if model_name in self._openai_cache: return self._openai_cache[model_name]
+        try:
+            encoding = tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            logger.warning(f"Model '{model_name}' not found for tokenization. Falling back to 'cl100k_base'.")
+            encoding = tiktoken.get_encoding("cl100k_base")
+        self._openai_cache[model_name] = encoding
+        return encoding
+
+    def get_token_count_for_messages(self, messages: List[Dict[str, Any]], provider: str, model: str) -> int:
+        """
+        Calculates token count for a list of messages, providing a more accurate estimate.
+        """
+        if not messages:
+            return 0
+            
+        total_tokens = 0
+        try:
+            if provider in {"openai", "grok"}:
+                tokenizer = self._get_openai_tokenizer(model)
+                for message in messages:
+                    # Based on OpenAI's cookbook for token counting
+                    total_tokens += 4  # every message follows <im_start>{role/name}\n{content}<im_end>\n
+                    for key, value in message.items():
+                        if value:
+                           total_tokens += len(tokenizer.encode(str(value)))
+                        if key == "name":  # if there's a name, the role is omitted
+                            total_tokens -= 1  # role is always required and always 1 token
+                total_tokens += 2 # every reply is primed with <im_start>assistant
+                return total_tokens
+            
+            # For other providers, we'll concatenate content and count. This is less accurate but better than json.dumps.
+            full_text = "".join([str(m.get("content", "")) for m in messages])
+            
+            if provider == "anthropic" and self._anthropic_client:
+                return self._anthropic_client.count_tokens(full_text)
+            elif provider == "google":
+                return max(1, int(len(full_text) / 3.5))
+            else:
+                return len(full_text)
+                
+        except Exception as e:
+            logger.warning(f"Token calculation for messages failed for provider {provider}: {e}. Falling back to len().")
+            fallback_text = "".join([str(m.get("content", "")) for m in messages])
+            return len(fallback_text)
+            
+    def get_token_count(self, text: str, provider: str, model: str) -> int:
+        # This function remains for simple text, like counting the final response.
+        if not text: return 0
+        try:
+            if provider in {"openai", "grok"}: return len(self._get_openai_tokenizer(model).encode(text))
+            elif provider == "anthropic" and self._anthropic_client: return self._anthropic_client.count_tokens(text)
+            elif provider == "google": return max(1, int(len(text) / 3.5))
+            else: return len(text)
+        except Exception as e:
+            logger.warning(f"Token calculation failed for provider {provider}: {e}. Falling back to len().")
+            return len(text)
+
+# --- 消息工具 ---
+def split_message(text: str, max_length: int = 2000) -> List[str]:
+    if not text:
+        return []
+    parts = []
+    while len(text) > 0:
+        if len(text) <= max_length:
+            parts.append(text)
+            break
+        cut_index = text.rfind('\n', 0, max_length)
+        if cut_index == -1:
+            cut_index = text.rfind(' ', 0, max_length)
+        if cut_index == -1:
+            cut_index = max_length
+        parts.append(text[:cut_index].strip())
+        text = text[cut_index:].strip()
+    return parts
+
+def escape_content(text: str) -> str:
+    return text.replace('[', '&#91;').replace(']', '&#93;')
+
+
+def matches_trigger_keywords(
+    message_content: str,
+    trigger_keywords: List[str],
+    match_mode: str = "contains",
+    case_sensitive: bool = False,
+) -> bool:
+    """
+    Returns whether the message content matches any configured trigger keyword.
+    Supported modes: contains, starts_with, exact, regex.
+    """
+    if not message_content or not trigger_keywords:
+        return False
+
+    mode = (match_mode or "contains").strip().lower()
+    content = message_content if case_sensitive else message_content.lower()
+
+    for keyword in trigger_keywords:
+        if not keyword:
+            continue
+        kw = str(keyword).strip()
+        if not kw:
+            continue
+
+        kw_for_match = kw if case_sensitive else kw.lower()
+
+        if mode == "starts_with":
+            if content.startswith(kw_for_match):
+                return True
+        elif mode == "exact":
+            if content == kw_for_match:
+                return True
+        elif mode == "regex":
+            flags = 0 if case_sensitive else re.IGNORECASE
+            try:
+                if re.search(kw, message_content, flags=flags):
+                    return True
+            except re.error:
+                logger.warning("Invalid trigger keyword regex skipped: %s", kw)
+        else:
+            # Default mode: contains
+            if kw_for_match in content:
+                return True
+
+    return False
+
+async def download_image(url: str, max_size_mb: int = 100) -> bytes | None:
+    """
+    安全地下载一张图片，增加了超时和大小限制。
+    :param url: 图片的URL
+    :param max_size_mb: 允许下载的最大文件大小（单位：MB）
+    :return: 图片的字节数据，如果失败则返回None
+    """
+    max_size_bytes = max_size_mb * 1024 * 1024
+    # 设置一个合理的超时，防止请求永久挂起
+    timeout = aiohttp.ClientTimeout(total=20) # 总超时20秒
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    logger.warning(f"Failed to download image from {url}, status code: {resp.status}")
+                    return None
+
+                content_length = resp.headers.get('Content-Length')
+                if content_length and int(content_length) > max_size_bytes:
+                    logger.warning(f"Image from {url} exceeds size limit of {max_size_mb}MB. "
+                                   f"Reported size: {int(content_length) / 1024 / 1024:.2f}MB.")
+                    return None
+
+                downloaded_size = 0
+                image_data = bytearray()
+                # 逐块读取响应，而不是一次性加载到内存
+                async for chunk in resp.content.iter_chunked(8192): # 8KB per chunk
+                    downloaded_size += len(chunk)
+                    if downloaded_size > max_size_bytes:
+                        logger.warning(f"Image download from {url} aborted, exceeded size limit of {max_size_mb}MB.")
+                        return None
+                    image_data.extend(chunk)
+                
+                logger.info(f"Successfully downloaded image from {url}, size: {downloaded_size / 1024:.2f}KB")
+                return bytes(image_data)
+
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout when downloading image from {url}")
+        return None
+    except Exception as e:
+        logger.error(f"An unexpected error occurred while downloading image from {url}", exc_info=True)
+        return None
+
+# --- 插件 HTTP 请求工具 ---
+
+# [SECURITY] Add utility to check for internal/private IPs to prevent SSRF
+def _is_internal_url(url: str) -> bool:
+    """Checks if a URL resolves to a private, local, or reserved IP address."""
+    try:
+        hostname = urlparse(url).hostname
+        if not hostname:
+            return True # Cannot resolve hostname, block by default
+
+        ip_str = socket.gethostbyname(hostname)
+        ip = ipaddress.ip_address(ip_str)
+        return ip.is_private or ip.is_loopback or ip.is_reserved
+    except (socket.gaierror, ValueError) as e:
+        logger.warning(f"Could not resolve or parse IP for URL '{url}': {e}")
+        return True # Block if resolution fails
+    except Exception as e:
+        logger.error(f"Unexpected error during URL validation for '{url}': {e}", exc_info=True)
+        return True # Block on any other error
+
+def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
+    if not isinstance(template_str, str): return ''
+    replacements = {
+        "{user_input}": args,
+        "{raw_content}": message.content,
+        "{author_id}": str(message.author.id),
+        "{author_name}": message.author.name,
+        "{author_display_name}": message.author.display_name,
+        "{channel_id}": str(message.channel.id),
+        "{guild_id}": str(message.guild.id) if message.guild else "N/A",
+    }
+    for placeholder, value in replacements.items():
+        template_str = template_str.replace(placeholder, value)
+    return template_str
+
+async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.Message, args: str) -> Optional[str]:
+    http_conf = plugin_config.get('http_request_config', {})
+    url = _format_with_placeholders(http_conf.get('url', ''), message, args)
+    method = http_conf.get('method', 'GET').upper()
+    plugin_name = plugin_config.get('name', 'Unknown Plugin')
+
+    if not url:
+        logger.warning(f"Plugin '{plugin_name}' has no URL configured.")
+        return None
+
+    # [SECURITY] SSRF Protection
+    allow_internal = http_conf.get('allow_internal_requests', False)
+    if not allow_internal and _is_internal_url(url):
+        error_msg = f"Error: Request to internal or private IP address is blocked for security reasons. URL: {url}"
+        logger.error(f"Plugin '{plugin_name}' attempted to access a blocked internal URL. {error_msg}")
+        return error_msg
+    headers_str = _format_with_placeholders(http_conf.get('headers', '{}'), message, args)
+    body_str = _format_with_placeholders(http_conf.get('body_template', '{}'), message, args)
+    try:
+        headers = json.loads(headers_str) if headers_str.strip() else {}
+        if body_str.strip() and 'content-type' not in (h.lower() for h in headers):
+            headers['Content-Type'] = 'application/json'
+        async with aiohttp.ClientSession(headers=headers) as session:
+            request_kwargs = {}
+            if method in ['POST', 'PUT', 'PATCH']:
+                try:
+                    request_kwargs['json'] = json.loads(body_str)
+                except json.JSONDecodeError:
+                    request_kwargs['data'] = body_str
+            async with session.request(method, url, **request_kwargs) as response:
+                response_text = await response.text()
+                if 200 <= response.status < 300:
+                    logger.info(f"Plugin '{plugin_name}' HTTP request to {url} successful.")
+                    return response_text
+                else:
+                    logger.error(f"Plugin '{plugin_name}' HTTP request failed with status {response.status}: {response_text}")
+                    return f"Error: API call failed with status {response.status}."
+    except aiohttp.ClientError as e:
+        logger.error(f"Plugin '{plugin_name}' HTTP request network error: {e}", exc_info=True)
+        return f"Error: Network error during API call: {e}"
+    except (json.JSONDecodeError, TypeError) as e:
+         logger.error(f"Plugin '{plugin_name}' failed to parse Headers or Body JSON: {e}", exc_info=True)
+         return f"Error: Invalid JSON in plugin configuration (Headers/Body): {e}"
+    except Exception as e:
+        logger.error(f"An unexpected error occurred in plugin '{plugin_name}': {e}", exc_info=True)
+        return f"Error: An unexpected error occurred while running the plugin."
+
+# --- Memory Transformation ---
+
+def transform_memories_for_prompt(memories: List[Dict[str, Any]], target_timezone_str: str = 'UTC') -> List[str]:
+    """
+    Transforms raw memory entries from the database into human-readable strings for the LLM prompt.
+    It converts the stored UTC timestamp to a target timezone.
+    """
+    transformed_memories = []
+    
+    try:
+        target_tz = pytz.timezone(target_timezone_str)
+    except pytz.UnknownTimeZoneError:
+        logger.warning(f"Unknown timezone '{target_timezone_str}'. Falling back to UTC.")
+        target_tz = pytz.utc
+
+    for memory in memories:
+        content = memory.get('content', '')
+        
+        # Regex to find the structured tag: [memory key="value" ...]
+        tag_match = re.search(r'\[memory\s+(.*?)\]', content)
+        
+        if not tag_match:
+            # If no tag, return content as-is
+            transformed_memories.append(content)
+            continue
+
+        tag_content = tag_match.group(1)
+        # Regex to parse attributes from the tag content
+        attributes = dict(re.findall(r'(\w+)="(.*?)"', tag_content))
+        
+        original_timestamp_str = attributes.get('timestamp')
+        user_name = attributes.get('user_name', 'Unknown')
+        
+        if not original_timestamp_str:
+            # If tag is malformed without a timestamp, strip the tag and return content
+            clean_content = content.replace(tag_match.group(0), '').strip()
+            transformed_memories.append(clean_content)
+            continue
+            
+        try:
+            # Parse the UTC timestamp from ISO format
+            utc_timestamp = datetime.fromisoformat(original_timestamp_str.replace('Z', '+00:00'))
+            
+            # Convert to target timezone
+            local_timestamp = utc_timestamp.astimezone(target_tz)
+            
+            # Format for display
+            formatted_time = local_timestamp.strftime('%Y-%m-%d %H:%M:%S %Z')
+            
+            # Create the natural language prefix
+            nl_prefix = f"[由 {user_name} 在 {formatted_time} 记录]"
+            
+            # Replace the structured tag with the natural language prefix
+            final_content = content.replace(tag_match.group(0), nl_prefix).strip()
+            transformed_memories.append(final_content)
+            
+        except (ValueError, TypeError) as e:
+            logger.error(f"Could not parse or convert timestamp '{original_timestamp_str}': {e}")
+            # Fallback: just strip the tag
+            clean_content = content.replace(tag_match.group(0), '').strip()
+            transformed_memories.append(clean_content)
+
+    return transformed_memories

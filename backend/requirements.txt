@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-dotenv
+pydantic
+aiohttp
+discord.py
+openai
+google-genai
+anthropic
+xai-sdk
+tiktoken
+Pillow
+tavily-python
+pytz
+redis>=4.0.0
