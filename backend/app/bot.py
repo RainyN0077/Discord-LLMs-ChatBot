@@ -61,7 +61,7 @@ except redis.exceptions.ConnectionError as e:
     if os.getenv('FAIL_ON_REDIS_ERROR', 'false').lower() == 'true':
         logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
         # Raising an explicit exception here prevents bot.start() from running.
-        raise ConnectionAbortedError("Failed to connect to Redis. Aborting.")
+        raise RuntimeError("Redis connection failed.")
     else:
         # Use a minimal mock client so local development can continue without Redis.
         class MockRedis:
