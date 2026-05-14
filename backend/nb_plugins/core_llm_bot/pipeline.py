@@ -51,6 +51,11 @@ async def execute_llm_pipeline(
 
     logger.info(f"Processing message {message_ctx.id} for bot '{instance.bot_id}'.")
 
+    try:
+        await bot.trigger_typing_indicator(channel_id=event.channel_id)
+    except Exception:
+        pass
+
     downloaded_images = await collect_and_download_images(message_ctx)
     llm_images = [item["bytes"] for item in downloaded_images]
 
