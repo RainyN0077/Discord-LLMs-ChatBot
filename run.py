@@ -280,8 +280,20 @@ CHILD_PROCS: list[asyncio.subprocess.Process] = []
 async def _stream(proc: asyncio.subprocess.Process, tag: str, colour: str) -> None:
     prefix = c(colour, f"[{tag}] ")
     prefix_bytes = prefix.encode("utf-8", errors="replace")
+    buf = b""
     while True:
-        line = await proc.stdout.readline()
+        try:
+            line = await proc.stdout.readline()
+        except (ValueError, asyncio.exceptions.LimitOverrunError):
+            chunk = await proc.stdout.read(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                sys.stdout.buffer.write(prefix_bytes + line + b"\n")
+                sys.stdout.buffer.flush()
+            continue
         if not line:
             break
         sys.stdout.buffer.write(prefix_bytes + line)

@@ -65,24 +65,18 @@ logger = logging.getLogger(__name__)
 # --- 日志系统设置 (最终优化版) ---
 import time
 def setup_logging():
-    # 移除所有现有的处理器，确保从干净的状态开始
     root_logger = logging.getLogger()
     if root_logger.hasHandlers():
         root_logger.handlers.clear()
         
-    # --- [核心修改点] ---
-    # 1. 使用 UTC 时间：通过设置 converter=time.gmtime
-    # 2. 输出 ISO 8601 格式并包含毫秒和'Z'，确保前端能明确解析
     log_formatter = logging.Formatter(
         fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S'
     )
     log_formatter.converter = time.gmtime
-    # --- [修改结束] ---
 
     root_logger.setLevel(logging.INFO)
     
-    # 1. 设置流处理器 (输出到控制台)
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(log_formatter)
     root_logger.addHandler(stream_handler)
@@ -93,32 +87,79 @@ def setup_logging():
         uvicorn_logger.propagate = True
         uvicorn_logger.setLevel(logging.INFO)
     
-    # 2. 设置文件处理器 (输出到文件)
     try:
-        # --- [核心修改] 使用在 main.py 中定义的 DATA_DIR 概念 ---
-        # 我们假设所有数据文件都应在 /app/data 目录中
         data_dir = Path.cwd() / 'data'
         log_dir = data_dir / 'logs'
         log_dir.mkdir(exist_ok=True, parents=True)
         log_file = log_dir / 'bot.log'
 
-        # 使用RotatingFileHandler
         file_handler = RotatingFileHandler(
             log_file, 
-            maxBytes=5*1024*1024, # 5MB
+            maxBytes=5*1024*1024,
             backupCount=5, 
             encoding='utf-8'
         )
         file_handler.setFormatter(log_formatter)
         root_logger.addHandler(file_handler)
         
-        # 记录一条消息来确认文件处理器已设置
         root_logger.info(f"File logging configured successfully to: {log_file}")
         
     except (PermissionError, IOError) as e:
         root_logger.error(f"FATAL: Could not configure file logging due to a permission or I/O error: {e}", exc_info=True)
     except Exception as e:
         root_logger.error(f"FATAL: An unexpected error occurred during file logging setup: {e}", exc_info=True)
+
+    noisy_loggers = {
+        "httpx": logging.WARNING,
+        "httpcore": logging.WARNING,
+        "discord.client": logging.WARNING,
+        "discord.gateway": logging.WARNING,
+        "discord.http": logging.WARNING,
+        "discord.state": logging.WARNING,
+        "urllib3": logging.WARNING,
+        "asyncio": logging.WARNING,
+    }
+    for name, level in noisy_loggers.items():
+        logging.getLogger(name).setLevel(level)
+
+    try:
+        from loguru import logger as loguru_logger
+        import sys
+
+        class LoguruHandler(logging.Handler):
+            def emit(self, record):
+                try:
+                    level = record.levelname
+                    msg = self.format(record)
+                    loguru_logger.opt(depth=6, exception=record.exc_info).log(
+                        level.lower(), msg
+                    )
+                except Exception:
+                    self.handleError(record)
+
+        class PythonHandler:
+            def write(self, message):
+                record = message.strip()
+                if record:
+                    root_logger.info(record)
+
+        loguru_logger.remove()
+        loguru_logger.add(
+            PythonHandler(),
+            level="WARNING",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
+            filter=lambda r: "Discord" not in r["extra"].get("name", ""),
+        )
+        loguru_logger.add(
+            PythonHandler(),
+            level="INFO",
+            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name} | {message}",
+            filter=lambda r: "Discord" in r["extra"].get("name", ""),
+        )
+
+        os.environ.setdefault("LOGURU_AUTOINIT", "0")
+    except ImportError:
+        pass
 
 
 # --- Token 计算器 ---
