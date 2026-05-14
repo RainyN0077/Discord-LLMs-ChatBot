@@ -104,6 +104,26 @@ async def update_bot_config(bot_id: str, config_data: Dict[str, Any]) -> Dict[st
         raise HTTPException(status_code=500, detail="An internal error occurred while updating the configuration.")
 
 
+@router.get("/{bot_id}/adapter/status")
+async def get_adapter_status(bot_id: str) -> Dict[str, Any]:
+    driver = state.nonebot_driver
+    if driver is None:
+        raise HTTPException(status_code=503, detail="NoneBot driver not initialized")
+
+    for adapter_name, adapter in driver._adapters.items():
+        for b_id in getattr(adapter, 'bots', {}):
+            if str(b_id) == bot_id:
+                bot = adapter.bots.get(b_id)
+                return {
+                    "bot_id": bot_id,
+                    "adapter": adapter_name,
+                    "self_id": str(getattr(bot, 'self_id', '')),
+                    "connected": getattr(bot, '_ws', None) is not None,
+                }
+
+    raise HTTPException(status_code=404, detail=f"No adapter found for bot '{bot_id}'")
+
+
 @router.get("/{bot_id}/logs")
 async def get_bot_logs(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)

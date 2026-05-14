@@ -77,6 +77,7 @@ class BotInstanceStatus(BaseModel):
     bot_id: str
     bot_name: str
     platform: str
+    adapter: str = ""
     enabled: bool
     status: str = "stopped"
     uptime_seconds: Optional[float] = None

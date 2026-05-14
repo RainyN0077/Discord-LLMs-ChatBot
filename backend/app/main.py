@@ -53,6 +53,7 @@ from .routers.plugins import router as plugins_router
 from .routers.models_test import router as models_test_router
 from .routers.logs import router as logs_router
 from .routers.bots import router as bots_router
+from .routers.state import router as state_router
 
 app.include_router(config_router)
 app.include_router(chat_router)
@@ -63,3 +64,4 @@ app.include_router(plugins_router)
 app.include_router(models_test_router)
 app.include_router(logs_router)
 app.include_router(bots_router)
+app.include_router(state_router)
