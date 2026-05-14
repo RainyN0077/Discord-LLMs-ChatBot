@@ -42,7 +42,7 @@ class TestGetApiKey:
             mock_load.return_value = {"api_secret_key": ""}
             with pytest.raises(HTTPException) as exc_info:
                 await get_api_key("any-key")
-            assert exc_info.value.status_code == 403
+            assert exc_info.value.status_code == 401
 
     @pytest.mark.asyncio
     async def test_none_configured_key_rejects(self):
@@ -51,4 +51,4 @@ class TestGetApiKey:
             mock_load.return_value = {}
             with pytest.raises(HTTPException) as exc_info:
                 await get_api_key("any-key")
-            assert exc_info.value.status_code == 403
+            assert exc_info.value.status_code == 401
