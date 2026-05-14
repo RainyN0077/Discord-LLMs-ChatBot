@@ -1,43 +1,39 @@
 ﻿# Discord-LLMs-ChatBot
 
-A highly customizable Discord chatbot with multi-provider LLM support, a web control panel, persistent knowledge features, and plugin-based automation.
+A multi-bot Discord chatbot powered by NoneBot2, supporting multiple LLM providers with a web control panel, persistent knowledge features, and a plugin-based automation system.
 
 ---
 
-## 1. Highlights
+## Highlights
 
-- Multi-provider LLM support:
-  - OpenAI (and OpenAI-compatible APIs)
-  - Google Gemini (`google-genai` SDK)
-  - Anthropic Claude
-- Real-time Web Control Panel for runtime settings
-- Layered persona system:
-  - Channel/Guild scoped prompts
-  - User portraits
-  - Role-based behavior
-- Knowledge features:
-  - World Book (keyword-triggered knowledge injection)
-  - Long-term memory and candidate promotion workflow
-- Usage dashboard with token stats and model pricing
-- Secure plugin system with external trigger endpoint
-- Quota management (`!myquota`)
-- Docker deployment and cross-platform local dev launcher
+- **Multi-Provider LLM**: OpenAI / Gemini / Claude / xAI (Grok) — swap models anytime via the Web UI
+- **Multi-Bot Management**: Run multiple Discord bots from a single dashboard, each with independent config, persona, knowledge, and quota
+- **Web Control Panel**: Real-time Svelte dashboard for config, debug captures, usage stats, and bot lifecycle (start/stop/restart)
+- **Layered Persona System**: Scoped prompts per channel/guild, per-user portraits, and role-based behavior rules
+- **Knowledge Engine**: World Book (keyword-triggered injection), auto-memory ingestion (quality-thresholded candidate promotion), FTS5 search, and embedding-based semantic recall
+- **Plugin System**: Extensible plugin framework with configurable HTTP triggers, tool-calling integration, and external REST endpoint
+- **Usage Dashboard**: Token statistics with per-model pricing, per-user/per-guild/per-channel breakdowns, and pricing overrides
+- **Security Hardening**: API key lifecycle management, CORS allowlist, SSRF DNS rebinding protection, per-bot authentication
+- **OCR / Embedding / Rerank**: Built-in multimodal OCR (image-to-text via LLM), vector embedding service, and rerank pipeline
+- **Cross-Platform Launcher**: Unified `run.py` for install, start, stop, restart, and status — works on Windows, Linux, and macOS
 
 ---
 
-## 2. Tech Stack
+## Tech Stack
 
-- Backend: FastAPI + discord.py
-- Frontend: Svelte + Vite
-- Cache/lock: Redis
-- LLM SDKs:
-  - `openai`
-  - `google-genai`
-  - `anthropic`
+| Layer | Technology |
+|-------|------------|
+| Bot Framework | NoneBot2 + discord.py adapter |
+| API Server | FastAPI (Python 3.11+) |
+| Frontend | Svelte 4 + Vite |
+| Cache / Lock | Redis (with mock fallback for local dev) |
+| LLM SDKs | `openai` · `google-genai` · `anthropic` · `openai` (xAI-compatible) |
+| Knowledge DB | SQLite with FTS5 + embedding tables |
+| Container | Docker Compose (3 services: backend, frontend, redis) |
 
 ---
 
-## 3. Ports and Runtime
+## Ports and Runtime
 
 ### Docker (recommended)
 
@@ -45,93 +41,142 @@ A highly customizable Discord chatbot with multi-provider LLM support, a web con
 docker compose up --build -d
 ```
 
-Services:
-- Frontend: `http://localhost:8094`
-- Backend API: `http://localhost:8093`
-- Redis: internal service in compose network
+| Service | URL |
+|---------|-----|
+| Frontend (Web UI) | `http://localhost:8094` |
+| Backend API | `http://localhost:8093` |
+| Redis | internal (`redis:6379`) |
 
-### Local (non-Docker, all platforms)
+### Local (cross-platform launcher)
 
 ```bash
-python run.py start              # Start backend + frontend in background
-python run.py start --foreground  # Start in foreground (single terminal)
+python run.py start                  # start backend + frontend in background
+python run.py start --foreground      # single terminal, Ctrl+C to stop
 python run.py start --backend-only
 python run.py start --frontend-only
-python run.py stop               # Stop all
-python run.py restart            # Restart all
-python run.py status             # Show process status
-python run.py install            # Install/sync dependencies only
+python run.py stop                   # stop all processes
+python run.py restart                # restart all
+python run.py status                 # show process status
+python run.py install                # install/sync dependencies only
 ```
 
-What `run.py` does:
+What `run.py` handles automatically:
 - Creates `backend/.venv` if missing
-- Installs backend dependencies from `backend/requirements.txt`
-- Installs frontend dependencies (`npm install`) if npm is available
-- Starts backend on `8093` with hot‑reload and frontend Vite dev server on `8094`
+- Installs Python dependencies from `backend/requirements.txt`
+- Runs `npm install` in `frontend/` if Node.js is available
+- Starts backend on port `8093` (uvicorn with hot-reload) and frontend Vite dev server on `8094`
 - Manages PID files and logs under `.local-run/`
 
 ---
 
-## 4. Quick Start
+## Quick Start
 
-1. Clone repository
-
+1. **Clone**
 ```bash
 git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
 cd Discord-LLMs-ChatBot
 ```
 
-2. Start with Docker
-
+2. **Start**
 ```bash
 docker compose up --build -d
 ```
 
-3. Open Web UI
+3. **Open** `http://localhost:8094`
 
-- `http://localhost:8094`
-
-4. Configure in UI
-
-- Discord bot token
-- LLM provider + API key + model
-- Save configuration and restart bot
+4. **Configure** in the Web UI:
+   - Discord Bot Token
+   - LLM provider, API key, and model name
+   - Save config → Start Bot
 
 ---
 
-## 5. Configuration Notes
+## Configuration Reference
 
-### Core fields
+### Core Fields
 
-- `discord_token`: your Discord bot token
-- `llm_provider`: `openai` / `google` / `anthropic`
-- `api_key`: selected provider API key
-- `model_name`: selected model id
-- `api_secret_key`: API auth key used by backend endpoints (`X-API-Key`)
+| Field | Description |
+|-------|-------------|
+| `discord_token` | Discord bot token |
+| `llm_provider` | `openai` / `google` / `anthropic` / `xai` |
+| `api_key` | Provider API key |
+| `model_name` | Model identifier (e.g. `gpt-4o`, `gemini-2.5-flash`, `claude-sonnet-4-20250514`) |
+| `api_secret_key` | Internal API auth — send as `X-API-Key` header for protected endpoints |
 
-### Data persistence
+### LLM Provider Notes
 
-Runtime data is stored under `./data` (mounted to `/app/data` in Docker), including:
-- `config.json`
-- logs
-- knowledge/memory related files
+- **OpenAI** — also supports OpenAI-compatible APIs (set `openai_base_url`)
+- **Google Gemini** — uses `google-genai` SDK
+- **Anthropic Claude** — supports `anthropic_base_url` for custom endpoints
+- **xAI (Grok)** — uses `grok_base_url`, defaults to `https://api.x.ai`
 
-### Redis behavior
+### Data Persistence
 
-- Docker mode uses Redis service in compose
-- Local scripts set `FAIL_ON_REDIS_ERROR=false`
-  - If Redis is unavailable, app falls back to mock lock mode for local development
+All runtime data under `./data` (mounted as `/app/data` in Docker):
+
+| Path | Content |
+|------|---------|
+| `data/config.json` | Global configuration |
+| `data/bots/<id>/config.json` | Per-bot configuration |
+| `data/bots/<id>/knowledge.sqlite` | Bot-specific knowledge DB |
+| `data/bots/<id>/usage_data.json` | Bot-specific usage stats |
+| `data/logs/` | Application logs |
+
+### Redis Behavior
+
+- Docker Compose: Redis is always available
+- Local development: `FAIL_ON_REDIS_ERROR=false` (default) — falls back to in-memory mock lock if Redis is unavailable
 
 ---
 
-## 6. REST API (for integrations)
+## Multi-Bot Management
 
-Main endpoint for external automation:
+The Web UI supports creating and managing multiple Discord bot instances:
 
-- `POST /api/plugins/trigger`
-- Header: `X-API-Key: <api_secret_key>`
+- **Independent Configs**: Each bot has its own LLM provider, persona, knowledge base, and usage quotas
+- **Per-Bot API Key**: Each bot generates a unique `api_secret_key` on first load
+- **Lifecycle Control**: Start / stop / restart individual bots from the dashboard
+- **Knowledge Migration**: Legacy global `data/knowledge.sqlite` is automatically migrated to the first bot's directory on startup
 
-Example:
+---
+
+## REST API
+
+### Core Endpoints
+
+| Method | Path | Description | Auth |
+|--------|------|-------------|------|
+| `GET` | `/api/config` | Get global configuration | Optional |
+| `POST` | `/api/config` | Update global configuration | Required |
+| `GET` | `/api/bots` | List all bot instances | Required |
+| `POST` | `/api/bots` | Create a new bot instance | Required |
+| `GET` | `/api/bots/{id}/config` | Get bot-specific config | Required |
+| `POST` | `/api/bots/{id}/config` | Update bot-specific config | Required |
+| `POST` | `/api/bots/{id}/start` | Start a bot instance | Required |
+| `POST` | `/api/bots/{id}/stop` | Stop a bot instance | Required |
+| `POST` | `/api/bots/{id}/restart` | Restart a bot instance | Required |
+| `DELETE` | `/api/bots/{id}` | Delete a bot instance | Required |
+| `POST` | `/api/chat/direct` | Direct LLM chat (debug) | Required |
+| `GET` | `/api/logs` | Fetch application logs | Required |
+| `GET` | `/api/usage/stats` | Usage statistics | Required |
+| `GET/POST` | `/api/usage/pricing` | Model pricing config | Required |
+
+### Memory / World Book Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/memory` | List all memories |
+| `POST` | `/api/memory` | Add a new memory |
+| `PUT` | `/api/memory/{id}` | Update a memory |
+| `DELETE` | `/api/memory/{id}` | Delete a memory |
+| `POST` | `/api/memory/clear` | Clear channel memory |
+| `GET` | `/api/memory/candidates` | List candidate memories |
+| `GET` | `/api/worldbook` | List world book entries |
+| `POST` | `/api/worldbook` | Add world book entry |
+| `PUT` | `/api/worldbook/{id}` | Update world book entry |
+| `DELETE` | `/api/worldbook/{id}` | Delete world book entry |
+
+### Plugin Trigger Endpoint
 
 ```bash
 curl -X POST http://localhost:8093/api/plugins/trigger \
@@ -139,116 +184,83 @@ curl -X POST http://localhost:8093/api/plugins/trigger \
   -H "X-API-Key: YOUR_API_SECRET_KEY" \
   -d '{
     "plugin_name": "Weather Check",
-    "args": {
-      "city": "Shanghai"
-    }
+    "args": {"city": "Shanghai"}
   }'
 ```
 
-Other commonly used backend endpoints:
-- `GET /api/config`
-- `POST /api/config`
-- `POST /api/models/list`
-- `POST /api/models/test`
-- `GET /api/logs`
-- `GET /api/usage/stats`
-- `GET/POST /api/usage/pricing`
-- `GET/POST/PUT/DELETE` memory/worldbook related endpoints
+---
+
+## Plugin System
+
+Plugins extend the bot with custom tools and automations:
+
+- **Built-in Plugins**: Auto-memory ingestion (quality scoring + candidate promotion), repeat-parrot detection, auto-interject, world book injection
+- **Configurable Plugins**: HTTP-triggered external services with templated headers/body, response parsing, and context injection
+- **Search Plugin**: RAG (Retrieval-Augmented Generation) plugin with external search integration and content compression
+- **Tool Integration**: Plugins expose tool definitions compatible with LLM function calling
 
 ---
 
-## 7. Google Provider Migration Notes
+## Security
 
-The project now uses `google-genai` as the Google SDK path.
+- **API Authentication**: All mutating endpoints require `X-API-Key` header matching the configured `api_secret_key`
+- **Per-Bot Keys**: Each bot instance generates its own independent API key, no cross-bot leakage
+- **CORS Control**: Backend only allows `Content-Type`, `X-API-Key`, and `X-Timezone` headers from configured origins
+- **SSRF Protection**: Plugin HTTP requests are validated against internal IP ranges (RFC 1918, loopback, link-local) with DNS rebinding defense
+- **No Client-Side Secrets**: API keys are never persisted in browser storage
 
-- Requirements: `backend/requirements.txt` uses `google-genai`
-- `backend/app/main.py` model list/test paths use `from google import genai`
-- `backend/app/llm_providers/google_provider.py` migrated to `google-genai` implementation
+---
 
-If you previously installed only `google-generativeai`, refresh your venv:
+## Troubleshooting
 
+### Web UI cannot reach backend
+- Verify backend is listening on port `8093`
+- Check `VITE_API_PROXY_TARGET` for local dev mode
+- In Docker: ensure both `backend` and `frontend` containers are healthy
+
+### Plugin API returns 403 / 401
+- `401`: API key is not configured — set `api_secret_key` in the Web UI
+- `403`: Verify the `X-API-Key` header matches the configured `api_secret_key`
+
+### Bot does not respond in Discord
+- Verify token validity and bot permissions (Send Messages, Read Message History, etc.)
+- Check trigger conditions: mention, keyword match, reply rules
+- Review backend logs via `/api/logs` or `docker compose logs backend`
+
+### Google Gemini errors
 ```bash
-# from backend folder
+# In backend directory
 python -m pip install -r requirements.txt
 ```
 
 ---
 
-## 8. Recent Updates (2026-03)
-
-- Completed Google SDK migration to `google-genai` in provider path
-- Updated model listing/testing logic for Google provider
-- Cleaned backend requirements and removed duplicate dependency entries
-- Improved Windows local startup scripts:
-  - Added `scripts/windows/run-backend-local.bat`
-  - Refined `scripts/windows/start-local.bat` process launch and command checks
-  - Refactored `scripts/windows/stop-local.bat` to call `scripts/windows/stop-local.ps1`
-- Added Linux local startup scripts:
-  - `scripts/linux/start-local-foreground.sh`
-  - `scripts/linux/start-local-nohup.sh`
-  - `scripts/linux/start-local-tmux.sh`
-  - `scripts/linux/stop-local.sh`
-- Replaced all platform scripts with unified cross-platform `run.py` launcher
-
----
-
-## 9. Troubleshooting
-
-### Web UI cannot access backend
-
-- Check backend process is listening on `8093`
-- Check frontend proxy target (`VITE_API_PROXY_TARGET`) in local mode
-- In Docker mode, ensure both `backend` and `frontend` containers are healthy
-
-### Plugin API returns 403
-
-- Verify `X-API-Key` header value matches `api_secret_key` in current config
-
-### Bot does not respond in Discord
-
-- Verify token validity and bot permissions
-- Check trigger conditions (mention/keyword/reply rules)
-- Check backend logs via `/api/logs` or container logs
-
-### Google provider errors after upgrade
-
-- Reinstall dependencies from `backend/requirements.txt`
-- Ensure runtime uses current venv and not stale global packages
-
----
-
-## 10. License
+## License
 
 MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## 11. Chinese Guide (中文版)
+## 中文说明
 
 ### 项目简介
 
-这是一个高度可定制的 Discord 聊天机器人项目，支持多家 LLM 服务商、Web 控制面板、知识增强、长期记忆、插件自动化和用量统计。
+基于 NoneBot2 的多 Bot Discord 聊天机器人，支持多家 LLM 服务商，配备 Web 控制面板、知识增强、长期记忆和插件自动化系统。
 
-### 主要功能
+### 核心特性
 
-- 多服务商 LLM 支持：
-  - OpenAI（以及 OpenAI 兼容接口）
-  - Google Gemini（`google-genai` SDK）
-  - Anthropic Claude
-- Web 控制面板，可在运行时调整配置
-- 分层人设系统：
-  - 频道 / 服务器级提示词
-  - 用户画像
-  - 身份组行为设定
-- 知识增强能力：
-  - 世界书关键词注入
-  - 长期记忆与候选提升流程
-- 用量统计面板，可查看 token 与模型价格
-- 安全插件系统，支持外部接口触发
-- 配额管理（`!myquota`）
-- 支持 Docker 部署，以及 Windows / Linux 本地开发脚本
+- **多服务商 LLM**：OpenAI / Gemini / Claude / xAI (Grok)，通过 Web UI 随时切换
+- **多 Bot 管理**：单个面板同时管理多个 Discord Bot，每个 Bot 独立配置、独立人设、独立知识库和配额
+- **Web 控制面板**：实时配置编辑、调试抓取、用量统计、Bot 生命周期控制（启动/停止/重启）
+- **分层人设系统**：按频道/服务器配置提示词、用户画像、身份组行为规则
+- **知识引擎**：世界书关键词注入、自动记忆摄取（质量评分 + 候选提升）、FTS5 全文搜索、向量语义召回
+- **插件系统**：可扩展的插件框架，支持 HTTP 触发、工具调用集成、外部 REST 接口
+- **用量统计**：Token 统计 + 按模型定价，可按用户/频道/服务器维度拆分
+- **安全加固**：API 密钥生命周期管理、CORS 白名单、SSRF DNS rebinding 防护、每 Bot 独立鉴权
+- **OCR/嵌入/重排**：内置多模态 OCR（图片转文字）、向量嵌入服务、重排序管道
+- **跨平台启动器**：`run.py` 统一管理安装、启动、停止、重启、状态查询
 
-### 端口与运行方式
+### 运行方式
 
 #### Docker（推荐）
 
@@ -256,123 +268,41 @@ MIT License. See [LICENSE](LICENSE).
 docker compose up --build -d
 ```
 
-服务端口：
+服务端口：前端 `http://localhost:8094`，后端 API `http://localhost:8093`，Redis 运行在 compose 网络内部。
 
-- 前端：`http://localhost:8094`
-- 后端 API：`http://localhost:8093`
-- Redis：运行在 compose 网络内部
-
-#### 本地开发（非 Docker，全平台）
+#### 本地开发
 
 ```bash
-python run.py start              # 后台启动后端+前端
-python run.py start --foreground  # 前台模式（Ctrl+C 停止）
-python run.py start --backend-only
-python run.py start --frontend-only
-python run.py stop               # 停止所有
+python run.py start              # 后台启动
+python run.py start --foreground  # 前台模式
+python run.py stop               # 停止
 python run.py restart            # 重启
-python run.py status             # 查看状态
-python run.py install            # 仅安装/同步依赖
+python run.py status             # 状态
+python run.py install            # 安装依赖
 ```
-
-`run.py` 会自动：
-- 在缺失时创建 `backend/.venv`
-- 从 `backend/requirements.txt` 安装后端依赖
-- 如果检测到 npm，则安装前端依赖
-- 在 `8093` 启动后端（含热重载）、在 `8094` 启动前端 Vite 开发服务器
-- PID 文件和日志存放在 `.local-run/` 下
 
 ### 快速开始
 
-1. 克隆仓库
+1. 克隆仓库 → 2. Docker 启动 → 3. 打开 `http://localhost:8094` → 4. 在 UI 中配置 Discord Token、LLM 服务商和模型，保存后启动 Bot
 
-```bash
-git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
-cd Discord-LLMs-ChatBot
-```
-
-2. 使用 Docker 启动
-
-```bash
-docker compose up --build -d
-```
-
-3. 打开 Web 控制台
-
-- `http://localhost:8094`
-
-4. 在 UI 中完成配置
-
-- Discord Bot Token
-- LLM 服务商、API Key 和模型名
-- 保存配置并重启机器人
-
-### 关键配置项
+### 关键配置
 
 - `discord_token`：Discord 机器人 Token
-- `llm_provider`：`openai` / `google` / `anthropic`
+- `llm_provider`：`openai` / `google` / `anthropic` / `xai`
 - `api_key`：所选服务商的 API Key
-- `model_name`：所选模型 ID
-- `api_secret_key`：后端接口鉴权密钥，请通过请求头 `X-API-Key` 传入
+- `model_name`：模型标识符
+- `api_secret_key`：后端接口鉴权密钥（`X-API-Key` 请求头）
 
-### 数据持久化
+### 多 Bot 管理
 
-运行数据保存在 `./data` 目录（Docker 中挂载到 `/app/data`），包括：
+Web UI 支持创建并管理多个 Discord Bot 实例：每个 Bot 拥有独立的 LLM 配置、人设、知识库和用量统计。旧版全局知识库 `data/knowledge.sqlite` 在首次启动时会自动迁移到第一个 Bot 的目录下。
 
-- `config.json`
-- 日志
-- 世界书 / 记忆等相关数据文件
+### REST API
 
-### Redis 行为说明
+主要端点包括 `/api/config`、`/api/bots`（Bot CRUD + 生命周期）、`/api/chat/direct`（LLM 调试）、`/api/memory`（记忆管理）、`/api/worldbook`（世界书管理）、`/api/usage/stats`（用量统计）、`/api/plugins/trigger`（插件触发）。所有变更接口需要 `X-API-Key` 请求头。
 
-- Docker 模式默认使用 compose 中的 Redis 服务
-- 本地脚本会设置 `FAIL_ON_REDIS_ERROR=false`
-  - 如果 Redis 不可用，程序会退回到 mock lock 模式，便于本地开发
+### 故障排查
 
-### 对外 REST API
-
-主要的外部自动化接口：
-
-- `POST /api/plugins/trigger`
-- 请求头：`X-API-Key: <api_secret_key>`
-
-示例：
-
-```bash
-curl -X POST http://localhost:8093/api/plugins/trigger \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_SECRET_KEY" \
-  -d '{
-    "plugin_name": "Weather Check",
-    "args": {
-      "city": "Shanghai"
-    }
-  }'
-```
-
-常用后端接口还包括：
-
-- `GET /api/config`
-- `POST /api/config`
-- `POST /api/models/list`
-- `POST /api/models/test`
-- `GET /api/logs`
-- `GET /api/usage/stats`
-- `GET/POST /api/usage/pricing`
-- 记忆 / 世界书相关的 `GET/POST/PUT/DELETE` 接口
-
-### Google Provider 迁移说明
-
-当前项目已统一使用 `google-genai` 作为 Google SDK 路径。
-
-- `backend/requirements.txt` 使用 `google-genai`
-- `backend/app/main.py` 的模型列出 / 测试逻辑使用 `from google import genai`
-- `backend/app/llm_providers/google_provider.py` 已迁移到 `google-genai` 实现
-
-如果你本地环境还停留在旧版 `google-generativeai`，建议刷新虚拟环境依赖：
-
-```bash
-# 在 backend 目录执行
-python -m pip install -r requirements.txt
-```
-
+- 前端无法连接后端：检查 `8093` 端口、Vite 代理配置、Docker 容器健康状态
+- 插件接口 401：`api_secret_key` 未配置；403：密钥不匹配
+- Bot 不响应：检查 Token 权限、触发条件、日志
