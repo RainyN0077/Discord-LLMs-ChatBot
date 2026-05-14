@@ -2,7 +2,7 @@
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
@@ -23,6 +23,148 @@ def _get_bot_user_id(client: Any) -> int:
         return int(client.self_id)
     return 0
 
+
+def _is_api_message(msg: Any) -> bool:
+    cls_name = type(msg).__name__
+    return cls_name == 'MessageGet'
+
+
+def _safe_int(snowflake: Any) -> int:
+    return int(str(snowflake))
+
+
+class _ApiHistoryWrapper:
+    __slots__ = ('_msg', '_bot_user_id', '_guild_id')
+
+    def __init__(self, msg: Any, bot_user_id: int, guild_id: Optional[int]) -> None:
+        self._msg = msg
+        self._bot_user_id = bot_user_id
+        self._guild_id = guild_id
+
+    @property
+    def id(self) -> int:
+        return _safe_int(self._msg.id)
+
+    @property
+    def content(self) -> str:
+        return getattr(self._msg, 'content', '') or ''
+
+    @property
+    def clean_content(self) -> str:
+        return self.content
+
+    @property
+    def created_at(self):
+        return getattr(self._msg, 'timestamp', None)
+
+    @property
+    def author(self) -> '_ApiUserWrapper':
+        return _ApiUserWrapper(getattr(self._msg, 'author', None), self._bot_user_id)
+
+    @property
+    def mentions(self):
+        return [_ApiUserWrapper(u, self._bot_user_id) for u in getattr(self._msg, 'mentions', []) or []]
+
+    @property
+    def attachments(self):
+        return [_ApiAttachmentWrapper(a) for a in getattr(self._msg, 'attachments', []) or []]
+
+    @property
+    def reference(self) -> Optional['_ApiReferenceWrapper']:
+        ref = getattr(self._msg, 'referenced_message', None)
+        if ref is None:
+            return None
+        return _ApiReferenceWrapper(ref, self._bot_user_id, self._guild_id)
+
+    @property
+    def guild(self) -> Any:
+        return None
+
+
+class _ApiUserWrapper:
+    __slots__ = ('_user', '_bot_user_id')
+
+    def __init__(self, user: Any, bot_user_id: int) -> None:
+        self._user = user
+        self._bot_user_id = bot_user_id
+
+    @property
+    def id(self) -> int:
+        return _safe_int(self._user.id) if self._user else 0
+
+    @property
+    def display_name(self) -> str:
+        if self._user is None:
+            return 'Unknown'
+        return getattr(self._user, 'global_name', None) or getattr(self._user, 'username', 'Unknown')
+
+    @property
+    def bot(self) -> bool:
+        if self._user is None:
+            return False
+        bot_val = getattr(self._user, 'bot', False)
+        if bot_val is True:
+            return True
+        return self.id == self._bot_user_id
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, _ApiUserWrapper):
+            return self.id == other.id
+        if hasattr(other, 'id'):
+            return self.id == _safe_int(other.id)
+        if hasattr(other, 'self_info'):
+            return self.id == _safe_int(other.self_info.id)
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+
+class _ApiAttachmentWrapper:
+    __slots__ = ('_att',)
+
+    def __init__(self, att: Any) -> None:
+        self._att = att
+
+    @property
+    def content_type(self) -> str:
+        return getattr(self._att, 'content_type', '') or ''
+
+
+class _ApiReferenceWrapper:
+    __slots__ = ('_resolved',)
+
+    def __init__(self, resolved_msg: Any, bot_user_id: int, guild_id: Optional[int]) -> None:
+        self._resolved = _ApiHistoryWrapper(resolved_msg, bot_user_id, guild_id) if resolved_msg else None
+
+    @property
+    def resolved(self):
+        return self._resolved
+
+
+async def _fetch_history_via_api(client: Any, channel_id: int, message_id: int, limit: int, cutoff_timestamp: Optional[datetime]) -> List['_ApiHistoryWrapper']:
+    if not hasattr(client, 'get_channel_messages'):
+        return []
+    try:
+        raw = await client.get_channel_messages(
+            channel_id=channel_id,
+            before=str(message_id),
+            limit=min(limit, 100),
+        )
+    except Exception:
+        logger.warning("Failed to fetch channel history via REST API for channel %s", channel_id, exc_info=True)
+        return []
+    bot_user_id = _get_bot_user_id(client)
+    guild_id = None
+    results = []
+    for msg in raw:
+        if _is_api_message(msg):
+            ts = getattr(msg, 'timestamp', None)
+            if cutoff_timestamp is not None and ts is not None and ts < cutoff_timestamp:
+                continue
+            results.append(_ApiHistoryWrapper(msg, bot_user_id, guild_id))
+    return results
+
 # --- Constants for structured prompts ---
 # Using constants makes the code cleaner, easier to read, and simplifies future modifications.
 MESSAGE_FORMAT_TPL = "{author_id}: {content}{image_note}"
@@ -40,10 +182,8 @@ DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
 
 async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[datetime]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
-    """根据配置的上下文模式，构建历史消息列表和用于LLM的格式化历史。"""
     history_messages, history_for_llm = [], []
     context_mode = bot_config.get('context_mode', 'none')
-
     if context_mode == 'none':
         return [], []
 
@@ -52,46 +192,39 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     char_limit = settings.get('char_limit', 4000)
     unlimited_context_length = bool(settings.get('unlimited_context_length', False))
     unlimited_message_count = bool(settings.get('unlimited_message_count', False))
-
     if not unlimited_message_count and msg_limit <= 0:
         return [], []
 
-    if not hasattr(message.channel, 'history'):
-        logger.warning("Channel %s does not support history lookup; skipping context history.", message.channel.id)
-        return [], []
-    channel = message.channel
-    before_obj = discord.Object(id=message.id)
+    bot_user_id = _get_bot_user_id(client)
 
-    fetched_history = []
-    if context_mode == 'channel':
-        history_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
-        fetched_history = [msg async for msg in channel.history(limit=history_limit, before=before_obj, after=cutoff_timestamp)]
-    elif context_mode == 'memory':
+    use_api_history = not hasattr(message.channel, 'history')
+    if use_api_history:
+        raw_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
+        fetched_history: List[Any] = await _fetch_history_via_api(
+            client, message.channel.id, message.id, raw_limit or 100, cutoff_timestamp)
+    else:
+        channel = message.channel
+        before_obj = discord.Object(id=message.id)
+        raw_limit = None if unlimited_message_count else max(msg_limit * 3, 100)
+        if context_mode == 'channel':
+            raw_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
+        fetched_history = [msg async for msg in channel.history(limit=raw_limit, before=before_obj, after=cutoff_timestamp)]
+
+    if context_mode == 'memory':
         trigger_keywords = bot_config.get("trigger_keywords", [])
         trigger_match_mode = bot_config.get("trigger_match_mode", "contains")
         trigger_case_sensitive = bool(bot_config.get("trigger_case_sensitive", False))
-        history_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
-        potential_history = [msg async for msg in channel.history(limit=history_limit, before=before_obj, after=cutoff_timestamp)]
         relevant_messages, processed_ids = [], set()
-        for hist_msg in potential_history:
+        for hist_msg in fetched_history:
             if not unlimited_message_count and len(relevant_messages) >= msg_limit:
                 break
             if hist_msg.id in processed_ids:
                 continue
 
-            is_bot_msg = hist_msg.author == client.user
-            mentions_bot = client.user in hist_msg.mentions
-            
-            # --- [核心修复] ---
-            # 检查被回复消息是否有效且未被删除
-            replies_to_bot = False
-            if hist_msg.reference and hist_msg.reference.resolved:
-                # 需要显式检查解析消息的类型
-                # 如果是DeletedReferencedMessage，就没有'author'属性
-                if isinstance(hist_msg.reference.resolved, discord.Message):
-                    replies_to_bot = hist_msg.reference.resolved.author == client.user
-            # --- [修复结束] ---
-            
+            is_bot_msg = _is_message_from_bot(hist_msg, bot_user_id)
+            mentions_bot = _mentions_bot(hist_msg, bot_user_id)
+            replies_to_bot = _replies_to_bot(hist_msg, bot_user_id)
+
             has_keyword = matches_trigger_keywords(
                 hist_msg.content,
                 trigger_keywords,
@@ -102,43 +235,41 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
             if is_bot_msg or mentions_bot or replies_to_bot or has_keyword:
                 relevant_messages.append(hist_msg)
                 processed_ids.add(hist_msg.id)
-                if hist_msg.reference and isinstance(hist_msg.reference.resolved, discord.Message):
-                    replied_to_msg = hist_msg.reference.resolved
-                    if replied_to_msg.id not in processed_ids:
-                        relevant_messages.append(replied_to_msg)
-                        processed_ids.add(replied_to_msg.id)
+                ref = getattr(hist_msg, 'reference', None)
+                if ref is not None:
+                    resolved = getattr(ref, 'resolved', None)
+                    if resolved is not None and not isinstance(resolved, discord.DeletedReferencedMessage):
+                        if resolved.id not in processed_ids:
+                            relevant_messages.append(resolved)
+                            processed_ids.add(resolved.id)
         fetched_history = relevant_messages
 
     if not fetched_history:
         return [], []
-    
-    # 为LLM格式化历史记录
-    fetched_history.sort(key=lambda m: m.created_at)
+
+    fetched_history.sort(key=lambda m: m.created_at if m.created_at else datetime.min.replace(tzinfo=timezone.utc))
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
     temp_history = []
     total_chars = 0
 
     for hist_msg in reversed(fetched_history):
-        # 忽略没有内容的消息
         if not hist_msg.clean_content and not hist_msg.attachments:
             continue
 
-        is_bot = hist_msg.author == client.user
+        is_bot = _is_message_from_bot(hist_msg, bot_user_id)
         role = "assistant" if is_bot else "user"
-        
+
         hist_role_config = None
         if not is_bot:
             hist_member = hist_msg.author
-            if isinstance(hist_member, discord.User) and message.guild:
+            if isinstance(hist_member, discord.User) and hasattr(message, 'guild') and message.guild:
                 hist_member = message.guild.get_member(hist_member.id) or hist_member
-            
             if isinstance(hist_member, discord.Member):
                 _, hist_role_config = get_highest_configured_role(hist_member, role_based_configs) or (None, None)
-        
-        # 对用户和机器人统一调用 get_rich_identity, role_config 对于机器人为 None
+
         rich_id = get_rich_identity(hist_msg.author, user_personas, hist_role_config)
-        
+
         image_note = ""
         if hist_msg.attachments:
             image_count = len([att for att in hist_msg.attachments if att.content_type and att.content_type.startswith('image/')])
@@ -148,10 +279,8 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
         clean_content = escape_content(hist_msg.clean_content)
 
         if is_bot:
-            # For bot messages, use content directly to avoid prefix imitation.
             content = f"{clean_content}{image_note}".strip()
         else:
-            # For user messages, keep the original format with author ID.
             content = MESSAGE_FORMAT_TPL.format(
                 author_id=rich_id,
                 content=clean_content,
@@ -162,9 +291,30 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
             break
         total_chars += len(content)
         temp_history.append({"role": role, "content": content})
-    
+
     history_for_llm = list(reversed(temp_history))
     return fetched_history, history_for_llm
+
+
+def _is_message_from_bot(hist_msg: Any, bot_user_id: int) -> bool:
+    return hist_msg.author.id == bot_user_id
+
+
+def _mentions_bot(hist_msg: Any, bot_user_id: int) -> bool:
+    mentions = getattr(hist_msg, 'mentions', None)
+    if not mentions:
+        return False
+    return any(u.id == bot_user_id for u in mentions)
+
+
+def _replies_to_bot(hist_msg: Any, bot_user_id: int) -> bool:
+    ref = getattr(hist_msg, 'reference', None)
+    if ref is None:
+        return False
+    resolved = getattr(ref, 'resolved', None)
+    if resolved is None:
+        return False
+    return getattr(resolved.author, 'id', None) == bot_user_id
 
 def format_user_message_for_llm(
     message: discord.Message,
