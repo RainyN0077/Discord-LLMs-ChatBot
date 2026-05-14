@@ -10,6 +10,8 @@
   import { userPersonasArray, behaviorConfig, saveConfig } from '../lib/stores.js';
   import Card from './Card.svelte';
 
+  export let botId = null;
+
   let activeTab = 'worldbook';
   let memoryItems = [];
   let memoryCandidates = [];
@@ -435,7 +437,7 @@
         <input id="memory-rerank-enabled" type="checkbox" bind:checked={$behaviorConfig.memory_rerank_enabled}>
       </div>
 
-      <button on:click={saveConfig}>{$t('knowledge.settings.save')}</button>
+      <button on:click={() => saveConfig(botId)}>{$t('knowledge.settings.save')}</button>
     </div>
   {/if}
 

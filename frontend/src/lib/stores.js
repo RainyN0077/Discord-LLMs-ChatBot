@@ -1,7 +1,7 @@
 // src/lib/stores.js
 import { writable, derived, get } from 'svelte/store';
 import { get as t_get } from '../i18n.js';
-import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig } from './api.js';
+import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig, updateBotConfig } from './api.js';
 
 // --- Default State ---
 const defaultConfig = {
@@ -357,7 +357,7 @@ export async function syncUserPersonasFromBackend(options = {}) {
     }
 }
 
-export async function saveConfig() {
+export async function saveConfig(botId = null) {
     isLoading.set(true);
     showStatus(t_get('status.saving'), 'info');
 
@@ -408,8 +408,13 @@ export async function saveConfig() {
     console.log('Final config to save:', finalConfig);
 
     try {
-        await apiSaveConfig(finalConfig);
-        await fetchConfig(); // Resync after saving
+        if (botId) {
+            finalConfig.bot_id = botId;
+            await updateBotConfig(botId, finalConfig);
+        } else {
+            await apiSaveConfig(finalConfig);
+            await fetchConfig(); // Resync after saving
+        }
         showStatus(t_get('status.saveSuccess'), 'success');
     } catch (e) {
         console.error('Save error:', e);

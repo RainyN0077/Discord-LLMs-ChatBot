@@ -139,7 +139,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         isSaving = true;
         showStatus('Saving...', 'info');
         try {
-            await saveConfig();
+            await saveConfig(botId);
             showStatus('Configuration saved and bot restarted!', 'success');
         } catch (e) {
             showStatus('Save failed: ' + e.message, 'error');
@@ -1065,7 +1065,7 @@ async function resetFont() {
 
             {#if activeTab === 'directives'}
             <div class="tab-content">
-                <KnowledgeEditor />
+                <KnowledgeEditor {botId} />
                 <Card title={$t('defaultBehavior.title')}>
                     <label for="bot-nickname">{$t('defaultBehavior.botNickname')}</label>
                     <input id="bot-nickname" type="text" placeholder={$t('defaultBehavior.botNicknamePlaceholder')} bind:value={$behaviorConfig.bot_nickname}>
