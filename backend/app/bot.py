@@ -84,14 +84,15 @@ except redis.exceptions.ConnectionError as e:
 from pathlib import Path
 from .config_cache import load_config, DATA_DIR
 
-BOT_PROCESS_LOCK_FILE = DATA_DIR / "discord_bot.lock"
+def _get_bot_lock_path(bot_id: str):
+    return DATA_DIR / f"discord_bot_{bot_id}.lock"
 bot_instance = None
 token_calculator = TokenCalculator()
 
 
-def _try_acquire_bot_process_lock() -> Optional[TextIO]:
-    BOT_PROCESS_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-    handle = open(BOT_PROCESS_LOCK_FILE, "a+", encoding="utf-8")
+def _try_acquire_bot_process_lock(bot_id: str = "main") -> Optional[TextIO]:
+    lock_file = _get_bot_lock_path(bot_id); lock_file.parent.mkdir(parents=True, exist_ok=True)
+    handle = open(lock_file, "a+", encoding="utf-8")
     try:
         handle.seek(0)
         if not handle.read(1):
@@ -345,7 +346,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
 
     bot_process_lock: Optional[TextIO] = None
     for attempt in range(15):
-        bot_process_lock = _try_acquire_bot_process_lock()
+        bot_process_lock = _try_acquire_bot_process_lock('main')
         if bot_process_lock is not None:
             logger.info(f"[instance={INSTANCE_ID}] Acquired Discord bot process lock on attempt {attempt + 1}.")
             break
@@ -748,7 +749,7 @@ async def run_bot(memory_cutoffs: Dict[int, datetime]):
     finally:
         if not bot.is_closed():
             await bot.close()
-        _release_bot_process_lock(bot_process_lock)
+        _release_bot_process_lock(bot_process_lock, 'main')
 
 
 async def run_bot_instance(instance) -> None:

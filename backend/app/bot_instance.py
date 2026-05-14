@@ -183,7 +183,7 @@ class BotInstance:
         bot_process_lock = None
         if not os.getenv("DISCORD_SKIP_PROCESS_LOCK", "").lower() in {"1", "true", "yes"}:
             for attempt in range(15):
-                bot_process_lock = _try_acquire_bot_process_lock()
+                bot_process_lock = _try_acquire_bot_process_lock(self.bot_id)
                 if bot_process_lock is not None:
                     logger.info(f"[instance={INSTANCE_ID}] Acquired lock on attempt {attempt + 1} for bot '{self.bot_id}'.")
                     break
@@ -563,7 +563,7 @@ class BotInstance:
             if not bot.is_closed():
                 await bot.close()
             if bot_process_lock:
-                _release_bot_process_lock(bot_process_lock)
+                _release_bot_process_lock(bot_process_lock, self.bot_id)
 
     async def _run_qq(self):
         logger.info(f"QQ bot '{self.bot_id}' starting (platform stub).")
