@@ -1337,6 +1337,22 @@ async function resetFont() {
         cursor: pointer;
         color: var(--text-light);
         transition: all 0.2s ease-in-out;
+        position: relative;
+    }
+    .tabs button::after {
+        content: '';
+        position: absolute;
+        bottom: -6px;
+        left: 50%;
+        transform: translateX(-50%) scaleX(0);
+        width: 60%;
+        height: 3px;
+        background: var(--primary-color);
+        border-radius: 2px;
+        transition: transform 0.25s ease;
+    }
+    .tabs button.active::after {
+        transform: translateX(-50%) scaleX(1);
     }
     .tabs button:hover {
         color: var(--text-color);

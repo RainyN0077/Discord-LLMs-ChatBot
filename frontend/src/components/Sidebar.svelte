@@ -154,7 +154,7 @@
                             class:active={selectedBotId === bot.bot_id}
                             on:click={() => selectBot(bot.bot_id)}
                         >
-                            <span class="status-dot" style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
+                            <span class="status-dot" class:running={bot.status === 'running'} style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
                             <span class="bot-name">{bot.bot_name || bot.bot_id}</span>
                             <span class="bot-platform" class:discord={bot.platform === 'discord' || !bot.platform} class:qq={bot.platform === 'qq'}>{bot.platform || 'discord'}</span>
                             <div class="bot-item-actions" role="presentation" on:click|stopPropagation>
@@ -214,8 +214,8 @@
     .sidebar {
         display: flex;
         flex-direction: column;
-        background: var(--sidebar-bg, #0f16204d);
-        border-right: 1px solid var(--sidebar-border, rgba(140, 167, 193, .12));
+        background: var(--sidebar-bg);
+        border-right: 1px solid var(--sidebar-border);
         width: 250px;
         min-width: 250px;
         height: 100%;
@@ -234,7 +234,7 @@
         align-items: center;
         justify-content: space-between;
         padding: .85rem .75rem;
-        border-bottom: 1px solid var(--sidebar-border, rgba(140, 167, 193, .12));
+        border-bottom: 1px solid var(--sidebar-border);
         flex-shrink: 0;
     }
 
@@ -311,10 +311,38 @@
         border-radius: 0 3px 3px 0;
     }
 
+    :root[data-theme='neon'] .bot-item.active::before {
+        width: 4px;
+        box-shadow: 0 0 10px rgba(0, 229, 255, .4);
+    }
+
+    :root[data-theme='neon'] .bot-item.active {
+        background: linear-gradient(135deg, rgba(0, 229, 255, .12), rgba(0, 145, 255, .06));
+        color: #00e5ff;
+    }
+
+    :root[data-theme='neon'] .status-dot.running {
+        animation: neonPulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes neonPulse {
+        0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
+        50% { opacity: .6; filter: drop-shadow(0 0 8px currentColor); }
+    }
+
     .status-dot {
         font-size: .75rem;
         width: 16px;
         text-align: center;
+    }
+
+    .status-dot.running {
+        animation: statusPulse 2s ease-in-out infinite;
+    }
+
+    @keyframes statusPulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
     }
 
     .bot-name {
@@ -390,7 +418,7 @@
 
     .sidebar-footer {
         padding: .5rem;
-        border-top: 1px solid var(--sidebar-border, rgba(140, 167, 193, .12));
+        border-top: 1px solid var(--sidebar-border);
         flex-shrink: 0;
     }
 

@@ -59,5 +59,6 @@
 }
 
 .add-btn:hover {
-    background-color: #d1ecfa;
+    background-color: var(--info-bg);
+    filter: brightness(0.95);
 }

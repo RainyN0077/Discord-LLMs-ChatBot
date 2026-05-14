@@ -1,17 +1,21 @@
 <!-- src/App.svelte -->
 <script>
     import { onMount } from 'svelte';
+    import { fade } from 'svelte/transition';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
-    import { t, setLang, lang } from './i18n.js';
+    import { t, setLang, lang, get as t_get } from './i18n.js';
     import { customFontName } from './lib/stores.js';
     import { setApiSecretKey } from './lib/api.js';
+    import './styles/typography.css';
     import Sidebar from './components/Sidebar.svelte';
     import ConfigPanel from './pages/ConfigPanel.svelte';
+    import Debugger from './pages/Debugger.svelte';
     import LogPanel from './components/LogPanel.svelte';
 
     let selectedBotId = null;
     let theme = 'light';
     let sidebarVisible = true;
+    let activePage = 'config';
 
     function handleBotSelect(event) {
         selectedBotId = event.detail;
@@ -52,7 +56,7 @@
         }
 
         const storedTheme = localStorage.getItem('theme');
-        if (storedTheme === 'dark' || storedTheme === 'light') {
+        if (storedTheme === 'dark' || storedTheme === 'light' || storedTheme === 'neon') {
             theme = storedTheme;
         } else {
             theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
@@ -77,7 +81,20 @@
     }
 
     function toggleTheme() {
-        applyTheme(theme === 'dark' ? 'light' : 'dark');
+        const cycle = { light: 'dark', dark: 'neon', neon: 'light' };
+        applyTheme(cycle[theme]);
+    }
+
+    function themeIcon(t) {
+        if (t === 'light') return '☀';
+        if (t === 'dark') return '☾';
+        return '⚡';
+    }
+
+    function themeTitle(t) {
+        if (t === 'light') return t_get('appNav.themeLight');
+        if (t === 'dark') return t_get('appNav.themeDark');
+        return 'Neon Vector';
     }
 
     function toggleSidebar() {
@@ -94,12 +111,22 @@
             <span class="app-logo">BOT Manager</span>
         </div>
         <div class="header-actions">
+            <nav class="page-nav" aria-label="Main navigation">
+                <button class:active={activePage === 'config'} on:click={() => activePage = 'config'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    {$t('tabs.core')}
+                </button>
+                <button class:active={activePage === 'debug'} on:click={() => activePage = 'debug'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                    {$t('debugger.title')}
+                </button>
+            </nav>
             <div class="lang-switcher">
                 <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
                 <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
             </div>
-            <button class="theme-toggle" on:click={toggleTheme} title={$t(theme === 'dark' ? 'appNav.themeLight' : 'appNav.themeDark')}>
-                {theme === 'dark' ? '☀' : '☾'}
+            <button class="theme-toggle" on:click={toggleTheme} title={themeTitle(theme)}>
+                {themeIcon(theme)}
             </button>
         </div>
     </header>
@@ -109,7 +136,17 @@
             <Sidebar bind:selectedBotId on:select={handleBotSelect} />
         {/if}
         <main class="main-content">
-            <ConfigPanel {applyFont} botId={selectedBotId} />
+            {#key activePage}
+                {#if activePage === 'config'}
+                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+                        <ConfigPanel {applyFont} botId={selectedBotId} />
+                    </div>
+                {:else if activePage === 'debug'}
+                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        <Debugger />
+                    </div>
+                {/if}
+            {/key}
             <LogPanel botId={selectedBotId} />
         </main>
     </div>
@@ -191,6 +228,45 @@
         gap: .5rem;
     }
 
+    .page-nav {
+        display: flex;
+        gap: .15rem;
+        background: var(--panel-muted-bg);
+        border-radius: 6px;
+        padding: .15rem;
+        margin-right: .25rem;
+    }
+
+    .page-nav button {
+        display: inline-flex;
+        align-items: center;
+        gap: .35rem;
+        background: transparent;
+        border: none;
+        color: var(--text-light);
+        padding: .25rem .55rem;
+        font-size: .78rem;
+        border-radius: 4px;
+        cursor: pointer;
+        box-shadow: none;
+        white-space: nowrap;
+        transition: all 0.2s ease;
+    }
+
+    .page-nav button:hover {
+        color: var(--text-color);
+        background: var(--panel-hover-bg);
+    }
+
+    .page-nav button.active {
+        background: linear-gradient(135deg, var(--primary-color), #0f6fb2);
+        color: #fff;
+    }
+
+    .page-nav button svg {
+        flex-shrink: 0;
+    }
+
     .lang-switcher {
         display: flex;
         gap: .15rem;
@@ -231,6 +307,26 @@
         border-color: var(--primary-color);
     }
 
+    :root[data-theme='neon'] .app-header {
+        border-bottom-color: rgba(0, 229, 255, .35);
+        border-bottom-width: 2px;
+        background: linear-gradient(180deg, rgba(0, 229, 255, .06), rgba(6, 6, 13, .92));
+    }
+
+    :root[data-theme='neon'] .app-logo {
+        color: #00e5ff;
+        text-shadow: 0 0 12px rgba(0, 229, 255, .3);
+    }
+
+    :root[data-theme='neon'] .theme-toggle {
+        border-color: rgba(0, 229, 255, .3);
+    }
+
+    :root[data-theme='neon'] .theme-toggle:hover {
+        border-color: #00e5ff;
+        box-shadow: 0 0 10px rgba(0, 229, 255, .2);
+    }
+
     .app-body {
         display: flex;
         flex: 1;
@@ -259,6 +355,17 @@
 
         .app-logo {
             font-size: .92rem;
+        }
+
+        .page-nav button {
+            padding: .18rem .35rem;
+            font-size: .7rem;
+            gap: .2rem;
+        }
+
+        .page-nav button svg {
+            width: 12px;
+            height: 12px;
         }
 
         .lang-switcher button {

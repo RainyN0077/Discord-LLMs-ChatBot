@@ -208,10 +208,14 @@
                 </select>
             </label>
             <button class="icon-btn" on:click={openPricingModal} title={$t('usage.configurePricing')}>
-                💰
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
             </button>
             <button class="icon-btn" on:click={fetchData} disabled={isLoading} title={$t('usage.refresh')}>
-                {#if isLoading}🌀{:else}🔄{/if}
+                {#if isLoading}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {:else}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                {/if}
             </button>
         </div>
     </div>
@@ -422,7 +426,7 @@
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
     }
-    .icon-btn:disabled {
+    .spin {
         animation: spin 1.5s linear infinite;
     }
     .stats-overview {

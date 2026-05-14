@@ -386,7 +386,7 @@
         color: var(--text-light);
     }
     .empty-icon {
-        background: #2a2b2f;
+        background: var(--surface-inverse);
         border-radius: 50%;
         width: 60px;
         height: 60px;
@@ -396,7 +396,7 @@
         margin-bottom: 1rem;
     }
     .empty-icon svg {
-        color: #5d616d;
+        color: var(--text-muted);
         width: 30px;
         height: 30px;
     }
@@ -404,7 +404,7 @@
         display: flex;
         gap: 1rem;
         margin-top: 1.5rem;
-        border-top: 1px solid #444654;
+        border-top: 1px solid var(--border-color);
         padding-top: 1.5rem;
     }
 

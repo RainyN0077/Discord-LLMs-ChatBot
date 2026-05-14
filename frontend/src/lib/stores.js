@@ -157,6 +157,7 @@ export const statusType = writable('info');
 export const isLoading = writable(false);
 export const customFontName = writable('');
 export const rawLogs = writable('');
+export const promptTemplates = writable({});
 
 // --- Timezone Store (Unchanged) ---
 const getInitialTimezone = () => {

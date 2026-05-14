@@ -35,6 +35,21 @@
     --log-text-color: #d4d4d4;
     --log-time-color: #9e9e9e;
     --sidebar-active-indicator: #1f8bd6;
+    --sidebar-bg: rgba(15, 23, 42, .035);
+    --sidebar-border: rgba(140, 167, 193, .12);
+    --tab-bg: #374151;
+    --tab-hover-bg: #4b5563;
+    --tab-text: #d1d5db;
+    --tab-active-bg: #1f2937;
+    --tab-active-text: #f9fafb;
+    --text-muted: #9ca3af;
+    --surface-inverse: #2d3748;
+    --gap-sm: 0.5rem;
+    --gap-md: 1rem;
+    --gap-lg: 1.5rem;
+    --padding-sm: 0.5rem;
+    --padding-md: 0.75rem;
+    --padding-lg: 1.25rem;
 }
 
 :root[data-theme='dark'] {
@@ -71,6 +86,68 @@
     --log-text-color: #d2deea;
     --log-time-color: #8fa1b5;
     --sidebar-active-indicator: #45a3e6;
+    --sidebar-bg: rgba(15, 22, 32, .28);
+    --sidebar-border: rgba(140, 167, 193, .12);
+    --tab-bg: #334155;
+    --tab-hover-bg: #475569;
+    --tab-text: #cbd5e1;
+    --tab-active-bg: #1e293b;
+    --tab-active-text: #f1f5f9;
+    --text-muted: #64748b;
+    --surface-inverse: #1e293b;
+}
+
+:root[data-theme='neon'] {
+    --bg-color: #06060d;
+    --card-bg: #0e0e1a;
+    --text-color: #f0f2ff;
+    --text-light: #8b90b8;
+    --primary-color: #00e5ff;
+    --primary-hover: #00b8d4;
+    --border-color: rgba(0, 229, 255, .25);
+    --surface-tint: #12122a;
+    --success-bg: rgba(0, 255, 136, .12);
+    --success-text: #00ff88;
+    --error-bg: rgba(255, 51, 102, .14);
+    --error-text: #ff3366;
+    --info-bg: rgba(102, 170, 255, .12);
+    --info-text: #66aaff;
+    --save-color: #00ff88;
+    --save-hover: #00cc6a;
+    --shadow: 0 4px 24px rgba(0, 229, 255, .1);
+    --shadow-soft: 0 2px 8px rgba(0, 229, 255, .08);
+    --radius-md: 8px;
+    --radius-lg: 14px;
+    --floating-bg: rgba(6, 6, 13, .92);
+    --floating-border: rgba(0, 229, 255, .3);
+    --panel-muted-bg: rgba(0, 229, 255, .06);
+    --panel-muted-border: rgba(0, 229, 255, .14);
+    --panel-soft-bg: #111128;
+    --panel-soft-bg-2: #0d0d20;
+    --panel-hover-bg: rgba(0, 229, 255, .08);
+    --control-bg: rgba(0, 229, 255, .1);
+    --control-hover-bg: rgba(0, 229, 255, .18);
+    --footer-bg: rgba(6, 6, 13, .94);
+    --footer-border: rgba(0, 229, 255, .25);
+    --log-shell-bg: #080814;
+    --log-text-color: #c8d6e5;
+    --log-time-color: #6e7896;
+    --sidebar-active-indicator: #00e5ff;
+    --sidebar-bg: rgba(0, 229, 255, .04);
+    --sidebar-border: rgba(0, 229, 255, .14);
+    --tab-bg: #1a1a35;
+    --tab-hover-bg: #252545;
+    --tab-text: #8b90b8;
+    --tab-active-bg: rgba(0, 229, 255, .15);
+    --tab-active-text: #00e5ff;
+    --text-muted: #5a6088;
+    --surface-inverse: #1a1a32;
+    color-scheme: dark;
+}
+
+:root[data-theme='neon'] select option {
+    background: #12122a;
+    color: var(--text-color);
 }
 
 /* Base Body Styles */
@@ -82,8 +159,6 @@ body {
     color: var(--text-color);
     margin: 0;
     padding: clamp(1rem, 1.6vw, 2rem) clamp(1rem, 2.6vw, 2.4rem) 108px;
-    -webkit-font-smoothing: antialiased;
-    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", Helvetica Neue, sans-serif;
 }
 
 :root[data-theme='dark'] body {
@@ -93,25 +168,26 @@ body {
         var(--bg-color);
 }
 
-/* Base Headings */
-h1 {
-    color: #0f4f82;
-    text-align: center;
-    font-weight: 800;
-    letter-spacing: .2px;
-    margin-bottom: 0;
+:root[data-theme='neon'] body {
+    background:
+        radial-gradient(circle at 15% 10%, rgba(0, 229, 255, .12), transparent 45%),
+        radial-gradient(circle at 85% 5%, rgba(0, 255, 136, .08), transparent 35%),
+        radial-gradient(circle at 50% 90%, rgba(102, 170, 255, .06), transparent 40%),
+        var(--bg-color);
 }
 
-:root[data-theme='dark'] h1 {
-    color: #8fd1ff;
-}
-
-h2 {
-    color: var(--text-color);
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-color);
-    padding-bottom: .5rem;
-    margin-top: 0;
+:root[data-theme='neon'] body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background-image:
+        linear-gradient(rgba(0, 229, 255, .04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 229, 255, .04) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 70%);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 70%);
 }
 
 /* Base Form Elements */
@@ -162,6 +238,28 @@ textarea::placeholder {
     color: var(--text-color);
 }
 
+:root[data-theme='neon'] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme='neon'] select,
+:root[data-theme='neon'] textarea {
+    border-width: 2px;
+}
+
+:root[data-theme='neon'] input:not([type="checkbox"]):not([type="radio"]):focus,
+:root[data-theme='neon'] select:focus,
+:root[data-theme='neon'] textarea:focus {
+    box-shadow: 0 0 12px rgba(0, 229, 255, .25), 0 0 0 2px rgba(0, 229, 255, .15);
+}
+
+:root[data-theme='neon'] button {
+    box-shadow: 0 2px 8px rgba(0, 229, 255, .12);
+}
+
+:root[data-theme='neon'] .tabs button.active,
+:root[data-theme='neon'] .page-nav button.active {
+    background: linear-gradient(135deg, #00e5ff, #0091ff);
+    box-shadow: 0 4px 18px rgba(0, 229, 255, .3);
+}
+
 /* Base Buttons */
 button {
     border: none;
@@ -200,53 +298,53 @@ input[type="checkbox"] {
 
 /* Dark Theme specific styles that can be applied globally */
 .dark-theme {
-    background-color: #18181b; /* 更深的背景色 */
-    border: 1px solid #3f3f46;
-    color: #f4f4f5;
+    background-color: var(--surface-inverse, #18181b);
+    border: 1px solid var(--border-color, #3f3f46);
+    color: var(--text-color, #f4f4f5);
 }
 
 .dark-theme h2 {
-    color: #f4f4f5;
-    border-color: #3f3f46;
+    color: var(--text-color, #f4f4f5);
+    border-color: var(--border-color, #3f3f46);
 }
 
 .dark-theme label {
-    color: #d4d4d8; /* Further increase label contrast */
+    color: var(--text-light, #d4d4d8);
 }
 
 .dark-theme input,
 .dark-theme select,
 .dark-theme textarea {
-    background-color: #27272a;
-    border: 1px solid #52525b;
-    color: #f4f4f5;
+    background-color: var(--surface-tint, #27272a);
+    border: 1px solid var(--border-color, #52525b);
+    color: var(--text-color, #f4f4f5);
 }
 
 .dark-theme input::placeholder,
 .dark-theme textarea::placeholder {
-    color: #8e8ea0;
+    color: var(--text-muted, #8e8ea0);
 }
 
 .dark-theme .remove-btn {
-    color: #acacbe;
+    color: var(--text-light, #acacbe);
 }
 
 .dark-theme .remove-btn:hover {
-    background-color: rgba(239, 68, 68, .2);
-    color: #ef4444;
+    background-color: var(--error-bg, rgba(239, 68, 68, .2));
+    color: var(--error-text, #ef4444);
 }
 
 .dark-theme .add-btn {
-    color: #ececf1;
-    background-color: #40414f;
-    border: 1px solid #565869;
+    color: var(--text-color, #ececf1);
+    background-color: var(--surface-inverse, #40414f);
+    border: 1px solid var(--border-color, #565869);
 }
 
 .dark-theme .add-btn:hover {
-    background-color: #4d4e5a;
+    background-color: var(--panel-muted-bg, #4d4e5a);
 }
 .dark-theme .toggle-switch {
-    color: #d4d4d8;
+    color: var(--text-light, #d4d4d8);
 }
 
 .warning-text {
@@ -256,7 +354,7 @@ input[type="checkbox"] {
 }
 
 .dark-theme .warning-text {
-    color: #f59e0b; /* Amber color for warning */
+    color: var(--info-text, #f59e0b);
     opacity: 1;
 }
 
@@ -319,12 +417,12 @@ input[type="checkbox"] {
 }
 
 *::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #b8c5d6, #98abc3);
+    background: linear-gradient(180deg, var(--text-muted, #b8c5d6), var(--text-light, #98abc3));
     border-radius: 10px;
 }
 
 :root[data-theme='dark'] *::-webkit-scrollbar-thumb {
-    background: linear-gradient(180deg, #4e6278, #394a5f);
+    background: linear-gradient(180deg, var(--surface-inverse, #4e6278), var(--tab-bg, #394a5f));
 }
 
 *::-webkit-scrollbar-track {
@@ -333,6 +431,14 @@ input[type="checkbox"] {
 
 :root[data-theme='dark'] *::-webkit-scrollbar-track {
     background: rgba(76, 94, 116, .18);
+}
+
+:root[data-theme='neon'] *::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(0, 229, 255, .35), rgba(0, 145, 255, .3));
+}
+
+:root[data-theme='neon'] *::-webkit-scrollbar-track {
+    background: rgba(0, 229, 255, .06);
 }
 
 @media (prefers-reduced-motion: reduce) {

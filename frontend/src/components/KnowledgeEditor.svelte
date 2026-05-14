@@ -222,7 +222,7 @@
   }
    .tabs {
      display: flex;
-    border-bottom: 2px solid #333;
+    border-bottom: 2px solid var(--border-color);
     margin-bottom: 1rem;
   }
   .tab {
@@ -230,13 +230,18 @@
     cursor: pointer;
     border: none;
     background: none;
-    color: #ccc;
+    color: var(--text-light);
     font-size: 1rem;
+    border-radius: 5px 5px 0 0;
+    transition: all 0.2s ease;
+  }
+  .tab:hover {
+    background: var(--panel-muted-bg);
+    color: var(--text-color);
   }
   .tab.active {
-    background-color: #333;
-    color: #fff;
-    border-radius: 5px 5px 0 0;
+    background-color: var(--tab-active-bg);
+    color: var(--tab-active-text);
   }
   .item-list {
     max-height: 400px;
@@ -248,10 +253,10 @@
     justify-content: space-between;
     align-items: flex-start;
     padding: 0.5rem;
-    border: 1px solid #444;
+    border: 1px solid var(--border-color);
     border-radius: 4px;
     margin-bottom: 0.5rem;
-    background-color: #ffffff; /* A lighter, more distinct dark color for better contrast */
+    background-color: var(--card-bg);
   }
   .item-content {
     flex-grow: 1;
@@ -260,17 +265,17 @@
   }
   .item-content > span {
       display: inline-block;
-      color: #00ad09; /* Set text color to INFO green for readability */
+      color: var(--success-text);
   }
   .meta {
       font-size: 0.8em;
-      color: #000000; /* Increased font color contrast for better readability */
+      color: var(--text-light);
       display: flex;
       gap: 1rem;
   }
   .keywords {
     font-style: italic;
-    color: #7e7e7e;
+    color: var(--text-light);
     margin-bottom: 0.5em;
   }
   .actions {
@@ -314,8 +319,8 @@
   .settings-section { display: flex; flex-direction: column; gap: 1.5rem; }
   .setting-item { display: flex; flex-direction: column; gap: 0.5rem; }
   .setting-item label { font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
-  .threshold-value { font-weight: normal; background-color: #444; padding: 2px 8px; border-radius: 12px; font-size: 0.9em; }
-  .setting-description { font-size: 0.9em; color: #aaa; margin: 0; }
+  .threshold-value { font-weight: normal; background-color: var(--control-bg); color: var(--text-color); padding: 2px 8px; border-radius: 12px; font-size: 0.9em; }
+  .setting-description { font-size: 0.9em; color: var(--text-light); margin: 0; }
 </style>
 
 <Card>

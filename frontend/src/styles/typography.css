@@ -1,0 +1,66 @@
+/* Typography defaults */
+:root {
+    --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", Segoe UI, Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", Helvetica Neue, sans-serif;
+    --font-mono: 'Fira Code', 'Courier New', monospace;
+}
+
+body {
+    font-family: var(--font-family);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+h1 {
+    color: var(--primary-color);
+    text-align: center;
+    font-weight: 800;
+    letter-spacing: .2px;
+    margin-bottom: 0;
+}
+
+h2 {
+    color: var(--text-color);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: .5rem;
+    margin-top: 0;
+}
+
+h3 {
+    color: var(--text-color);
+    font-weight: 600;
+    font-size: 1rem;
+    margin: 0 0 .5rem;
+}
+
+h4 {
+    color: var(--text-color);
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 0 0 .35rem;
+}
+
+:root[data-theme='dark'] h1 {
+    color: var(--primary-color, #8fd1ff);
+}
+
+:root[data-theme='neon'] h1 {
+    color: #00e5ff;
+    text-shadow: 0 0 20px rgba(0, 229, 255, .3);
+}
+
+:root[data-theme='neon'] h2 {
+    border-bottom-width: 2px;
+    border-bottom-style: solid;
+    border-bottom-color: rgba(0, 229, 255, .25);
+}
+
+:root[data-theme='neon'] h3,
+:root[data-theme='neon'] h4 {
+    color: #c8d6ff;
+}
+
+::selection {
+    background-color: rgba(31, 139, 214, .22);
+    color: var(--text-color);
+}

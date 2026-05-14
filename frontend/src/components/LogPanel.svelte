@@ -139,7 +139,7 @@
     <div class="log-header">
         <button class="log-collapse-btn" on:click={() => collapsed = !collapsed}>
             <span>{collapsed ? '▸' : '▾'}</span>
-            <span>Logs</span>
+            <span>{$t('logPanel.logs')}</span>
             {#if botId}
                 <span class="log-bot-tag">{botId}</span>
             {/if}
@@ -155,7 +155,7 @@
                 </div>
                 <label class="toggle-switch">
                     <input type="checkbox" bind:checked={autoScroll}>
-                    <span class="slider"></span>Auto
+                    <span class="slider"></span>{$t('logPanel.auto')}
                 </label>
                 <label class="line-limit-control">
                     <select value={renderedLogLimit} on:change={(e) => { const n = Number(e.target.value); if (LOG_LINE_LIMIT_OPTIONS.includes(n)) renderedLogLimit = n; }}>
@@ -172,7 +172,7 @@
         <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div class="resize-handle" role="separator" aria-orientation="horizontal" on:mousedown={handleDragStart}></div>
         {#if hiddenLogCount > 0}
-            <div class="log-limit-note">Showing last {renderedLogLimit} lines ({hiddenLogCount} hidden)</div>
+            <div class="log-limit-note">{$t('logPanel.showLast', { limit: renderedLogLimit })} ({$t('logPanel.hiddenCount', { hidden: hiddenLogCount })})</div>
         {/if}
         <div class="log-output-wrapper">
             <pre bind:this={logOutputElement}><code>{#each filteredLogs as log (log._uid)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
