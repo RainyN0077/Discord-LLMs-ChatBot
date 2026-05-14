@@ -59,8 +59,8 @@ async def get_plugin_config_endpoint(plugin_name: str):
 @router.post("/api/plugins/{plugin_name}/config", dependencies=[Depends(get_api_key)])
 async def update_plugin_config_endpoint(plugin_name: str, plugin_data: dict):
     import asyncio
-    from ..bot import run_bot
     from .. import state
+    from ..config_bridge import generate_env_file
     config = load_config()
     if plugin_name not in config.get("plugins", {}):
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found.")
@@ -68,15 +68,11 @@ async def update_plugin_config_endpoint(plugin_name: str, plugin_data: dict):
     config["plugins"][plugin_name] = plugin_data
     save_config(config)
 
-    if state.bot_task and not state.bot_task.done():
-        state.bot_task.cancel()
-        try:
-            await state.bot_task
-        except asyncio.CancelledError:
-            pass
+    generate_env_file()
 
-    loop = asyncio.get_event_loop()
-    state.bot_task = loop.create_task(run_bot(state.MEMORY_CUTOFFS))
+    if state.bot_manager:
+        for bot_id in list(state.bot_manager._instances.keys()):
+            await state.bot_manager.restart(bot_id)
 
-    logger.info(f"Plugin '{plugin_name}' configuration updated and bot restarted.")
-    return {"message": f"Plugin '{plugin_name}' configuration updated and bot restarted."}
+    logger.info(f"Plugin '{plugin_name}' configuration updated and bots restarted.")
+    return {"message": f"Plugin '{plugin_name}' configuration updated and bots restarted."}

@@ -3,6 +3,7 @@ import os
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -14,14 +15,34 @@ if str(_backend_dir) not in sys.path:
 os.environ.setdefault("FAIL_ON_REDIS_ERROR", "false")
 
 from app.utils import Stub, _async_stub
-from app.config_cache import DEFAULT_CONFIG, invalidate_cache, save_config
+from app.config_cache import DEFAULT_CONFIG, invalidate_cache
 from app.state import MEMORY_CUTOFFS
 from app import state
 
 
+def _create_mock_core_shared(tmp_path):
+    mock_core_shared = MagicMock()
+    mock_core_shared.token_calculator = MagicMock()
+    mock_core_shared.token_calculator.get_token_count = MagicMock(return_value=100)
+    mock_core_shared.token_calculator.get_token_count_for_messages = MagicMock(return_value=500)
+    mock_core_shared.redis_client = MagicMock()
+    mock_core_shared.redis_client.set = MagicMock(return_value=True)
+    mock_core_shared.redis_client.get = MagicMock(return_value=None)
+    mock_core_shared.redis_client.delete = MagicMock(return_value=True)
+    mock_core_shared.redis_client.exists = MagicMock(return_value=False)
+    mock_core_shared.INSTANCE_ID = "test-instance"
+    mock_core_shared.strip_thinking_sections = MagicMock(return_value="sanitized text")
+    mock_core_shared.strip_dsml_tool_blocks = MagicMock(return_value="sanitized text")
+    mock_core_shared.contains_dsml_tool_blocks = MagicMock(return_value=False)
+    mock_core_shared._parse_user_info_fields = MagicMock(return_value={})
+    mock_core_shared._try_acquire_bot_process_lock = MagicMock(return_value=None)
+    mock_core_shared._release_bot_process_lock = MagicMock(return_value=None)
+    mock_core_shared._get_bot_lock_path = MagicMock(return_value=tmp_path / "bot.lock")
+    return mock_core_shared
+
+
 @pytest.fixture(autouse=True)
 def _reset_global_state(monkeypatch, tmp_path):
-    """Reset mutable global state between tests."""
     MEMORY_CUTOFFS.clear()
     invalidate_cache()
     state.bot_manager = None
@@ -59,10 +80,20 @@ def _reset_global_state(monkeypatch, tmp_path):
     except AttributeError:
         pass
 
+    mock_core_shared = _create_mock_core_shared(tmp_path)
+    _original_core_shared = sys.modules.get("app.core_shared")
+    sys.modules["app.core_shared"] = mock_core_shared
+
+    yield
+
+    if _original_core_shared is not None:
+        sys.modules["app.core_shared"] = _original_core_shared
+    else:
+        sys.modules.pop("app.core_shared", None)
+
 
 @pytest.fixture
 def test_config_dict() -> Dict[str, Any]:
-    """Minimal valid configuration for tests."""
     return {
         **DEFAULT_CONFIG,
         "bot_id": "test-bot",
@@ -89,7 +120,6 @@ def test_config_dict() -> Dict[str, Any]:
 
 @pytest.fixture
 def mock_discord_message():
-    """Creates a Stub that mimics discord.Message for testing."""
     def _make(**overrides) -> Stub:
         author = Stub(
             id=overrides.pop("author_id", 123456789),
@@ -107,7 +137,6 @@ def mock_discord_message():
             name=overrides.pop("guild_name", "test-guild"),
         )
         reference = overrides.pop("reference", None)
-
         defaults = dict(
             content="Hello world",
             clean_content="Hello world",
@@ -121,13 +150,11 @@ def mock_discord_message():
         )
         defaults.update(overrides)
         return Stub(**defaults)
-
     return _make
 
 
 @pytest.fixture
 def mock_discord_bot():
-    """Creates a Stub that mimics discord.Client for testing."""
     bot = Stub(
         user=Stub(id=999999999, name="BotUser", display_name="BotUser", bot=True),
         fetch_user=_async_stub(Stub(id=888888888, name="FetchedUser", display_name="FetchedUser", bot=False)),
@@ -137,7 +164,6 @@ def mock_discord_bot():
 
 @pytest.fixture
 def test_db(tmp_path):
-    """Creates a temporary SQLite database with the knowledge schema initialized."""
     db_path = str(tmp_path / "test_knowledge.sqlite")
     from app.core_logic.knowledge_manager import KnowledgeManager
     km = KnowledgeManager(db_path=db_path)
@@ -146,25 +172,21 @@ def test_db(tmp_path):
 
 @pytest.fixture
 def knowledge_manager_test(test_db):
-    """KnowledgeManager instance backed by a test SQLite database."""
     return test_db
 
 
 @pytest.fixture
 def auth_headers(test_config_dict):
-    """HTTP headers with a valid API key for protected endpoints."""
     return {"X-API-Key": test_config_dict["api_secret_key"]}
 
 
 @pytest.fixture
 def bad_auth_headers():
-    """HTTP headers with an invalid API key."""
     return {"X-API-Key": "wrong-api-key"}
 
 
 @pytest.fixture
 async def app_client(tmp_path, test_config_dict, monkeypatch):
-    """Async HTTP client for FastAPI integration tests."""
     data_dir = tmp_path / "data"
     data_dir.mkdir(exist_ok=True)
     bots_dir = data_dir / "bots"
@@ -187,31 +209,10 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     test_db_path = tmp_path / "test_kb.sqlite"
     from app.core_logic.knowledge_manager import KnowledgeManager
     test_km = KnowledgeManager(db_path=str(test_db_path))
-
     import app.core_logic.knowledge_manager as km_mod
     monkeypatch.setattr(km_mod, "get_knowledge_manager", lambda: test_km)
     import app.routers.memory as mem_mod
     monkeypatch.setattr(mem_mod, "get_knowledge_manager", lambda: test_km)
-
-    from unittest.mock import AsyncMock, MagicMock
-    import sys
-
-    mock_bot_module = MagicMock()
-    mock_bot_module.run_bot = AsyncMock(return_value=None)
-    mock_bot_module.run_bot_instance = AsyncMock(return_value=None)
-    mock_bot_module.strip_thinking_sections = MagicMock(return_value="sanitized text")
-    mock_bot_module.strip_dsml_tool_blocks = MagicMock(return_value="sanitized text")
-    mock_bot_module.contains_dsml_tool_blocks = MagicMock(return_value=False)
-    mock_bot_module.process_memory_tags = MagicMock(return_value="processed")
-    mock_bot_module.token_calculator = MagicMock()
-    mock_bot_module.redis_client = MagicMock()
-    mock_bot_module.redis_client.set = MagicMock(return_value=True)
-    mock_bot_module.redis_client.get = MagicMock(return_value=None)
-    mock_bot_module.redis_client.delete = MagicMock(return_value=True)
-    mock_bot_module.redis_client.exists = MagicMock(return_value=False)
-    mock_bot_module.INSTANCE_ID = "test-instance"
-    _original_app_bot = sys.modules.get("app.bot")
-    sys.modules["app.bot"] = mock_bot_module
 
     from app.bot_manager import BotManager
     mock_manager = MagicMock(spec=BotManager)
@@ -223,13 +224,7 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     mock_manager.create = AsyncMock(return_value="test-bot")
     monkeypatch.setattr(state, "bot_manager", mock_manager)
 
-    try:
-        from app.main import app
-        transport = ASGITransport(app=app)
-        async with AsyncClient(transport=transport, base_url="http://test") as client:
-            yield client
-    finally:
-        if _original_app_bot is not None:
-            sys.modules["app.bot"] = _original_app_bot
-        else:
-            sys.modules.pop("app.bot", None)
+    from app.main import app
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
