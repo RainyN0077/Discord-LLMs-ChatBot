@@ -222,6 +222,7 @@ class DirectChatRequest(BaseModel):
     include_system_prompt: bool = True
     debug_mode: bool = False
     debug_context: Optional[DirectChatDebugContext] = None
+    bot_id: Optional[str] = None
 
 
 class DirectChatUserDebugDetail(BaseModel):

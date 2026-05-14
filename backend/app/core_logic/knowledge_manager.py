@@ -664,11 +664,14 @@ class KnowledgeManager:
             if not row:
                 return False
             content = row["content"]
-            try:
-                tag, _ = content.split("]", 1)
-                tag += "]"
-            except ValueError:
-                return False
+            if "[memory" in (content or ""):
+                try:
+                    tag, _ = content.split("]", 1)
+                    tag += "]"
+                except ValueError:
+                    tag = ""
+            else:
+                tag = ""
             c.execute("UPDATE memory SET content=? WHERE id=?", (f"{tag} {new_content}".strip(), memory_id))
             conn.commit()
             return c.rowcount > 0
@@ -776,8 +779,21 @@ class KnowledgeManager:
 _knowledge_manager: Optional[KnowledgeManager] = None
 
 
-def get_knowledge_manager() -> KnowledgeManager:
+def get_knowledge_manager(bot_id: str = None) -> KnowledgeManager:
     global _knowledge_manager
+    try:
+        from .. import state
+        mgr = state.bot_manager
+        if bot_id and mgr:
+            inst = mgr.get(bot_id)
+            if inst and inst._knowledge_manager:
+                return inst._knowledge_manager
+        if mgr and mgr._instances:
+            first = next(iter(mgr._instances.values()))
+            if first._knowledge_manager:
+                return first._knowledge_manager
+    except Exception:
+        pass
     if _knowledge_manager is None:
         _knowledge_manager = KnowledgeManager()
     return _knowledge_manager

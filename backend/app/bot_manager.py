@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from .bot_instance import BotInstance
 from .config_cache import (DEFAULT_BOT_ID, 
     DATA_DIR, BOTS_DIR, CONFIG_FILE, DEFAULT_CONFIG,
-    get_bot_config_path, get_bot_dir, load_config, save_config,
+    get_bot_config_path, get_bot_dir, get_bot_knowledge_path, load_config, save_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,11 @@ class BotManager:
         legacy_api_key = old_config.get("api_secret_key")
         if legacy_api_key:
             save_config({"api_secret_key": legacy_api_key})
+        legacy_knowledge = DATA_DIR / "knowledge.sqlite"
+        bot_knowledge = get_bot_knowledge_path(bot_id)
+        if legacy_knowledge.exists() and not bot_knowledge.exists():
+            shutil.copy2(str(legacy_knowledge), str(bot_knowledge))
+            logger.info(f"Migrated legacy knowledge DB -> {bot_knowledge}")
         logger.info(f"Migrated legacy config -> {bot_config_path} (backup: {backup_path})")
         return bot_id
 

@@ -12,6 +12,7 @@ from ..core_logic.persona_manager import determine_bot_persona, build_system_pro
 from ..core_logic.context_builder import format_user_message_for_llm
 from ..dependencies import get_api_key
 from ..llm_providers.factory import get_llm_provider
+from .. import state
 from ..models import (
     DirectChatRequest, DirectChatResponse, DirectChatDebugContext,
     DirectChatUserDebugDetail,
@@ -174,6 +175,10 @@ async def direct_chat(request: DirectChatRequest):
         raise HTTPException(status_code=400, detail="messages cannot be empty.")
 
     config = load_config()
+    if request.bot_id and state.bot_manager:
+        instance = state.bot_manager.get(request.bot_id)
+        if instance:
+            config = instance.config
     decoded_attachments = _decode_direct_chat_attachments(request.attachments)
     if decoded_attachments and not any((msg.role or "").lower().strip() == "user" for msg in request.messages):
         raise HTTPException(status_code=400, detail="attachments require at least one user message.")

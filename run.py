@@ -235,7 +235,7 @@ def do_install() -> None:
         subprocess.run([str(vp), "-m", "pip", "install", "-r", str(req)], check=True)
     if _find_npm():
         _log("3/3", "npm install")
-        subprocess.run(["npm", "install"], cwd=str(FRONTEND_DIR), check=True, shell=IS_WINDOWS)
+        subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_DIR), check=True)
     print(c("G", "\nAll dependencies installed."))
 
 
