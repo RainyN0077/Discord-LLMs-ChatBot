@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -23,6 +24,15 @@ async def lifespan(app: FastAPI):
     import nonebot
     nonebot.init()
     state.nonebot_driver = nonebot.get_driver()
+
+    from loguru import logger as loguru_logger
+    loguru_logger.remove()
+    loguru_logger.add(
+        sys.stderr,
+        level="WARNING",
+        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
+        colorize=True,
+    )
 
     from nonebot.adapters.discord import Adapter as DiscordAdapter
     driver = nonebot.get_driver()

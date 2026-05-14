@@ -76,6 +76,8 @@ def generate_env_file() -> None:
         lines.append("DRIVER=~httpx+~websockets")
     if "DISCORD_HANDLE_SELF_MESSAGE" not in existing:
         lines.append("DISCORD_HANDLE_SELF_MESSAGE=false")
+    if "LOGURU_LEVEL" not in existing:
+        lines.append("LOGURU_LEVEL=WARNING")
 
     lines.append(f"DISCORD_BOTS={json.dumps(discord_bots, ensure_ascii=False)}")
     lines.append(f"ONEBOT_BOTS={json.dumps(onebot_bots, ensure_ascii=False)}")

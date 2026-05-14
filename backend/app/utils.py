@@ -122,44 +122,8 @@ def setup_logging():
     for name, level in noisy_loggers.items():
         logging.getLogger(name).setLevel(level)
 
-    try:
-        from loguru import logger as loguru_logger
-        import sys
-
-        class LoguruHandler(logging.Handler):
-            def emit(self, record):
-                try:
-                    level = record.levelname
-                    msg = self.format(record)
-                    loguru_logger.opt(depth=6, exception=record.exc_info).log(
-                        level.lower(), msg
-                    )
-                except Exception:
-                    self.handleError(record)
-
-        class PythonHandler:
-            def write(self, message):
-                record = message.strip()
-                if record:
-                    root_logger.info(record)
-
-        loguru_logger.remove()
-        loguru_logger.add(
-            PythonHandler(),
-            level="WARNING",
-            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",
-            filter=lambda r: "Discord" not in r["extra"].get("name", ""),
-        )
-        loguru_logger.add(
-            PythonHandler(),
-            level="INFO",
-            format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {name} | {message}",
-            filter=lambda r: "Discord" in r["extra"].get("name", ""),
-        )
-
-        os.environ.setdefault("LOGURU_AUTOINIT", "0")
-    except ImportError:
-        pass
+    os.environ.setdefault("LOGURU_LEVEL", "WARNING")
+    os.environ.setdefault("LOGURU_AUTOINIT", "0")
 
 
 # --- Token 计算器 ---
