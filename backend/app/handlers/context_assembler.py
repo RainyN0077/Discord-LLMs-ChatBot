@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import discord
 
@@ -10,12 +10,12 @@ logger = logging.getLogger(__name__)
 
 
 async def build_full_context(
-    bot: discord.Client,
+    bot: Any,
     config: Dict[str, Any],
-    message: discord.Message,
+    message: Any,
     memory_cutoffs: Dict[int, Any],
     injected_data: Optional[str] = None,
-) -> Tuple[str, str, List[Dict[str, str]], List[discord.Message], Optional[str], Optional[Dict[str, Any]]]:
+) -> Tuple[str, str, List[Dict[str, str]], List[Any], Optional[str], Optional[Dict[str, Any]]]:
     role_name, role_config = None, None
     if isinstance(message.author, discord.Member):
         role_name, role_config = get_highest_configured_role(

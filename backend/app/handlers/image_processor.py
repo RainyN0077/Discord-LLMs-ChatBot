@@ -2,15 +2,13 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-import discord
-
 from ..ocr_service import get_ocr_timeout_seconds, has_ocr_model_config, extract_ocr_text
 from ..utils import download_image
 
 logger = logging.getLogger(__name__)
 
 
-def collect_image_descriptors(msg: discord.Message, source_label: str) -> List[Dict[str, str]]:
+def collect_image_descriptors(msg: Any, source_label: str) -> List[Dict[str, str]]:
     descriptors: List[Dict[str, str]] = []
 
     def add_descriptor(url: Optional[str], kind: str) -> None:
@@ -54,14 +52,14 @@ def collect_image_descriptors(msg: discord.Message, source_label: str) -> List[D
     return descriptors
 
 
-async def collect_and_download_images(message: discord.Message) -> List[Dict[str, Any]]:
+async def collect_and_download_images(message: Any) -> List[Dict[str, Any]]:
     image_descriptors = collect_image_descriptors(message, "Current message")
-    if message.reference and isinstance(message.reference.resolved, discord.Message):
+    if hasattr(message, 'reference') and message.reference and hasattr(message.reference, 'resolved') and message.reference.resolved:
         replied_msg = message.reference.resolved
         replied_images = collect_image_descriptors(replied_msg, f"Replied message from {replied_msg.author}")
         image_descriptors.extend(replied_images)
         if replied_images:
-            logger.info(f"Found {len(replied_images)} images in replied message from {replied_msg.author}")
+            logger.info(f"Found {len(replied_images)} images in replied message from {getattr(replied_msg, 'author', 'unknown')}")
 
     seen_urls: set = set()
     downloaded_images: List[Dict[str, Any]] = []

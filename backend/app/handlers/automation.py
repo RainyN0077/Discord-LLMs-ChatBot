@@ -1,12 +1,11 @@
-from typing import Any, Dict, List, Optional, Tuple
-import discord
+from typing import Any, Dict, List, Optional, Tuple, Union
 import logging
 
 logger = logging.getLogger(__name__)
 
 
 def track_auto_interject(
-    message: discord.Message,
+    message: Any,
     bot_config: Dict[str, Any],
     auto_message_counts: Dict[int, int],
 ) -> bool:
@@ -30,7 +29,7 @@ def track_auto_interject(
 
 
 def normalize_repeat_content(
-    message: discord.Message,
+    message: Any,
     bot_config: Dict[str, Any],
 ) -> Optional[Tuple[str, str]]:
     raw_content = message.content or ""
@@ -54,7 +53,7 @@ def normalize_repeat_content(
 
 
 def track_repeat_parrot(
-    message: discord.Message,
+    message: Any,
     bot_config: Dict[str, Any],
     repeat_streaks: Dict[int, Dict[str, Any]],
 ) -> Optional[str]:
