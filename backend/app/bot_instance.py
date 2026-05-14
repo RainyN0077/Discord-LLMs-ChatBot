@@ -119,11 +119,15 @@ class BotInstance:
         self._usage_tracker = UsageTracker(data_file=str(self.usage_path))
         self._knowledge_manager = KnowledgeManager(db_path=str(self.knowledge_path))
 
-        def _get_llm_response(messages, images=None):
+        def _get_llm_response(messages_or_config, extra_messages=None, images=None):
             async def _inner():
                 from .llm_providers.factory import get_llm_provider
                 llm_provider = get_llm_provider(self.config)
                 full_response = ""
+                if isinstance(messages_or_config, dict) and extra_messages is not None:
+                    messages = extra_messages
+                else:
+                    messages = messages_or_config
                 async for response_type, data in llm_provider.get_response_stream(messages, images, tools=[], tool_functions={}):
                     if response_type == "final":
                         full_response = data

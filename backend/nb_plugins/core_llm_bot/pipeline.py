@@ -86,7 +86,10 @@ async def execute_llm_pipeline(
             logger.info("Injected %s relevant memories for bot '%s'.", len(transformed_memories), instance.bot_id)
 
     role_config = _resolve_role_config(bot, event, config)
-    usage_manager = UsageManager(token_calculator)
+    usage_manager = getattr(instance, '_usage_manager', None)
+    if usage_manager is None:
+        instance._usage_manager = UsageManager(token_calculator)
+        usage_manager = instance._usage_manager
 
     if role_config:
         user_usage = await usage_manager.check_quota_and_get_usage(message_ctx.author.id, role_config)
@@ -225,6 +228,13 @@ def _resolve_role_config(bot: Bot, event: MessageEvent, config: Dict[str, Any]) 
     role_based = config.get("role_based_config", {})
     if not role_based:
         return None
+    author_roles = []
+    if hasattr(event, 'author') and hasattr(event.author, 'roles'):
+        author_roles = getattr(event.author, 'roles', []) or []
+    for role in reversed(author_roles):
+        for cfg in role_based.values():
+            if cfg.get("id") == str(getattr(role, 'id', '')):
+                return cfg
     return None
 
 
@@ -278,5 +288,33 @@ async def process_knowledge_tags_from_context(
                 except Exception as e:
                     logger.error(f"Error adding memory from tag by '{user_name}': {e}", exc_info=True)
         cleaned_text = re.sub(r'<memory>.*?</memory>', '', cleaned_text, flags=re.DOTALL)
+
+    if '<user_info' in cleaned_text:
+        from app.core_shared import _parse_user_info_fields
+        user_info_tags = re.findall(r'<user_info\b(.*?)</user_info>', cleaned_text, re.DOTALL)
+        for inner_text in user_info_tags:
+            inner_text = inner_text.strip()
+            if not inner_text:
+                continue
+            parsed = _parse_user_info_fields(inner_text)
+            if not parsed:
+                continue
+            uid = parsed.get("id")
+            keywords = parsed.get("keywords", "")
+            content = parsed.get("content", "")
+            if not content.strip():
+                continue
+            try:
+                knowledge_mgr.add_world_book_entry(
+                    keywords=keywords,
+                    content=content,
+                    linked_user_id=uid,
+                    source="ai_tag",
+                )
+                logger.info("Added world book entry from <user_info> tag: user=%s, keywords=%s",
+                           uid or "none", keywords[:80])
+            except Exception as e:
+                logger.error(f"Error adding world book entry from <user_info> tag: {e}", exc_info=True)
+        cleaned_text = re.sub(r'<user_info\b.*?</user_info>', '', cleaned_text, flags=re.DOTALL)
 
     return cleaned_text.strip()

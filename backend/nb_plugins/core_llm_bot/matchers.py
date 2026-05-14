@@ -44,13 +44,26 @@ def _get_bot_id(bot: BaseBot) -> str:
     return str(getattr(bot, "self_id", "unknown"))
 
 
+def _get_bot_id(bot: BaseBot) -> str:
+    return str(getattr(bot, "self_id", "unknown"))
+
+
+def _resolve_bot_id(bot: BaseBot) -> str:
+    self_id = str(getattr(bot, "self_id", ""))
+    if self_id and self_id in _bot_instance_map:
+        return self_id
+    for bid in _bot_instance_map:
+        return bid
+    return self_id or "unknown"
+
+
 @_matcher.handle()
 async def _on_discord_message(bot: Bot, event: MessageEvent):
     if event.author and event.author.id == getattr(bot, "self_id", None):
         return
 
     message_ctx = event_to_message_context(event, bot)
-    instance = _bot_instance_map.get(_get_bot_id(bot))
+    instance = _bot_instance_map.get(_resolve_bot_id(bot))
     if not instance:
         logger.warning(f"No bot instance registered for bot {_get_bot_id(bot)}")
         return
