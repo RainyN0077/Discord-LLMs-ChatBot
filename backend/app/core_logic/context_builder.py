@@ -42,17 +42,23 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     if not unlimited_message_count and msg_limit <= 0:
         return [], []
 
+    channel = message.channel if hasattr(message.channel, 'history') else client.get_channel(message.channel.id)
+    if channel is None or not hasattr(channel, 'history'):
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Channel {message.channel.id} not found, cannot fetch history.")
+        return [], []
+    before_obj = discord.Object(id=message.id)
+
     fetched_history = []
     if context_mode == 'channel':
-        # 限制历史记录获取数量以避免性能问题
         history_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
-        fetched_history = [msg async for msg in message.channel.history(limit=history_limit, before=message, after=cutoff_timestamp)]
+        fetched_history = [msg async for msg in channel.history(limit=history_limit, before=before_obj, after=cutoff_timestamp)]
     elif context_mode == 'memory':
         trigger_keywords = bot_config.get("trigger_keywords", [])
         trigger_match_mode = bot_config.get("trigger_match_mode", "contains")
         trigger_case_sensitive = bool(bot_config.get("trigger_case_sensitive", False))
         history_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
-        potential_history = [msg async for msg in message.channel.history(limit=history_limit, before=message, after=cutoff_timestamp)]
+        potential_history = [msg async for msg in channel.history(limit=history_limit, before=before_obj, after=cutoff_timestamp)]
         relevant_messages, processed_ids = [], set()
         for hist_msg in potential_history:
             if not unlimited_message_count and len(relevant_messages) >= msg_limit:
