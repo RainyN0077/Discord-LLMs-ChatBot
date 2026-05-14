@@ -43,6 +43,7 @@
         const allLines = (_rawLogs || '').split('\n').filter(line => line.trim() !== '');
         hiddenLogCount = Math.max(0, allLines.length - _limit);
         const visibleLines = hiddenLogCount > 0 ? allLines.slice(-_limit) : allLines;
+        var _parseIdx = 0;
         return visibleLines.map(line => {
             const tsMatch = line.match(timestampRegex);
             const lvMatch = line.match(levelRegex);
@@ -55,7 +56,7 @@
                 messageText = line.substring(tsMatch[0].length).trim();
             }
             return {
-                level, message: messageText,
+                level, message: messageText, _uid: _parseIdx++,
                 originalLine: line,
                 formattedTimestamp: originalTimestamp ? formatTimestamp(originalTimestamp, _timezone) : '...'
             };
@@ -174,7 +175,7 @@
             <div class="log-limit-note">Showing last {renderedLogLimit} lines ({hiddenLogCount} hidden)</div>
         {/if}
         <div class="log-output-wrapper">
-            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log (log.originalLine)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
+            <pre bind:this={logOutputElement}><code>{#each filteredLogs as log (log._uid)}<span class="log-line {log.level}"><span class="timestamp">{log.formattedTimestamp}</span>{log.message}</span>{/each}</code></pre>
         </div>
     {/if}
 </div>
