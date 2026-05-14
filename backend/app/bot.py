@@ -122,7 +122,7 @@ def _try_acquire_bot_process_lock(bot_id: str = "main") -> Optional[TextIO]:
         raise
 
 
-def _release_bot_process_lock(handle: Optional[TextIO]) -> None:
+def _release_bot_process_lock(handle: Optional[TextIO], bot_id: str = "main") -> None:
     if not handle:
         return
 
