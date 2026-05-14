@@ -8,29 +8,10 @@ let apiSecretKey = null;
 
 export function setApiSecretKey(key) {
     apiSecretKey = key;
-    // 额外步骤：也将其存储在localStorage中以便在页面刷新时保留
-    try {
-        const config = JSON.parse(localStorage.getItem('llmConfig') || '{}');
-        config.api_secret_key = key;
-        localStorage.setItem('llmConfig', JSON.stringify(config));
-    } catch(e) {
-        console.error("无法向localStorage保存API密钥:", e);
-    }
 }
 
 function getApiSecretKey() {
-    if (apiSecretKey) return apiSecretKey;
-    try {
-        const configStr = localStorage.getItem('llmConfig');
-        if (configStr) {
-            const config = JSON.parse(configStr);
-            apiSecretKey = config.api_secret_key || null;
-            return apiSecretKey;
-        }
-    } catch (e) {
-        console.error("无法从localStorage解析配置:", e);
-    }
-    return null;
+    return apiSecretKey || null;
 }
 
 
@@ -65,7 +46,6 @@ async function apiFetch(url, options = {}) {
     if (response.status === 403 && key && !options._noRetry) {
         console.warn('Received 403 with current key, clearing and retrying without key...');
         apiSecretKey = null;
-        try { localStorage.removeItem('llmConfig'); } catch (e) {}
         await fetchConfig();
         const newKey = getApiSecretKey();
         if (newKey) {
@@ -248,7 +228,7 @@ export async function updateMemoryItem(itemId, content) {
     });
 }
 
-export async function directChat(messages, attachments = [], includeSystemPrompt = true, debugMode = false, debugContext = null) {
+export async function directChat(messages, attachments = [], includeSystemPrompt = true, debugMode = false, debugContext = null, botId = null) {
     return apiFetch(`${BASE_URL}/chat/direct`, {
         method: 'POST',
         body: JSON.stringify({
@@ -256,7 +236,8 @@ export async function directChat(messages, attachments = [], includeSystemPrompt
             attachments,
             include_system_prompt: includeSystemPrompt,
             debug_mode: debugMode,
-            debug_context: debugContext
+            debug_context: debugContext,
+            bot_id: botId
         }),
     });
 }

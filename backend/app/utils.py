@@ -369,12 +369,14 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
     allow_internal = http_conf.get('allow_internal_requests', False)
     resolved_ips: List[str] = []
     original_hostname = ""
+    validated_ips: set = set()
     if not allow_internal:
         is_blocked, resolved_ips, original_hostname = await _is_internal_url(url)
         if is_blocked:
             error_msg = f"Error: Request to internal or private IP address is blocked for security reasons. URL: {url}"
             logger.error(f"Plugin '{plugin_name}' attempted to access a blocked internal URL. {error_msg}")
             return error_msg
+        validated_ips = set(resolved_ips) if resolved_ips else set()
 
     headers_str = _format_with_placeholders(http_conf.get('headers', '{}'), message, args)
     body_str = _format_with_placeholders(http_conf.get('body_template', '{}'), message, args)
@@ -391,6 +393,7 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
             headers['Content-Type'] = 'application/json'
 
         if resolved_ips and original_hostname:
+            original_url = url
             parsed = urlparse(url)
             ip_to_use = resolved_ips[0]
             if parsed.port:
@@ -398,6 +401,13 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
             else:
                 url = parsed._replace(netloc=ip_to_use).geturl()
             headers['Host'] = original_hostname
+
+        if validated_ips and original_hostname:
+            _, current_ips, _ = await _is_internal_url(original_url)
+            if current_ips and set(current_ips) != validated_ips:
+                error_msg = f"Error: DNS resolution changed during request, possible DNS rebinding attack. URL: {url}"
+                logger.error(f"Plugin '{plugin_name}' DNS rebinding detected: {validated_ips} -> {current_ips}")
+                return error_msg
 
         async with aiohttp.ClientSession(headers=headers) as session:
             request_kwargs = {}

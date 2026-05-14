@@ -65,12 +65,22 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'world_book_dedup_threshold': 0.0,
     'memory_embedding_enabled': False,
     'memory_rerank_enabled': False,
+    'auto_memory_enabled': True,
+    'auto_memory_min_length': 8,
+    'auto_memory_cooldown_seconds': 45,
+    'auto_memory_promote_min_observations': 2,
+    'auto_memory_promote_min_distinct_users': 1,
+    'auto_memory_quality_threshold': 0.55,
+    'auto_memory_direct_promote_ai_tag': False,
+    'auto_memory_recall_top_k': 12,
+    'auto_memory_recall_char_limit': 2200,
+    'auto_memory_recall_max_age_days': 365,
     'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
     'context_mode': 'channel',
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'custom_parameters': [], 'plugins': {},
-    'api_secret_key': secrets.token_hex(32),
+    'api_secret_key': '',
 }
 
 

@@ -17,11 +17,7 @@ async def get_api_key(api_key_received: str = Security(api_key_header)):
     config = load_config()
     correct_api_key = config.get("api_secret_key")
     if not correct_api_key:
-        from .config_cache import save_config
-        correct_api_key = secrets.token_hex(32)
-        config["api_secret_key"] = correct_api_key
-        save_config(config)
-        logger.warning("api_secret_key was empty, auto-generated a new one and persisted to config.json")
+        raise HTTPException(status_code=401, detail="API key not configured. Set api_secret_key in config.")
     if secrets.compare_digest(api_key_received, correct_api_key):
         return api_key_received
     raise HTTPException(status_code=403, detail="Could not validate credentials")
