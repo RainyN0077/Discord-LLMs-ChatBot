@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .bot_manager import BotManager
+from .config_bridge import generate_env_file
 from .utils import setup_logging
 from . import state
 
@@ -16,6 +17,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
+
+    generate_env_file()
+
+    import nonebot
+    nonebot.init()
+    state.nonebot_driver = nonebot.get_driver()
+    nonebot.load_plugins("nb_plugins")
+    logger.info("NoneBot initialized and plugins loaded.")
+
     state.bot_manager = BotManager()
     await state.bot_manager.load_all()
     yield
