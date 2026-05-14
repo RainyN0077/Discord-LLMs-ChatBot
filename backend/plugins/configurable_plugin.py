@@ -3,11 +3,18 @@ import logging
 import re
 from typing import Dict, Any, Optional, Tuple, List
 
-import discord
 from app.utils import _execute_http_request, _format_with_placeholders
 from .base import BasePlugin
 
 logger = logging.getLogger(__name__)
+
+
+async def _safe_reply(message: Any, text: str) -> None:
+    try:
+        await message.reply(text, mention_author=False)
+    except AttributeError:
+        logger.debug("message.reply() not available for this message type, skipping direct reply.")
+
 
 class ConfigurablePlugin(BasePlugin):
     """
@@ -16,7 +23,7 @@ class ConfigurablePlugin(BasePlugin):
     它封装了检查触发器（命令、关键字）和执行动作（HTTP请求）的逻辑。
     """
     
-    async def handle_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """
         检查此可配置插件是否被消息触发，如果是，则执行其动作。
         """
@@ -28,7 +35,7 @@ class ConfigurablePlugin(BasePlugin):
         
         return None
 
-    def _check_trigger(self, message: discord.Message) -> Tuple[bool, str]:
+    def _check_trigger(self, message: Any) -> Tuple[bool, str]:
         """根据插件配置检查触发条件。"""
         trigger_type = self.plugin_config.get('trigger_type', 'command')
         triggers = self.plugin_config.get('triggers', [])
@@ -43,20 +50,20 @@ class ConfigurablePlugin(BasePlugin):
                     return True, message.content
         return False, ""
 
-    async def _execute_action(self, message: discord.Message, args: str, bot_config: Dict[str, Any]):
+    async def _execute_action(self, message: Any, args: str, bot_config: Dict[str, Any]):
         """执行插件配置中定义的动作。"""
         action_type = self.plugin_config.get('action_type', 'http_request')
         
         if action_type == 'http_request':
             result_str = await _execute_http_request(self.plugin_config, message, args)
             if result_str:
-                await message.reply(result_str[:2000], mention_author=False)
-            return True # 'override' a.k.a. stop processing
+                await _safe_reply(message, result_str[:2000])
+            return True
 
         elif action_type == 'llm_augmented_tool':
             api_result = await _execute_http_request(self.plugin_config, message, args)
             if not api_result or api_result.startswith("Error:"):
-                await message.reply(api_result or "Tool execution failed.", mention_author=False)
+                await _safe_reply(message, api_result or "Tool execution failed.")
                 return True
 
             prompt_template = self.plugin_config.get('llm_prompt_template')
@@ -82,7 +89,7 @@ class ConfigurablePlugin(BasePlugin):
                          full_response = content
 
                 if full_response:
-                    await message.reply(full_response[:2000], mention_author=False)
+                    await _safe_reply(message, full_response[:2000])
                 return True
             
             elif injection_mode == 'append':

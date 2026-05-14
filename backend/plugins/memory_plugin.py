@@ -4,8 +4,6 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-import discord
-
 from app.core_logic.knowledge_manager import get_knowledge_manager
 from .base import BasePlugin
 
@@ -18,7 +16,7 @@ class MemoryPlugin(BasePlugin):
     This plugin does not handle messages directly but provides functions for the LLM to call.
     """
 
-    async def handle_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         # This plugin does not get triggered by user messages, it only provides tools.
         return None
 
@@ -143,7 +141,7 @@ class MemoryPlugin(BasePlugin):
     def add_to_memory(
         self,
         content: str,
-        message: Optional[discord.Message] = None,
+        message: Optional[Any] = None,
         config: Optional[Dict[str, Any]] = None,
         **kwargs,
     ) -> str:
@@ -229,7 +227,7 @@ class MemoryPlugin(BasePlugin):
         keywords: str,
         content: str,
         subject_of_knowledge: Optional[str] = None,
-        message: Optional[discord.Message] = None,
+        message: Optional[Any] = None,
         config: Optional[Dict[str, Any]] = None,
         user_id: Optional[str] = None,
         user_name: Optional[str] = None,
@@ -257,15 +255,19 @@ class MemoryPlugin(BasePlugin):
                 subject_name_lower = subject_of_knowledge.lower().strip()
                 found_user = None
 
-                for user in message.mentions:
-                    if user.name.lower() == subject_name_lower or (hasattr(user, "nick") and user.nick and user.nick.lower() == subject_name_lower):
+                for user in (getattr(message, 'mentions', None) or []):
+                    user_name = getattr(user, 'name', '')
+                    if user_name.lower() == subject_name_lower:
+                        found_user = user
+                        break
+                    if hasattr(user, 'nick') and user.nick and user.nick.lower() == subject_name_lower:
                         found_user = user
                         break
 
-                if not found_user and message.guild:
+                if not found_user and hasattr(message, 'guild') and message.guild and hasattr(message.guild, 'members'):
                     try:
                         for member in message.guild.members:
-                            if member.name.lower() == subject_name_lower or (member.nick and member.nick.lower() == subject_name_lower):
+                            if member.name.lower() == subject_name_lower or (hasattr(member, 'nick') and member.nick and member.nick.lower() == subject_name_lower):
                                 found_user = member
                                 break
                     except Exception:
@@ -278,7 +280,7 @@ class MemoryPlugin(BasePlugin):
                         triggers_to_check = self._get_cleaned_string_list(persona_data.get("trigger_keywords"))
 
                         if subject_name_lower in names_to_check or subject_name_lower in triggers_to_check:
-                            if message.guild:
+                            if hasattr(message, 'guild') and message.guild and hasattr(message.guild, 'get_member'):
                                 try:
                                     found_user = message.guild.get_member(int(uid))
                                 except (TypeError, ValueError):

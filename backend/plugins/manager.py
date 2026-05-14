@@ -7,8 +7,6 @@ import pkgutil
 import functools
 from typing import List, Dict, Any, Optional, Tuple
 
-import discord
-
 from .base import BasePlugin
 from .configurable_plugin import ConfigurablePlugin
 from .memory_plugin import MemoryPlugin
@@ -74,7 +72,7 @@ class PluginManager:
             all_tools.extend(plugin.get_tools())
         return all_tools
     
-    def get_all_tool_functions(self, message: discord.Message, config: Dict[str, Any]) -> Dict[str, callable]:
+    def get_all_tool_functions(self, message: Any, config: Dict[str, Any]) -> Dict[str, callable]:
         """Collects tool functions from all loaded plugins."""
         all_functions = {}
         for plugin in self.plugins:
@@ -91,7 +89,6 @@ class PluginManager:
                         user_id=str(message.author.id),
                         user_name=message.author.name
                     )
-                # Wrap add_to_world_book to inject the full message object and config for context
                 if 'add_to_world_book' in functions:
                     original_func = functions['add_to_world_book']
                     functions['add_to_world_book'] = functools.partial(
@@ -104,7 +101,7 @@ class PluginManager:
             all_functions.update(functions)
         return all_functions
 
-    async def process_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def process_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """
         Processes a message by passing it to all loaded plugins.
         Handles different return types ('append', 'override') from plugins.

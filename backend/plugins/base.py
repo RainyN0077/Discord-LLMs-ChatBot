@@ -2,8 +2,6 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List, Dict, Any
 
-import discord
-
 class BasePlugin(ABC):
     """
     所有插件的抽象基类。
@@ -21,12 +19,12 @@ class BasePlugin(ABC):
         self.name = plugin_config.get('name', self.__class__.__name__)
 
     @abstractmethod
-    async def handle_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """
-        处理传入的Discord消息。
+        处理传入的消息。
         这是插件的主要入口点。插件应该在此方法中实现其触发逻辑和核心功能。
 
-        :param message: The discord.Message object to process.
+        :param message: The message object to process (discord.Message or MessageContext).
         :param bot_config: The main bot configuration.
         :return:
             - ('append', list_of_strings): If the plugin wishes to inject data into the context.

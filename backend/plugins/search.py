@@ -3,7 +3,6 @@ import asyncio
 import logging
 import re
 from typing import Dict, Any, Optional, Tuple, List
-import discord
 from tavily import TavilyClient
 
 from .base import BasePlugin
@@ -74,7 +73,7 @@ class SearchPlugin(BasePlugin):
             logger.warning(f"Search query rewrite failed, fallback to raw query. Error: {e}")
             return query
 
-    async def handle_message(self, message: discord.Message, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """Handles incoming messages and injects search results when triggered."""
         if not self.enabled:
             return None
@@ -135,7 +134,10 @@ class SearchPlugin(BasePlugin):
             )
         except Exception as e:
             logger.error(f"Tavily API error: {e}", exc_info=True)
-            await message.reply(f"Sorry, I encountered an error while searching: {e}", mention_author=False)
+            try:
+                await message.reply(f"Sorry, I encountered an error while searching: {e}", mention_author=False)
+            except AttributeError:
+                pass
             return True
 
         if not search_result or not search_result.get("results"):
