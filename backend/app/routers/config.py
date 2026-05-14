@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import ValidationError
 
-from ..config_cache import load_config, save_config
+from ..config_cache import load_config, save_config, DEFAULT_BOT_ID
 from ..dependencies import get_api_key
 from ..models import Config
 from .. import state
@@ -55,7 +55,7 @@ async def update_config_endpoint(config_data: Config):
 
     config_dict = config_data.model_dump(by_alias=True)
     config_dict.pop("_validation_warning", None)
-    bot_id = config_dict.get("bot_id") or "default"
+    bot_id = config_dict.get("bot_id") or DEFAULT_BOT_ID
 
     if bot_id in mgr._instances:
         instance = mgr._instances[bot_id]

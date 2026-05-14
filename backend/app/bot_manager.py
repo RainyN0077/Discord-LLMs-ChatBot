@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .bot_instance import BotInstance
-from .config_cache import (
+from .config_cache import (DEFAULT_BOT_ID, 
     DATA_DIR, BOTS_DIR, CONFIG_FILE, DEFAULT_CONFIG,
     get_bot_config_path, get_bot_dir, load_config, save_config,
 )
@@ -42,7 +42,7 @@ class BotManager:
         except Exception as e:
             logger.error(f"Failed to load legacy config for migration: {e}")
             return None
-        bot_id = old_config.get("bot_id") or "default-discord"
+        bot_id = old_config.get("bot_id") or DEFAULT_BOT_ID
         bot_dir = get_bot_dir(bot_id)
         bot_dir.mkdir(parents=True, exist_ok=True)
         old_config["bot_id"] = bot_id

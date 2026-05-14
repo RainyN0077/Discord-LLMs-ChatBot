@@ -15,6 +15,7 @@ DATA_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = DATA_DIR / "config.json"
 BOTS_DIR = DATA_DIR / "bots"
 BOTS_DIR.mkdir(exist_ok=True)
+DEFAULT_BOT_ID = "main"
 
 _cache: Optional[Dict[str, Any]] = None
 _cache_mtime: float = 0.0
