@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 
 pytestmark = [pytest.mark.unit]
 
-from app.bot import (
+from app.core_shared import (
     strip_thinking_sections,
     strip_dsml_tool_blocks,
     contains_dsml_tool_blocks,
     _parse_user_info_fields,
-    process_knowledge_tags,
 )
+from app.bot import process_knowledge_tags
 
 
 class TestStripThinkingSections:

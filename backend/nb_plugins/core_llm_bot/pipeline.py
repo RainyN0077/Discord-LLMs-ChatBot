@@ -3,10 +3,9 @@ from typing import Any, Dict, List, Optional
 
 from nonebot.adapters.discord import Bot, MessageEvent
 
-from app.bot import (
+from app.core_shared import (
     redis_client,
     token_calculator,
-    process_knowledge_tags,
     strip_dsml_tool_blocks,
     strip_thinking_sections,
     contains_dsml_tool_blocks,
