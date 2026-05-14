@@ -84,7 +84,10 @@ class BotManager:
                     logger.error(f"Failed to load bot '{bot_id}': {e}", exc_info=True)
             for bot_id, instance in self._instances.items():
                 if instance.config.get("enabled", True):
-                    await instance.start()
+                    try:
+                        await instance.start()
+                    except Exception as e:
+                        logger.error(f"Failed to start bot '{bot_id}': {e}", exc_info=True)
 
     async def create(self, config: Dict[str, Any]) -> str:
         bot_id = config.get("bot_id")

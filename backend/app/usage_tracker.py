@@ -242,8 +242,8 @@ class UsageTracker:
             logger.error(f"Failed to save usage data: {e}", exc_info=True)
 
     def _schedule_save(self) -> None:
-        task = asyncio.create_task(self._safe_save())
-        task.add_done_callback(self._on_save_done)
+        self._save_task = asyncio.create_task(self._safe_save())
+        self._save_task.add_done_callback(self._on_save_done)
 
     def _on_save_done(self, task: asyncio.Task) -> None:
         try:
@@ -251,6 +251,14 @@ class UsageTracker:
         except Exception as e:
             logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
+    async def close(self) -> None:
+        if self._save_task and not self._save_task.done():
+            self._save_task.cancel()
+            try:
+                await self._save_task
+            except asyncio.CancelledError:
+                pass
+
     async def get_statistics(self, period: str = "today", view: str = "user", timezone_str: str = "UTC") -> Dict[str, Any]:
         async with self.lock:
             try:

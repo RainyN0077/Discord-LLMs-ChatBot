@@ -1,3 +1,4 @@
+import threading
 import asyncio
 import logging
 from typing import Any, Callable, Coroutine, Dict
@@ -13,16 +14,19 @@ class MessageQueue:
         self._max_size = max_size
         self._queues: Dict[str, asyncio.Queue] = {}
         self._locks: Dict[str, asyncio.Lock] = {}
+        self._dicts_guard = threading.Lock()
 
     def _get_queue(self, channel_id: str) -> asyncio.Queue:
-        if channel_id not in self._queues:
-            self._queues[channel_id] = asyncio.Queue(maxsize=self._max_size)
-        return self._queues[channel_id]
+        with self._dicts_guard:
+            if channel_id not in self._queues:
+                self._queues[channel_id] = asyncio.Queue(maxsize=self._max_size)
+            return self._queues[channel_id]
 
     def _get_lock(self, channel_id: str) -> asyncio.Lock:
-        if channel_id not in self._locks:
-            self._locks[channel_id] = asyncio.Lock()
-        return self._locks[channel_id]
+        with self._dicts_guard:
+            if channel_id not in self._locks:
+                self._locks[channel_id] = asyncio.Lock()
+            return self._locks[channel_id]
 
     async def enqueue(self, channel_id: str, item: Any) -> bool:
         q = self._get_queue(channel_id)
@@ -64,3 +68,9 @@ class MessageQueue:
                 return
             except Exception:
                 logger.exception("Error processing queued message in channel %s", channel_id)
+                try:
+                    q.put_nowait(item)
+                except (UnboundLocalError, NameError):
+                    pass
+                except asyncio.QueueFull:
+                    logger.warning("Channel %s queue full, also dropping previously dequeued message", channel_id)

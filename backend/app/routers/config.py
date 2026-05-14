@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import ValidationError
 
 from ..config_cache import load_config, save_config, DEFAULT_BOT_ID
-from ..dependencies import get_api_key
+from ..dependencies import get_api_key, get_api_key_optional
 from ..models import Config
 from .. import state
 
@@ -28,8 +28,10 @@ def _get_first_bot_config():
 
 
 @router.get("/api/config")
-async def get_config_endpoint():
+async def get_config_endpoint(api_key: str = Depends(get_api_key_optional)):
     config_data = _get_first_bot_config()
+    if not api_key:
+        return {"api_secret_key": config_data.get("api_secret_key", "")}
     try:
         Config.parse_obj(config_data)
         logger.info("Config validation successful")

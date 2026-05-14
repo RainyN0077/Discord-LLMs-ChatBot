@@ -3,8 +3,8 @@ import pytest
 
 @pytest.mark.integration
 class TestConfigRoutes:
-    async def test_get_config_returns_data(self, app_client):
-        response = await app_client.get("/api/config")
+    async def test_get_config_returns_data(self, app_client, auth_headers):
+        response = await app_client.get("/api/config", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()
         assert "api_secret_key" in data

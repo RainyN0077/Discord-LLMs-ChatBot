@@ -109,9 +109,13 @@ class BotInstance:
                 await self._task
             except asyncio.CancelledError:
                 pass
+            except Exception as e:
+                logger.error(f"Bot '{self.bot_id}' task crashed before stop: {e}")
         self._task = None
         self._client = None
         self.started_at = None
+        if self._usage_tracker:
+            await self._usage_tracker.close()
         self._usage_tracker = None
         self._knowledge_manager = None
         self._plugin_manager = None

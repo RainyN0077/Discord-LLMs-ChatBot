@@ -1,3 +1,4 @@
+import threading
 # backend/app/core_logic/usage_manager.py
 import asyncio
 import logging
@@ -20,14 +21,14 @@ class UsageManager:
     def __init__(self, token_calculator: TokenCalculator):
         self._usage_tracker: Dict[int, Dict[str, Any]] = {}
         self._user_locks: Dict[int, asyncio.Lock] = {}
+        self._user_locks_guard = threading.Lock()
         self._token_calculator = token_calculator
 
     def _get_lock(self, user_id: int) -> asyncio.Lock:
-        lock = self._user_locks.get(user_id)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._user_locks[user_id] = lock
-        return lock
+        with self._user_locks_guard:
+            if user_id not in self._user_locks:
+                self._user_locks[user_id] = asyncio.Lock()
+            return self._user_locks[user_id]
 
     def _get_initial_usage_data(self) -> Dict[str, Any]:
         """返回一个初始化的用户用量字典。"""
