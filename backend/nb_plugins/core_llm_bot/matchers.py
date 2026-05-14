@@ -37,7 +37,11 @@ def register_bot_instance(bot_id: str, instance: Any) -> None:
 
 
 def unregister_bot_instance(bot_id: str) -> None:
-    _bot_instance_map.pop(bot_id, None)
+    instance = _bot_instance_map.pop(bot_id, None)
+    if instance is not None:
+        to_remove = [k for k, v in list(_bot_instance_map.items()) if v is instance]
+        for k in to_remove:
+            _bot_instance_map.pop(k, None)
 
 
 def _get_bot_id(bot: BaseBot) -> str:
@@ -48,7 +52,17 @@ def _resolve_bot_id(bot: BaseBot) -> str:
     self_id = str(getattr(bot, "self_id", ""))
     if self_id and self_id in _bot_instance_map:
         return self_id
+    bot_token = None
+    bot_info = getattr(bot, 'bot_info', None)
+    if bot_info is not None:
+        bot_token = getattr(bot_info, 'token', None)
+    if bot_token:
+        for bid, instance in _bot_instance_map.items():
+            if getattr(instance, 'config', {}).get("discord_token") == bot_token:
+                _bot_instance_map[self_id] = instance
+                return bid
     for bid in _bot_instance_map:
+        logger.warning("No bot token match for self_id=%s, falling back to first bot '%s'", self_id, bid)
         return bid
     return self_id or "unknown"
 
@@ -151,7 +165,8 @@ def _get_queue(bot_id: str) -> MessageQueue:
 
 async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
     resolved_id = _resolve_bot_id(bot)
-    if channel_id_str in _channel_processors and not _channel_processors[channel_id_str].done():
+    processor_key = f"{resolved_id}:{channel_id_str}"
+    if processor_key in _channel_processors and not _channel_processors[processor_key].done():
         return
 
     async def _handler(ctx: dict) -> None:
@@ -169,9 +184,9 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
 
     queue = _get_queue(resolved_id)
     task = asyncio.create_task(queue.process_channel(channel_id_str, _handler))
-    _channel_processors[channel_id_str] = task
-    task.add_done_callback(lambda t, c=channel_id_str: _channel_processors.pop(c, None))
-    logger.info(f"Started queue processor for channel {channel_id_str}")
+    _channel_processors[processor_key] = task
+    task.add_done_callback(lambda t, k=processor_key: _channel_processors.pop(k, None))
+    logger.info(f"Started queue processor for channel {channel_id_str} (bot {resolved_id})")
 
 
 def register_main_matcher():
