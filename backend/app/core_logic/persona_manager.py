@@ -131,20 +131,26 @@ async def build_system_prompt(
     if situational_prompt:
         final_parts.append(f"[Situational Context]\n---\n{situational_prompt}\n---")
 
-    relevant_users: Set[Union[discord.User, discord.Member]] = {message.author}
+    is_real_discord_msg = hasattr(message, 'clean_content')
+    message_text = message.clean_content if is_real_discord_msg else getattr(message, 'content', '')
+
+    relevant_users: set = {message.author}
     for user in message.mentions:
         relevant_users.add(user)
 
     if message.reference and isinstance(message.reference.resolved, discord.Message):
         relevant_users.add(message.reference.resolved.author)
 
-    mentioned_user_ids = find_mentioned_users_by_keywords(message.clean_content, user_personas)
+    mentioned_user_ids = find_mentioned_users_by_keywords(message_text, user_personas)
     author_id_str = str(message.author.id)
 
     for user_id_str in mentioned_user_ids:
         if user_id_str == author_id_str:
             continue
         if any(str(u.id) == user_id_str for u in relevant_users):
+            continue
+
+        if not is_real_discord_msg:
             continue
 
         try:

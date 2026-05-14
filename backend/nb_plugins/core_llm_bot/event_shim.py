@@ -15,6 +15,13 @@ class AuthorContext:
     def __bool__(self) -> bool:
         return True
 
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+    @property
+    def bot(self) -> bool:
+        return False
+
 
 @dataclass
 class ChannelContext:
@@ -39,6 +46,17 @@ class AttachmentContext:
 class MentionContext:
     id: int
     name: str
+
+    def __hash__(self) -> int:
+        return hash(self.id)
+
+    @property
+    def display_name(self) -> str:
+        return self.name
+
+    @property
+    def bot(self) -> bool:
+        return False
 
 
 @dataclass

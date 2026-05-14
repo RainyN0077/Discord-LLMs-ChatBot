@@ -1,5 +1,6 @@
 # backend/app/core_logic/context_builder.py
 import json
+import logging
 import re
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
@@ -8,6 +9,19 @@ import discord
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
 from ..utils import escape_content, matches_trigger_keywords
 from .knowledge_manager import get_knowledge_manager
+
+logger = logging.getLogger(__name__)
+
+
+def _get_bot_user_id(client: Any) -> int:
+    user = getattr(client, 'user', None)
+    if user is not None and hasattr(user, 'id') and not callable(user.id):
+        return user.id
+    if hasattr(client, 'self_info') and client.self_info is not None:
+        return int(client.self_info.id)
+    if hasattr(client, 'self_id'):
+        return int(client.self_id)
+    return 0
 
 # --- Constants for structured prompts ---
 # Using constants makes the code cleaner, easier to read, and simplifies future modifications.
@@ -42,11 +56,10 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     if not unlimited_message_count and msg_limit <= 0:
         return [], []
 
-    channel = message.channel if hasattr(message.channel, 'history') else client.get_channel(message.channel.id)
-    if channel is None or not hasattr(channel, 'history'):
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Channel {message.channel.id} not found, cannot fetch history.")
+    if not hasattr(message.channel, 'history'):
+        logger.warning("Channel %s does not support history lookup; skipping context history.", message.channel.id)
         return [], []
+    channel = message.channel
     before_obj = discord.Object(id=message.id)
 
     fetched_history = []
@@ -167,7 +180,8 @@ def format_user_message_for_llm(
     
     # 保留用户 mention token（<@id>），仅移除对机器人的 mention token。
     # 这样模型在回复时可以复用正确的 Discord @ 语法。
-    final_text_content = message.content.replace(f'<@{client.user.id}>', '').replace(f'<@!{client.user.id}>', '').strip()
+    bot_user_id = _get_bot_user_id(client)
+    final_text_content = message.content.replace(f'<@{bot_user_id}>', '').replace(f'<@!{bot_user_id}>', '').strip()
 
     # [NEW] Remove custom emoji text, as they are now sent as images.
     final_text_content = re.sub(r'<a?:\w+:\d+>', '', final_text_content).strip()
