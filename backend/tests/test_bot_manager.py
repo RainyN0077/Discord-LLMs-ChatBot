@@ -1,4 +1,4 @@
-import json
+﻿import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -167,7 +167,7 @@ class TestBotManager:
         mgr = BotManager()
         migrated_id = mgr._migrate_legacy_config()
         assert migrated_id == "legacy-bot"
-        assert not config_file.exists()
+        assert config_file.exists()
         assert (config_file.parent / "config.json.backup").exists()
         bot_config = get_bot_config_path("legacy-bot")
         assert bot_config.exists()

@@ -12,7 +12,7 @@ class TestFormatUserMessageForLLM:
             "role_based_config": {},
         }
         result = format_user_message_for_llm(msg, mock_discord_bot, config, None)
-        assert "USER_REQUEST_BLOCK" in result.replace("[", "[").upper() or "Hello world" in result
+        assert "[用户请求块]" in result or "Hello world" in result
 
     def test_removes_bot_mention(self, mock_discord_message, mock_discord_bot):
         bot_id = str(mock_discord_bot.user.id)
