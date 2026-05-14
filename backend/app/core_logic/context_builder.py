@@ -1,6 +1,7 @@
 # backend/app/core_logic/context_builder.py
 import json
 import re
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
@@ -24,7 +25,7 @@ DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
 DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
 
-async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[int]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
+async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[datetime]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
     """根据配置的上下文模式，构建历史消息列表和用于LLM的格式化历史。"""
     history_messages, history_for_llm = [], []
     context_mode = bot_config.get('context_mode', 'none')

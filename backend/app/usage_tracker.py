@@ -13,13 +13,14 @@ logger = logging.getLogger(__name__)
 class UsageTracker:
     def __init__(self, data_file="data/usage_data.json"):
         self.data_file = data_file
-        # 确保数据目录存在
         data_dir = os.path.dirname(data_file)
         if data_dir:
             os.makedirs(data_dir, exist_ok=True)
-            
         self.usage_data = self._load_data()
         self.lock = asyncio.Lock()
+        self._save_pending = False
+        self._save_dirty = False
+        self._save_task = None
         
     def _load_data(self) -> Dict[str, Any]:
         if os.path.exists(self.data_file):
@@ -242,8 +243,19 @@ class UsageTracker:
             logger.error(f"Failed to save usage data: {e}", exc_info=True)
 
     def _schedule_save(self) -> None:
-        self._save_task = asyncio.create_task(self._safe_save())
+        self._save_dirty = True
+        if self._save_pending:
+            return
+        self._save_pending = True
+        self._save_task = asyncio.create_task(self._debounced_save())
         self._save_task.add_done_callback(self._on_save_done)
+
+    async def _debounced_save(self):
+        await asyncio.sleep(1.5)
+        self._save_pending = False
+        if self._save_dirty:
+            self._save_dirty = False
+            await self._safe_save()
 
     def _on_save_done(self, task: asyncio.Task) -> None:
         try:
@@ -252,12 +264,14 @@ class UsageTracker:
             logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
     async def close(self) -> None:
-        if self._save_task and not self._save_task.done():
+        if hasattr(self, '_save_task') and self._save_task and not self._save_task.done():
             self._save_task.cancel()
             try:
                 await self._save_task
             except asyncio.CancelledError:
                 pass
+        if self._save_dirty:
+            await self._safe_save()
 
     async def get_statistics(self, period: str = "today", view: str = "user", timezone_str: str = "UTC") -> Dict[str, Any]:
         async with self.lock:
