@@ -111,7 +111,6 @@ class BotInstance:
         from .usage_tracker import UsageTracker
         from .core_logic.knowledge_manager import KnowledgeManager
         from plugins.manager import PluginManager
-        from .config_bridge import generate_env_file
 
         self._usage_tracker = UsageTracker(data_file=str(self.usage_path))
         self._knowledge_manager = KnowledgeManager(db_path=str(self.knowledge_path))
@@ -133,8 +132,6 @@ class BotInstance:
             return _inner()
 
         self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
-
-        generate_env_file()
 
         from nb_plugins.core_llm_bot.matchers import register_bot_instance
         register_bot_instance(self.bot_id, self)

@@ -23,12 +23,25 @@ async def lifespan(app: FastAPI):
     import nonebot
     nonebot.init()
     state.nonebot_driver = nonebot.get_driver()
+
+    from nonebot.adapters.discord import Adapter as DiscordAdapter
+    driver = nonebot.get_driver()
+    driver.register_adapter(DiscordAdapter)
+
     nonebot.load_plugins("nb_plugins")
-    logger.info("NoneBot initialized and plugins loaded.")
 
     state.bot_manager = BotManager()
     await state.bot_manager.load_all()
+
+    generate_env_file()
+
+    if hasattr(driver, '_startup'):
+        await driver._startup()
+        logger.info("NoneBot driver startup complete — Discord adapters connected.")
+
     yield
+    if hasattr(driver, '_shutdown'):
+        await driver._shutdown()
     await state.bot_manager.shutdown()
 
 
