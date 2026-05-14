@@ -291,13 +291,19 @@ async def _stream(proc: asyncio.subprocess.Process, tag: str, colour: str) -> No
             buf += chunk
             while b"\n" in buf:
                 line, buf = buf.split(b"\n", 1)
-                sys.stdout.buffer.write(prefix_bytes + line + b"\n")
-                sys.stdout.buffer.flush()
+                try:
+                    sys.stdout.buffer.write(prefix_bytes + line + b"\n")
+                    sys.stdout.buffer.flush()
+                except RuntimeError:
+                    pass
             continue
         if not line:
             break
-        sys.stdout.buffer.write(prefix_bytes + line)
-        sys.stdout.buffer.flush()
+        try:
+            sys.stdout.buffer.write(prefix_bytes + line)
+            sys.stdout.buffer.flush()
+        except RuntimeError:
+            pass
 
 
 async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> None:

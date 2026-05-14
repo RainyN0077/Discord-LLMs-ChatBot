@@ -44,10 +44,6 @@ def _get_bot_id(bot: BaseBot) -> str:
     return str(getattr(bot, "self_id", "unknown"))
 
 
-def _get_bot_id(bot: BaseBot) -> str:
-    return str(getattr(bot, "self_id", "unknown"))
-
-
 def _resolve_bot_id(bot: BaseBot) -> str:
     self_id = str(getattr(bot, "self_id", ""))
     if self_id and self_id in _bot_instance_map:
@@ -129,7 +125,7 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
         trigger_sources.append("plugin_append")
 
     channel_id_str = str(event.channel_id)
-    queue = _get_queue(_get_bot_id(bot))
+    queue = _get_queue(_resolve_bot_id(bot))
     ctx = {
         "bot": bot,
         "event": event,
@@ -154,7 +150,7 @@ def _get_queue(bot_id: str) -> MessageQueue:
 
 
 async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
-    bot_id = _get_bot_id(bot)
+    resolved_id = _resolve_bot_id(bot)
     if channel_id_str in _channel_processors and not _channel_processors[channel_id_str].done():
         return
 
@@ -166,12 +162,12 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
             trigger_sources=ctx["trigger_sources"],
             injected_data=ctx["injected_data"],
             plugin_append_blocks=ctx["plugin_append_blocks"],
-            instance=_bot_instance_map.get(bot_id),
+            instance=_bot_instance_map.get(resolved_id),
             auto_message_counts=_auto_message_counts,
             repeat_streaks=_repeat_streaks,
         )
 
-    queue = _get_queue(bot_id)
+    queue = _get_queue(resolved_id)
     task = asyncio.create_task(queue.process_channel(channel_id_str, _handler))
     _channel_processors[channel_id_str] = task
     task.add_done_callback(lambda t, c=channel_id_str: _channel_processors.pop(c, None))
