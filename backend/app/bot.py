@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 from .core_shared import (
     INSTANCE_ID,
-    redis_client,
     token_calculator,
     strip_thinking_sections,
     strip_dsml_tool_blocks,

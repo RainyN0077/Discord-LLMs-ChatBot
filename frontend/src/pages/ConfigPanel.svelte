@@ -23,6 +23,7 @@
     } from '../lib/stores.js';
     import { fetchBotConfig, updateBotConfig, clearMemory, fetchAvailableModels, testModel, exportBotConfig, importBotConfig } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
+import { mapConfigToStores } from '../lib/stores.js';
 
     import Card from '../components/Card.svelte';
     import PluginEditor from '../components/PluginEditor.svelte';
@@ -52,80 +53,7 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
         try {
             const loadedConfig = await fetchBotConfig(botId);
             if (!loadedConfig) throw new Error('Empty config returned');
-            coreConfig.set({
-                discord_token: loadedConfig.discord_token || '',
-                llm_provider: loadedConfig.llm_provider || 'openai',
-                api_key: loadedConfig.api_key || '',
-                base_url: loadedConfig.base_url || '',
-                openai_base_url: loadedConfig.openai_base_url || loadedConfig.base_url || '',
-                anthropic_base_url: loadedConfig.anthropic_base_url || '',
-                grok_base_url: loadedConfig.grok_base_url || '',
-                model_name: loadedConfig.model_name || 'gpt-4o',
-                llm_is_multimodal: loadedConfig.llm_is_multimodal !== false,
-                ocr_provider: loadedConfig.ocr_provider || 'openai',
-                ocr_api_key: loadedConfig.ocr_api_key || '',
-                ocr_base_url: loadedConfig.ocr_base_url || '',
-                ocr_port: loadedConfig.ocr_port || '',
-                ocr_model_name: loadedConfig.ocr_model_name || '',
-                ocr_prompt_template: loadedConfig.ocr_prompt_template || '',
-                ocr_max_output_chars: loadedConfig.ocr_max_output_chars ?? 4000,
-                ocr_timeout_seconds: loadedConfig.ocr_timeout_seconds ?? 15,
-                ocr_timeout_disabled: !!loadedConfig.ocr_timeout_disabled,
-                embedding_provider: loadedConfig.embedding_provider || 'openai',
-                embedding_api_key: loadedConfig.embedding_api_key || '',
-                embedding_base_url: loadedConfig.embedding_base_url || '',
-                embedding_port: loadedConfig.embedding_port || '',
-                embedding_model_name: loadedConfig.embedding_model_name || 'text-embedding-3-small',
-                embedding_dimensions: loadedConfig.embedding_dimensions ?? 1536,
-                rerank_provider: loadedConfig.rerank_provider || 'openai',
-                rerank_api_key: loadedConfig.rerank_api_key || '',
-                rerank_base_url: loadedConfig.rerank_base_url || '',
-                rerank_port: loadedConfig.rerank_port || '',
-                rerank_model_name: loadedConfig.rerank_model_name || 'gpt-4.1-mini',
-                api_secret_key: loadedConfig.api_secret_key || ''
-            });
-            behaviorConfig.set({
-                bot_nickname: loadedConfig.bot_nickname || loadedConfig.bot_name || 'Endless',
-                system_prompt: loadedConfig.system_prompt || '',
-                blocked_prompt_response: loadedConfig.blocked_prompt_response || '',
-                trigger_keywords: loadedConfig.trigger_keywords || [],
-                trigger_match_mode: loadedConfig.trigger_match_mode || 'contains',
-                trigger_case_sensitive: !!loadedConfig.trigger_case_sensitive,
-                auto_interject_enabled: !!loadedConfig.auto_interject_enabled,
-                auto_interject_interval: loadedConfig.auto_interject_interval ?? 20,
-                auto_interject_min_length: loadedConfig.auto_interject_min_length ?? 0,
-                repeat_parrot_enabled: !!loadedConfig.repeat_parrot_enabled,
-                repeat_parrot_threshold: loadedConfig.repeat_parrot_threshold ?? 3,
-                repeat_parrot_case_sensitive: !!loadedConfig.repeat_parrot_case_sensitive,
-                repeat_parrot_trim_whitespace: loadedConfig.repeat_parrot_trim_whitespace !== false,
-                repeat_parrot_min_length: loadedConfig.repeat_parrot_min_length ?? 2,
-                repeat_parrot_require_multiple_users: loadedConfig.repeat_parrot_require_multiple_users !== false,
-                stream_response: loadedConfig.stream_response !== false,
-                memory_dedup_threshold: loadedConfig.memory_dedup_threshold ?? 0.0,
-                world_book_dedup_threshold: loadedConfig.world_book_dedup_threshold ?? 0.0,
-                auto_memory_enabled: loadedConfig.auto_memory_enabled !== false,
-                auto_memory_min_length: loadedConfig.auto_memory_min_length ?? 8,
-                auto_memory_cooldown_seconds: loadedConfig.auto_memory_cooldown_seconds ?? 45,
-                auto_memory_promote_min_observations: loadedConfig.auto_memory_promote_min_observations ?? 2,
-                auto_memory_promote_min_distinct_users: loadedConfig.auto_memory_promote_min_distinct_users ?? 1,
-                auto_memory_quality_threshold: loadedConfig.auto_memory_quality_threshold ?? 0.55,
-                auto_memory_direct_promote_ai_tag: !!loadedConfig.auto_memory_direct_promote_ai_tag,
-                auto_memory_recall_top_k: loadedConfig.auto_memory_recall_top_k ?? 12,
-                auto_memory_recall_char_limit: loadedConfig.auto_memory_recall_char_limit ?? 2200,
-                auto_memory_recall_max_age_days: loadedConfig.auto_memory_recall_max_age_days ?? 365,
-                memory_embedding_enabled: !!loadedConfig.memory_embedding_enabled,
-                memory_rerank_enabled: !!loadedConfig.memory_rerank_enabled
-            });
-            contextConfig.set({
-                context_mode: loadedConfig.context_mode || 'channel',
-                channel_context_settings: loadedConfig.channel_context_settings || { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
-                memory_context_settings: loadedConfig.memory_context_settings || { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false }
-            });
-            pluginsConfig.set(loadedConfig.plugins || {});
-            userPersonas.set(loadedConfig.user_personas || {});
-            roleConfigs.set(loadedConfig.role_based_config || {});
-            scopedPrompts.set(loadedConfig.scoped_prompts || { guilds: {}, channels: {} });
-            customParameters.set(loadedConfig.custom_parameters || []);
+            mapConfigToStores(loadedConfig);
         } catch (e) {
             configError = String(e.message || e);
         } finally {

@@ -218,6 +218,94 @@ function isBackendNotReadyError(error) {
 }
 
 // --- REFACTORED: Data Fetching and Saving ---
+export function mapConfigToStores(config) {
+    // Distribute config data into the granular stores
+    coreConfig.set({
+        discord_token: config.discord_token,
+        llm_provider: config.llm_provider,
+        api_key: config.api_key,
+        base_url: config.base_url,
+        openai_base_url: config.openai_base_url || config.base_url || '',
+        anthropic_base_url: config.anthropic_base_url || '',
+        grok_base_url: config.grok_base_url || '',
+        model_name: config.model_name,
+        llm_is_multimodal: config.llm_is_multimodal !== false,
+        ocr_provider: config.ocr_provider || 'openai',
+        ocr_api_key: config.ocr_api_key || '',
+        ocr_base_url: config.ocr_base_url || '',
+        ocr_port: config.ocr_port || '',
+        ocr_model_name: config.ocr_model_name || '',
+        ocr_prompt_template: config.ocr_prompt_template || '',
+        ocr_max_output_chars: config.ocr_max_output_chars ?? 4000,
+        ocr_timeout_seconds: config.ocr_timeout_seconds ?? 15,
+        ocr_timeout_disabled: !!config.ocr_timeout_disabled,
+        embedding_provider: config.embedding_provider || 'openai',
+        embedding_api_key: config.embedding_api_key || '',
+        embedding_base_url: config.embedding_base_url || '',
+        embedding_port: config.embedding_port || '',
+        embedding_model_name: config.embedding_model_name || 'text-embedding-3-small',
+        embedding_dimensions: config.embedding_dimensions ?? 1536,
+        rerank_provider: config.rerank_provider || 'openai',
+        rerank_api_key: config.rerank_api_key || '',
+        rerank_base_url: config.rerank_base_url || '',
+        rerank_port: config.rerank_port || '',
+        rerank_model_name: config.rerank_model_name || 'gpt-4.1-mini',
+        api_secret_key: config.api_secret_key
+    });
+    behaviorConfig.set({
+        bot_nickname: config.bot_nickname || config.bot_name || 'Bot',
+        system_prompt: config.system_prompt,
+        blocked_prompt_response: config.blocked_prompt_response,
+        trigger_keywords: config.trigger_keywords,
+        trigger_match_mode: config.trigger_match_mode || 'contains',
+        trigger_case_sensitive: !!config.trigger_case_sensitive,
+        auto_interject_enabled: !!config.auto_interject_enabled,
+        auto_interject_interval: config.auto_interject_interval ?? 20,
+        auto_interject_min_length: config.auto_interject_min_length ?? 0,
+        repeat_parrot_enabled: !!config.repeat_parrot_enabled,
+        repeat_parrot_threshold: config.repeat_parrot_threshold ?? 3,
+        repeat_parrot_case_sensitive: !!config.repeat_parrot_case_sensitive,
+        repeat_parrot_trim_whitespace: config.repeat_parrot_trim_whitespace !== false,
+        repeat_parrot_min_length: config.repeat_parrot_min_length ?? 2,
+        repeat_parrot_require_multiple_users: config.repeat_parrot_require_multiple_users !== false,
+        stream_response: config.stream_response,
+        memory_dedup_threshold: config.memory_dedup_threshold ?? 0.0,
+        world_book_dedup_threshold: config.world_book_dedup_threshold ?? 0.0,
+        auto_memory_enabled: config.auto_memory_enabled !== false,
+        auto_memory_min_length: config.auto_memory_min_length ?? 8,
+        auto_memory_cooldown_seconds: config.auto_memory_cooldown_seconds ?? 45,
+        auto_memory_promote_min_observations: config.auto_memory_promote_min_observations ?? 2,
+        auto_memory_promote_min_distinct_users: config.auto_memory_promote_min_distinct_users ?? 1,
+        auto_memory_quality_threshold: config.auto_memory_quality_threshold ?? 0.55,
+        auto_memory_direct_promote_ai_tag: !!config.auto_memory_direct_promote_ai_tag,
+        auto_memory_recall_top_k: config.auto_memory_recall_top_k ?? 12,
+        auto_memory_recall_char_limit: config.auto_memory_recall_char_limit ?? 2200,
+        auto_memory_recall_max_age_days: config.auto_memory_recall_max_age_days ?? 365,
+        memory_embedding_enabled: !!config.memory_embedding_enabled,
+        memory_rerank_enabled: !!config.memory_rerank_enabled
+    });
+    contextConfig.set({
+        context_mode: config.context_mode,
+        channel_context_settings: {
+            message_limit: config.channel_context_settings?.message_limit ?? 10,
+            char_limit: config.channel_context_settings?.char_limit ?? 4000,
+            unlimited_context_length: !!config.channel_context_settings?.unlimited_context_length,
+            unlimited_message_count: !!config.channel_context_settings?.unlimited_message_count
+        },
+        memory_context_settings: {
+            message_limit: config.memory_context_settings?.message_limit ?? 15,
+            char_limit: config.memory_context_settings?.char_limit ?? 6000,
+            unlimited_context_length: !!config.memory_context_settings?.unlimited_context_length,
+            unlimited_message_count: !!config.memory_context_settings?.unlimited_message_count
+        }
+    });
+    pluginsConfig.set(config.plugins || {});
+    userPersonas.set(config.user_personas || {});
+    roleConfigs.set(config.role_based_config || {});
+    scopedPrompts.set(config.scoped_prompts || { guilds: {}, channels: {} });
+    customParameters.set(config.custom_parameters || []);
+}
+
 export async function fetchConfig(options = {}) {
     const startup = !!options.startup;
     const maxRetries = Number.isInteger(options.maxRetries) ? options.maxRetries : 20;
@@ -231,90 +319,7 @@ export async function fetchConfig(options = {}) {
         try {
             const loadedConfig = await apiFetchConfig();
             const mergedConfig = { ...defaultConfig, ...loadedConfig };
-
-            // Distribute fetched data into the new granular stores
-            coreConfig.set({
-                discord_token: mergedConfig.discord_token,
-                llm_provider: mergedConfig.llm_provider,
-                api_key: mergedConfig.api_key,
-                base_url: mergedConfig.base_url,
-                openai_base_url: mergedConfig.openai_base_url || mergedConfig.base_url || '',
-                anthropic_base_url: mergedConfig.anthropic_base_url || '',
-                grok_base_url: mergedConfig.grok_base_url || '',
-                model_name: mergedConfig.model_name,
-                llm_is_multimodal: mergedConfig.llm_is_multimodal !== false,
-                ocr_provider: mergedConfig.ocr_provider || 'openai',
-                ocr_api_key: mergedConfig.ocr_api_key || '',
-                ocr_base_url: mergedConfig.ocr_base_url || '',
-                ocr_port: mergedConfig.ocr_port || '',
-                ocr_model_name: mergedConfig.ocr_model_name || '',
-                ocr_prompt_template: mergedConfig.ocr_prompt_template || '',
-                ocr_max_output_chars: mergedConfig.ocr_max_output_chars ?? 4000,
-                embedding_provider: mergedConfig.embedding_provider || 'openai',
-                embedding_api_key: mergedConfig.embedding_api_key || '',
-                embedding_base_url: mergedConfig.embedding_base_url || '',
-                embedding_port: mergedConfig.embedding_port || '',
-                embedding_model_name: mergedConfig.embedding_model_name || 'text-embedding-3-small',
-                embedding_dimensions: mergedConfig.embedding_dimensions ?? 1536,
-                rerank_provider: mergedConfig.rerank_provider || 'openai',
-                rerank_api_key: mergedConfig.rerank_api_key || '',
-                rerank_base_url: mergedConfig.rerank_base_url || '',
-                rerank_port: mergedConfig.rerank_port || '',
-                rerank_model_name: mergedConfig.rerank_model_name || 'gpt-4.1-mini',
-                api_secret_key: mergedConfig.api_secret_key
-            });
-            behaviorConfig.set({
-                bot_nickname: mergedConfig.bot_nickname,
-                system_prompt: mergedConfig.system_prompt,
-                blocked_prompt_response: mergedConfig.blocked_prompt_response,
-                trigger_keywords: mergedConfig.trigger_keywords,
-                trigger_match_mode: mergedConfig.trigger_match_mode || 'contains',
-                trigger_case_sensitive: !!mergedConfig.trigger_case_sensitive,
-                auto_interject_enabled: !!mergedConfig.auto_interject_enabled,
-                auto_interject_interval: mergedConfig.auto_interject_interval ?? 20,
-                auto_interject_min_length: mergedConfig.auto_interject_min_length ?? 0,
-                repeat_parrot_enabled: !!mergedConfig.repeat_parrot_enabled,
-                repeat_parrot_threshold: mergedConfig.repeat_parrot_threshold ?? 3,
-                repeat_parrot_case_sensitive: !!mergedConfig.repeat_parrot_case_sensitive,
-                repeat_parrot_trim_whitespace: mergedConfig.repeat_parrot_trim_whitespace !== false,
-                repeat_parrot_min_length: mergedConfig.repeat_parrot_min_length ?? 2,
-                repeat_parrot_require_multiple_users: mergedConfig.repeat_parrot_require_multiple_users !== false,
-                stream_response: mergedConfig.stream_response,
-                memory_dedup_threshold: mergedConfig.memory_dedup_threshold ?? 0.0,
-                world_book_dedup_threshold: mergedConfig.world_book_dedup_threshold ?? 0.0,
-                auto_memory_enabled: mergedConfig.auto_memory_enabled !== false,
-                auto_memory_min_length: mergedConfig.auto_memory_min_length ?? 8,
-                auto_memory_cooldown_seconds: mergedConfig.auto_memory_cooldown_seconds ?? 45,
-                auto_memory_promote_min_observations: mergedConfig.auto_memory_promote_min_observations ?? 2,
-                auto_memory_promote_min_distinct_users: mergedConfig.auto_memory_promote_min_distinct_users ?? 1,
-                auto_memory_quality_threshold: mergedConfig.auto_memory_quality_threshold ?? 0.55,
-                auto_memory_direct_promote_ai_tag: !!mergedConfig.auto_memory_direct_promote_ai_tag,
-                auto_memory_recall_top_k: mergedConfig.auto_memory_recall_top_k ?? 12,
-                auto_memory_recall_char_limit: mergedConfig.auto_memory_recall_char_limit ?? 2200,
-                auto_memory_recall_max_age_days: mergedConfig.auto_memory_recall_max_age_days ?? 365,
-                memory_embedding_enabled: !!mergedConfig.memory_embedding_enabled,
-                memory_rerank_enabled: !!mergedConfig.memory_rerank_enabled
-            });
-            contextConfig.set({
-                context_mode: mergedConfig.context_mode,
-                channel_context_settings: {
-                    message_limit: mergedConfig.channel_context_settings?.message_limit ?? 10,
-                    char_limit: mergedConfig.channel_context_settings?.char_limit ?? 4000,
-                    unlimited_context_length: !!mergedConfig.channel_context_settings?.unlimited_context_length,
-                    unlimited_message_count: !!mergedConfig.channel_context_settings?.unlimited_message_count
-                },
-                memory_context_settings: {
-                    message_limit: mergedConfig.memory_context_settings?.message_limit ?? 15,
-                    char_limit: mergedConfig.memory_context_settings?.char_limit ?? 6000,
-                    unlimited_context_length: !!mergedConfig.memory_context_settings?.unlimited_context_length,
-                    unlimited_message_count: !!mergedConfig.memory_context_settings?.unlimited_message_count
-                }
-            });
-            pluginsConfig.set(mergedConfig.plugins || {});
-            userPersonas.set(mergedConfig.user_personas || {});
-            roleConfigs.set(mergedConfig.role_based_config || {});
-            scopedPrompts.set(mergedConfig.scoped_prompts || { guilds: {}, channels: {} });
-            customParameters.set(mergedConfig.custom_parameters || []);
+            mapConfigToStores(mergedConfig);
 
             showStatus('', 'info');
             isLoading.set(false);

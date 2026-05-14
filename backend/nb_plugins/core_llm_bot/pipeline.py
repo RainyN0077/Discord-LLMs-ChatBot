@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from nonebot.adapters.discord import Bot, MessageEvent
 
 from app.core_shared import (
-    redis_client,
+    get_redis,
     token_calculator,
     strip_dsml_tool_blocks,
     strip_thinking_sections,
@@ -44,7 +44,7 @@ async def execute_llm_pipeline(
     memory_cutoffs = instance.memory_cutoffs
 
     lock_key = f"discord:message_lock:{message_ctx.id}"
-    is_lock_acquired = redis_client.set(lock_key, "processing", nx=True, ex=60)
+    is_lock_acquired = get_redis().set(lock_key, "processing", nx=True, ex=60)
     if not is_lock_acquired:
         logger.info(f"Message {message_ctx.id} already being processed. Skipping.")
         return

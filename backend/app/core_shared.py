@@ -26,35 +26,42 @@ except ImportError:
 INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
 redis_client = None
-try:
-    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-    _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
-    _redis_client.ping()
-    redis_client = _redis_client
-    logger.info(f"[instance={INSTANCE_ID}] Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
-except redis.exceptions.ConnectionError as e:
-    logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
-    if os.getenv("FAIL_ON_REDIS_ERROR", "false").lower() == "true":
-        logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
-        raise RuntimeError("Redis connection failed.")
-    else:
-        class MockRedis:
-            def __init__(self):
-                self._store = {}
-            def set(self, key, value, *args, **kwargs):
-                self._store[key] = value
-                return True
-            def get(self, key):
-                return self._store.get(key)
-            def ping(self):
-                return True
-            def delete(self, key):
-                return self._store.pop(key, None) is not None
-            def exists(self, key):
-                return key in self._store
-        redis_client = MockRedis()
-        logger.warning(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client.")
+
+
+def get_redis():
+    global redis_client
+    if redis_client is not None:
+        return redis_client
+    try:
+        REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+        REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+        _redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True)
+        _redis_client.ping()
+        redis_client = _redis_client
+        logger.info(f"[instance={INSTANCE_ID}] Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+    except redis.exceptions.ConnectionError as e:
+        logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
+        if os.getenv("FAIL_ON_REDIS_ERROR", "false").lower() == "true":
+            logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
+            raise RuntimeError("Redis connection failed.")
+        else:
+            class MockRedis:
+                def __init__(self):
+                    self._store = {}
+                def set(self, key, value, *args, **kwargs):
+                    self._store[key] = value
+                    return True
+                def get(self, key):
+                    return self._store.get(key)
+                def ping(self):
+                    return True
+                def delete(self, key):
+                    return self._store.pop(key, None) is not None
+                def exists(self, key):
+                    return key in self._store
+            redis_client = MockRedis()
+            logger.warning(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client.")
+    return redis_client
 
 token_calculator = TokenCalculator()
 
