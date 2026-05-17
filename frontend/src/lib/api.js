@@ -332,6 +332,13 @@ export async function deleteBot(botId) {
     });
 }
 
+export async function renameBot(botId, newId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/rename`, {
+        method: 'PUT',
+        body: JSON.stringify({ new_id: newId }),
+    });
+}
+
 export async function startBot(botId) {
     return apiFetch(`${BASE_URL}/bots/${botId}/start`, {
         method: 'POST',

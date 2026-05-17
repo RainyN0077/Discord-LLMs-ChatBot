@@ -1,7 +1,7 @@
 // src/lib/stores.js
 import { writable, derived, get } from 'svelte/store';
 import { get as t_get } from '../i18n.js';
-import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig, updateBotConfig } from './api.js';
+import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig, updateBotConfig, fetchBotConfig } from './api.js';
 
 // --- Default State ---
 const defaultConfig = {
@@ -14,6 +14,13 @@ const defaultConfig = {
     grok_base_url: '',
     model_name: 'gpt-4o', 
     llm_is_multimodal: true,
+    temperature: null,
+    max_tokens: null,
+    top_p: null,
+    top_k: null,
+    frequency_penalty: null,
+    presence_penalty: null,
+    custom_headers: [],
     ocr_provider: 'openai',
     ocr_api_key: '',
     ocr_base_url: '',
@@ -71,6 +78,8 @@ const defaultConfig = {
 };
 
 
+export const activePage = writable('config');
+
 // --- NEW: Granular, Independent Stores ---
 export const coreConfig = writable({
     discord_token: '',
@@ -82,6 +91,13 @@ export const coreConfig = writable({
     grok_base_url: '',
     model_name: 'gpt-4o',
     llm_is_multimodal: true,
+    temperature: null,
+    max_tokens: null,
+    top_p: null,
+    top_k: null,
+    frequency_penalty: null,
+    presence_penalty: null,
+    custom_headers: [],
     ocr_provider: 'openai',
     ocr_api_key: '',
     ocr_base_url: '',
@@ -231,6 +247,13 @@ export function mapConfigToStores(config) {
         grok_base_url: config.grok_base_url || '',
         model_name: config.model_name,
         llm_is_multimodal: config.llm_is_multimodal !== false,
+        temperature: config.temperature ?? null,
+        max_tokens: config.max_tokens ?? null,
+        top_p: config.top_p ?? null,
+        top_k: config.top_k ?? null,
+        frequency_penalty: config.frequency_penalty ?? null,
+        presence_penalty: config.presence_penalty ?? null,
+        custom_headers: config.custom_headers || [],
         ocr_provider: config.ocr_provider || 'openai',
         ocr_api_key: config.ocr_api_key || '',
         ocr_base_url: config.ocr_base_url || '',
@@ -305,6 +328,12 @@ export function mapConfigToStores(config) {
     roleConfigs.set(config.role_based_config || {});
     scopedPrompts.set(config.scoped_prompts || { guilds: {}, channels: {} });
     customParameters.set(config.custom_parameters || []);
+}
+
+export async function loadBotConfigToStores(botId) {
+    const loadedConfig = await fetchBotConfig(botId);
+    if (!loadedConfig) throw new Error('Empty config returned');
+    mapConfigToStores(loadedConfig);
 }
 
 export async function fetchConfig(options = {}) {
