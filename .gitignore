@@ -53,6 +53,9 @@ dist/
 build/
 .DS_Store
 
+# Model fetch utility script (local-only, may contain API keys)
+scripts/fetch_provider_models.py
+
 # Log files
 npm-debug.log*
 yarn-debug.log*
