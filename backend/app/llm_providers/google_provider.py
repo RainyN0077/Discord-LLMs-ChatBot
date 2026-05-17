@@ -113,13 +113,10 @@ class GoogleProvider(LLMProvider):
             params = declaration.get("parameters")
             if isinstance(params, dict) and not params:
                 params = None
-            declarations.append(
-                types.FunctionDeclaration(
-                    name=name,
-                    description=declaration.get("description"),
-                    parameters_json_schema=params,
-                )
-            )
+            kwargs = {"name": name, "description": declaration.get("description")}
+            if params is not None:
+                kwargs["parameters_json_schema"] = params
+            declarations.append(types.FunctionDeclaration(**kwargs))
 
         if not declarations:
             return None
