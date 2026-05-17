@@ -2,6 +2,7 @@
 export default {
   appNav: {
     controlPanel: 'Control Panel',
+    modelSettings: 'Model Settings',
     directChat: 'Direct Chat',
     personaHub: 'Persona Hub',
     themeDark: 'Switch to dark mode',
@@ -126,7 +127,14 @@ export default {
       openai: 'OpenAI',
       grok: 'Grok (xAI)',
       google: 'Google Gemini',
-      anthropic: 'Anthropic Claude'
+      anthropic: 'Anthropic Claude',
+      deepseek: 'DeepSeek',
+      siliconflow: 'SiliconFlow (硅基流动)',
+      volcengine: 'Volcano Ark (火山方舟)',
+      dashscope: 'Alibaba Bailian (阿里百炼)',
+      moonshot: 'Moonshot (月之暗面)',
+      zhipu: 'Zhipu GLM (智谱)',
+      stepfun: 'StepFun (阶跃星辰)'
     },
     apiKey: 'API Key',
     apiKeyPlaceholder: 'Enter your API Key',
@@ -159,7 +167,14 @@ export default {
     openaiCompatible: 'OpenAI Compatible',
     gemini: 'Gemini',
     anthropic: 'Anthropic',
-    anthropicCompatible: 'Anthropic Compatible'
+    anthropicCompatible: 'Anthropic Compatible',
+    deepseek: 'DeepSeek',
+    siliconflow: 'SiliconFlow',
+    volcengine: 'Volcano Ark',
+    dashscope: 'Alibaba Bailian',
+    moonshot: 'Moonshot',
+    zhipu: 'Zhipu GLM',
+    stepfun: 'StepFun'
   },
   embeddingSettings: {
     title: 'Embedding Settings',
@@ -203,7 +218,14 @@ export default {
       openai: 'e.g., gpt-4o, gpt-3.5-turbo',
       grok: 'e.g., grok-4, grok-3-mini',
       google: 'e.g., gemini-1.5-flash, gemini-1.5-pro',
-      anthropic: 'e.g., claude-3-opus-20240229'
+      anthropic: 'e.g., claude-3-opus-20240229',
+      deepseek: 'e.g., deepseek-v4-pro, deepseek-v4-flash',
+      siliconflow: 'e.g., deepseek-ai/DeepSeek-V3',
+      volcengine: 'e.g., ep-20250101000000-xxxxx',
+      dashscope: 'e.g., qwen-plus, qwen-max',
+      moonshot: 'e.g., moonshot-v1-8k, moonshot-v1-32k',
+      zhipu: 'e.g., glm-4-plus, glm-4-flash',
+      stepfun: 'e.g., step-2-16k, step-1-8k'
     },
     botNickname: 'Bot Nickname',
     botNicknamePlaceholder: 'e.g., Endless',
@@ -452,6 +474,12 @@ export default {
     lines: 'lines',
     showLast: 'Showing last {limit} lines',
     hiddenCount: '{hidden} hidden',
+  },
+  actionBtn: {
+    start: 'Start',
+    stop: 'Stop',
+    restart: 'Restart',
+    delete: 'Delete',
   },
   debugger: {
     title: 'Debugger',
@@ -758,6 +786,48 @@ export default {
       starting: 'Starting',
       error: 'Error'
     }
+  },
+  modelSettings: {
+    backToConfig: 'Back to Config',
+    saveAndRestart: 'Save & Restart Bot',
+    goToModelSettings: 'LLM model configuration has been moved to the dedicated "Model Settings" page.',
+    openSettings: 'Open Model Settings'
+  },
+  inferenceParams: {
+    title: 'Inference Parameters (Optional)',
+    hint: 'Leave blank to use model defaults.',
+    temperature: 'Temperature',
+    maxTokens: 'Max Tokens',
+    maxTokensHint: 'Leave blank for model default',
+    topP: 'Top P',
+    topK: 'Top K',
+    frequencyPenalty: 'Frequency Penalty',
+    presencePenalty: 'Presence Penalty',
+    placeholders: {
+      default: 'Leave blank for default',
+      openai: 'Leave blank for default',
+      grok: 'Recommended: 0.7',
+      google: 'Recommended: 0.9',
+      anthropic: 'Recommended: 0.7',
+      deepseek: 'Recommended: 0.7',
+      siliconflow: 'Recommended: 0.7',
+      volcengine: 'Recommended: 0.7',
+      dashscope: 'Recommended: 0.7',
+      moonshot: 'Recommended: 0.7',
+      zhipu: 'Recommended: 0.8',
+      stepfun: 'Recommended: 0.7',
+      topP: '0.7 - 1.0',
+      topK: '1 - 100',
+      frequencyPenalty: '-2.0 - 2.0',
+      presencePenalty: '-2.0 - 2.0'
+    }
+  },
+  customHeaders: {
+    title: 'Custom HTTP Headers',
+    namePlaceholder: 'Header name',
+    valuePlaceholder: 'Header value',
+    add: 'Add Header',
+    remove: 'Remove'
   },
   configPanel: {
     saveAndRestart: 'Save & Restart',

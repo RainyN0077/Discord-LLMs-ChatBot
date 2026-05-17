@@ -7,6 +7,12 @@ export default {
     automation: '自动互动',
     advanced: '高级工具'
   },
+  appNav: {
+    modelSettings: '模型设置',
+    controlPanel: '控制面板',
+    themeDark: '切换到深色模式',
+    themeLight: '切换到浅色模式'
+  },
   buttons: {
     save: '保存配置并重启 Bot',
     saving: '保存中...'
@@ -36,7 +42,14 @@ export default {
     providers: {
       openai: 'OpenAI',
       google: 'Google Gemini',
-      anthropic: 'Anthropic Claude'
+      anthropic: 'Anthropic Claude',
+      deepseek: 'DeepSeek (深度求索)',
+      siliconflow: '硅基流动 (SiliconFlow)',
+      volcengine: '火山方舟 (Volcano Ark)',
+      dashscope: '阿里百炼 (DashScope)',
+      moonshot: '月之暗面 (Moonshot)',
+      zhipu: '智谱 (GLM)',
+      stepfun: '阶跃星辰 (StepFun)'
     },
     apiKey: 'API Key',
     apiKeyPlaceholder: '输入你的 API Key',
@@ -60,13 +73,35 @@ export default {
     fetchModelsTooltip: '获取或刷新可用模型列表',
     modelListInfo: '已加载 {count} 个可用模型，可切换为手动输入'
   },
+  modelProviders: {
+    openai: 'OpenAI',
+    grok: 'Grok (xAI)',
+    openaiCompatible: 'OpenAI 兼容',
+    gemini: 'Gemini',
+    anthropic: 'Anthropic',
+    anthropicCompatible: 'Anthropic 兼容',
+    deepseek: 'DeepSeek (深度求索)',
+    siliconflow: '硅基流动 (SiliconFlow)',
+    volcengine: '火山方舟 (Volcano Ark)',
+    dashscope: '阿里百炼 (DashScope)',
+    moonshot: '月之暗面 (Moonshot)',
+    zhipu: '智谱 (GLM)',
+    stepfun: '阶跃星辰 (StepFun)'
+  },
   defaultBehavior: {
     title: '默认行为',
     modelName: '模型名称',
     modelPlaceholders: {
       openai: '例如：gpt-4o、gpt-3.5-turbo',
       google: '例如：gemini-1.5-flash、gemini-1.5-pro',
-      anthropic: '例如：claude-3-opus-20240229'
+      anthropic: '例如：claude-3-opus-20240229',
+      deepseek: '例如：deepseek-v4-pro、deepseek-v4-flash',
+      siliconflow: '例如：deepseek-ai/DeepSeek-V3',
+      volcengine: '例如：ep-20250101000000-xxxxx',
+      dashscope: '例如：qwen-plus、qwen-max',
+      moonshot: '例如：moonshot-v1-8k、moonshot-v1-32k',
+      zhipu: '例如：glm-4-plus、glm-4-flash',
+      stepfun: '例如：step-2-16k、step-1-8k'
     },
     botNickname: 'Bot 昵称',
     botNicknamePlaceholder: '例如：Endless',
@@ -464,6 +499,48 @@ export default {
       starting: '启动中',
       error: '异常'
     }
+  },
+  modelSettings: {
+    backToConfig: '返回配置面板',
+    saveAndRestart: '保存并重启 Bot',
+    goToModelSettings: 'LLM 模型配置已移至独立的"模型设置"页面。',
+    openSettings: '打开模型设置'
+  },
+  inferenceParams: {
+    title: '推理参数（可选）',
+    hint: '留空使用模型默认值。',
+    temperature: '温度 (Temperature)',
+    maxTokens: '最大令牌数 (Max Tokens)',
+    maxTokensHint: '留空使用模型默认值',
+    topP: 'Top P',
+    topK: 'Top K',
+    frequencyPenalty: '频率惩罚 (Frequency Penalty)',
+    presencePenalty: '存在惩罚 (Presence Penalty)',
+    placeholders: {
+      default: '留空使用默认值',
+      openai: '留空使用默认值',
+      grok: '推荐：0.7',
+      google: '推荐：0.9',
+      anthropic: '推荐：0.7',
+      deepseek: '推荐：0.7',
+      siliconflow: '推荐：0.7',
+      volcengine: '推荐：0.7',
+      dashscope: '推荐：0.7',
+      moonshot: '推荐：0.7',
+      zhipu: '推荐：0.8',
+      stepfun: '推荐：0.7',
+      topP: '0.7 - 1.0',
+      topK: '1 - 100',
+      frequencyPenalty: '-2.0 - 2.0',
+      presencePenalty: '-2.0 - 2.0'
+    }
+  },
+  customHeaders: {
+    title: '自定义 HTTP 请求头',
+    namePlaceholder: '请求头名称',
+    valuePlaceholder: '请求头值',
+    add: '添加请求头',
+    remove: '删除'
   },
   configPanel: {
     saveAndRestart: '保存并重启',

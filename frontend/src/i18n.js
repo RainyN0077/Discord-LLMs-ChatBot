@@ -107,6 +107,7 @@ const zhOverrides = {
         unlimitedHistoryMessages: '不限制历史消息数量',
     },
     appNav: {
+        modelSettings: '模型设置',
         controlPanel: '控制面板',
         themeDark: '切换到深色模式',
         themeLight: '切换到浅色模式',
@@ -118,10 +119,24 @@ const zhOverrides = {
         gemini: 'Gemini',
         anthropic: 'Anthropic',
         anthropicCompatible: 'Anthropic 兼容',
+        deepseek: 'DeepSeek (深度求索)',
+        siliconflow: 'SiliconFlow (硅基流动)',
+        volcengine: 'Volcano Ark (火山方舟)',
+        dashscope: 'Alibaba Bailian (阿里百炼)',
+        moonshot: 'Moonshot (月之暗面)',
+        zhipu: 'Zhipu GLM (智谱)',
+        stepfun: 'StepFun (阶跃星辰)',
     },
     llmProvider: {
         providers: {
             grok: 'Grok (xAI)',
+            deepseek: 'DeepSeek (深度求索)',
+            siliconflow: 'SiliconFlow (硅基流动)',
+            volcengine: 'Volcano Ark (火山方舟)',
+            dashscope: 'Alibaba Bailian (阿里百炼)',
+            moonshot: 'Moonshot (月之暗面)',
+            zhipu: 'Zhipu GLM (智谱)',
+            stepfun: 'StepFun (阶跃星辰)',
         },
         multimodalLabel: '当前主模型支持多模态',
         multimodalInfo: '开启后，主模型会直接读取图片；关闭后，图片会先交给单独的 OCR 模型转成文本，再送给主模型。',
@@ -130,6 +145,13 @@ const zhOverrides = {
     defaultBehavior: {
         modelPlaceholders: {
             grok: '例如：grok-4、grok-3-mini',
+            deepseek: '例如：deepseek-v4-pro、deepseek-v4-flash',
+            siliconflow: '例如：deepseek-ai/DeepSeek-V3',
+            volcengine: '例如：ep-20250101000000-xxxxx',
+            dashscope: '例如：qwen-plus、qwen-max',
+            moonshot: '例如：moonshot-v1-8k、moonshot-v1-32k',
+            zhipu: '例如：glm-4-plus、glm-4-flash',
+            stepfun: '例如：step-2-16k、step-1-8k',
         },
     },
     embeddingSettings: {
@@ -324,6 +346,54 @@ const zhOverrides = {
         lines: '行',
         showLast: '显示最近 {limit} 行',
         hiddenCount: '已隐藏 {hidden} 行',
+    },
+    modelSettings: {
+        backToConfig: '返回配置面板',
+        saveAndRestart: '保存并重启 Bot',
+        goToModelSettings: 'LLM 模型配置已移至独立的"模型设置"页面。',
+        openSettings: '打开模型设置'
+    },
+    inferenceParams: {
+        title: '推理参数（可选）',
+        hint: '留空使用模型默认值。',
+        temperature: '温度 (Temperature)',
+        maxTokens: '最大令牌数 (Max Tokens)',
+        maxTokensHint: '留空使用模型默认值',
+        topP: 'Top P',
+        topK: 'Top K',
+        frequencyPenalty: '频率惩罚 (Frequency Penalty)',
+        presencePenalty: '存在惩罚 (Presence Penalty)',
+        placeholders: {
+            default: '留空使用默认值',
+            openai: '留空使用默认值',
+            grok: '推荐：0.7',
+            google: '推荐：0.9',
+            anthropic: '推荐：0.7',
+            deepseek: '推荐：0.7',
+            siliconflow: '推荐：0.7',
+            volcengine: '推荐：0.7',
+            dashscope: '推荐：0.7',
+            moonshot: '推荐：0.7',
+            zhipu: '推荐：0.8',
+            stepfun: '推荐：0.7',
+            topP: '0.7 - 1.0',
+            topK: '1 - 100',
+            frequencyPenalty: '-2.0 - 2.0',
+            presencePenalty: '-2.0 - 2.0'
+        }
+    },
+    customHeaders: {
+        title: '自定义 HTTP 请求头',
+        namePlaceholder: '请求头名称',
+        valuePlaceholder: '请求头值',
+        add: '添加请求头',
+        remove: '删除'
+    },
+    actionBtn: {
+        start: '启动',
+        stop: '停止',
+        restart: '重启',
+        delete: '删除',
     },
 };
 
