@@ -1,308 +1,246 @@
 ﻿# Discord-LLMs-ChatBot
 
-A multi-bot Discord chatbot powered by NoneBot2, supporting multiple LLM providers with a web control panel, persistent knowledge features, and a plugin-based automation system.
+基于 NoneBot2 的多 Bot 聊天机器人，支持 **12 家 LLM 提供商**，配备 Web 控制面板、知识引擎、OCR 图片识别、插件系统和多 Bot 管理。
+
+A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM providers** with a web control panel, persistent knowledge, OCR, plugin automation, and multi-instance management.
 
 ---
 
-## Highlights
+## 核心特性 / Highlights
 
-- **Multi-Provider LLM**: OpenAI / Gemini / Claude / xAI (Grok) — swap models anytime via the Web UI
-- **Multi-Bot Management**: Run multiple Discord bots from a single dashboard, each with independent config, persona, knowledge, and quota
-- **Web Control Panel**: Real-time Svelte dashboard for config, debug captures, usage stats, and bot lifecycle (start/stop/restart)
-- **Layered Persona System**: Scoped prompts per channel/guild, per-user portraits, and role-based behavior rules
-- **Knowledge Engine**: World Book (keyword-triggered injection), auto-memory ingestion (quality-thresholded candidate promotion), FTS5 search, and embedding-based semantic recall
-- **Plugin System**: Extensible plugin framework with configurable HTTP triggers, tool-calling integration, and external REST endpoint
-- **Usage Dashboard**: Token statistics with per-model pricing, per-user/per-guild/per-channel breakdowns, and pricing overrides
-- **Security Hardening**: API key lifecycle management, CORS allowlist, SSRF DNS rebinding protection, per-bot authentication
-- **OCR / Embedding / Rerank**: Built-in multimodal OCR (image-to-text via LLM), vector embedding service, and rerank pipeline
-- **Cross-Platform Launcher**: Unified `run.py` for install, start, stop, restart, and status — works on Windows, Linux, and macOS
+| 模块 | 说明 |
+|------|------|
+| **多提供商 LLM** | OpenAI · Google Gemini · Anthropic Claude · xAI Grok · DeepSeek · 硅基流动 · 火山引擎 · 阿里百炼 · Moonshot · 智谱 · 阶跃星辰 —— 全部支持 OpenAI 兼容协议 |
+| **推理参数** | temperature · top_p · top_k · max_tokens · frequency_penalty · presence_penalty，独立模型设置页面统一管理 |
+| **自定义 HTTP 头** | 为 OpenAI 兼容提供商注入自定义请求头，适配代理/网关鉴权 |
+| **多 Bot 管理** | 单一面板管理多个 Bot，独立配置、人设、知识库、配额 |
+| **Web 控制面板** | Svelte 4 实时仪表盘，模型设置 / 行为配置 / 自动化 / 高级工具四个页面，支持主题切换 |
+| **分层人设系统** | 频道/服务器级别提示词 · 用户画像 · 角色行为规则 |
+| **知识引擎** | 世界书关键词注入 · 自动记忆摄取（质量评分 + 候选提升）· FTS5 全文搜索 · 向量语义召回 |
+| **插件系统** | 可扩展插件框架，HTTP 触发器、工具调用集成、外部 REST 接口 |
+| **用量统计** | Token 统计 + 按模型定价，用户/频道/服务器维度拆分 |
+| **OCR / 嵌入 / 重排** | 多模态 OCR（图片→文字）· 向量嵌入 · 重排序管道 |
+| **跨平台启动器** | `run.py` 统管安装/启动/停止/重启/状态，兼容 Windows / Linux / macOS |
+| **E2E 模拟测试** | `simulations/simulate.py` 文本 + 图片 OCR 验证，支持逐个 bot 批量测试 |
 
 ---
 
-## Tech Stack
+## 技术栈 / Tech Stack
 
 | Layer | Technology |
 |-------|------------|
-| Bot Framework | NoneBot2 + discord.py adapter |
+| Bot Framework | NoneBot2 + Discord / QQ adapter |
 | API Server | FastAPI (Python 3.11+) |
 | Frontend | Svelte 4 + Vite |
-| Cache / Lock | Redis (with mock fallback for local dev) |
-| LLM SDKs | `openai` · `google-genai` · `anthropic` · `openai` (xAI-compatible) |
-| Knowledge DB | SQLite with FTS5 + embedding tables |
-| Container | Docker Compose (3 services: backend, frontend, redis) |
+| Cache / Lock | Redis（本地开发自动降级 mock） |
+| LLM SDKs | `openai` · `google-genai` · `anthropic` · `xai-sdk` |
+| Knowledge DB | SQLite FTS5 + embedding |
+| Container | Docker Compose（backend + frontend + redis） |
 
 ---
 
-## Ports and Runtime
+## 快速开始 / Quick Start
 
-### Docker (recommended)
-
-```bash
-docker compose up --build -d
-```
-
-| Service | URL |
-|---------|-----|
-| Frontend (Web UI) | `http://localhost:8094` |
-| Backend API | `http://localhost:8093` |
-| Redis | internal (`redis:6379`) |
-
-### Local (cross-platform launcher)
-
-```bash
-python run.py start                  # start backend + frontend in background
-python run.py start --foreground      # single terminal, Ctrl+C to stop
-python run.py start --backend-only
-python run.py start --frontend-only
-python run.py stop                   # stop all processes
-python run.py restart                # restart all
-python run.py status                 # show process status
-python run.py install                # install/sync dependencies only
-```
-
-What `run.py` handles automatically:
-- Creates `backend/.venv` if missing
-- Installs Python dependencies from `backend/requirements.txt`
-- Runs `npm install` in `frontend/` if Node.js is available
-- Starts backend on port `8093` (uvicorn with hot-reload) and frontend Vite dev server on `8094`
-- Manages PID files and logs under `.local-run/`
-
----
-
-## Quick Start
-
-1. **Clone**
 ```bash
 git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
 cd Discord-LLMs-ChatBot
-```
-
-2. **Start**
-```bash
 docker compose up --build -d
 ```
 
-3. **Open** `http://localhost:8094`
+打开 `http://localhost:8094`，在 Web UI 中：
+1. 配置 Discord Bot Token
+2. 选择 LLM 提供商，填入 API Key
+3. 保存配置 → 启动 Bot
 
-4. **Configure** in the Web UI:
-   - Discord Bot Token
-   - LLM provider, API key, and model name
-   - Save config → Start Bot
+### 本地开发 / Local Dev
 
----
+```bash
+python run.py start                 # 后台启动
+python run.py start --foreground    # 前台模式（Ctrl+C 停止）
+python run.py stop                  # 停止所有
+python run.py restart               # 重启
+python run.py status                # 查看状态
+python run.py install               # 安装依赖
+```
 
-## Configuration Reference
-
-### Core Fields
-
-| Field | Description |
-|-------|-------------|
-| `discord_token` | Discord bot token |
-| `llm_provider` | `openai` / `google` / `anthropic` / `xai` |
-| `api_key` | Provider API key |
-| `model_name` | Model identifier (e.g. `gpt-4o`, `gemini-2.5-flash`, `claude-sonnet-4-20250514`) |
-| `api_secret_key` | Internal API auth — send as `X-API-Key` header for protected endpoints |
-
-### LLM Provider Notes
-
-- **OpenAI** — also supports OpenAI-compatible APIs (set `openai_base_url`)
-- **Google Gemini** — uses `google-genai` SDK
-- **Anthropic Claude** — supports `anthropic_base_url` for custom endpoints
-- **xAI (Grok)** — uses `grok_base_url`, defaults to `https://api.x.ai`
-
-### Data Persistence
-
-All runtime data under `./data` (mounted as `/app/data` in Docker):
-
-| Path | Content |
-|------|---------|
-| `data/config.json` | Global configuration |
-| `data/bots/<id>/config.json` | Per-bot configuration |
-| `data/bots/<id>/knowledge.sqlite` | Bot-specific knowledge DB |
-| `data/bots/<id>/usage_data.json` | Bot-specific usage stats |
-| `data/logs/` | Application logs |
-
-### Redis Behavior
-
-- Docker Compose: Redis is always available
-- Local development: `FAIL_ON_REDIS_ERROR=false` (default) — falls back to in-memory mock lock if Redis is unavailable
+`run.py` 自动处理：创建虚拟环境 → 安装 Python 依赖 → `npm install` → 启动 uvicorn（8093）+ Vite（8094）→ 管理 PID / 日志。
 
 ---
 
-## Multi-Bot Management
+## 项目结构 / Structure
 
-The Web UI supports creating and managing multiple Discord bot instances:
+```
+Discord-LLMs-ChatBot/
+├── backend/
+│   ├── app/                         # FastAPI + 业务逻辑
+│   │   ├── llm_providers/           # LLM 提供商适配层
+│   │   ├── routers/                 # REST API 路由
+│   │   ├── core_logic/              # 上下文构建 / 人设管理 / 知识
+│   │   └── handlers/                # 消息队列 / 图片处理 / 自动化
+│   ├── nb_plugins/                  # NoneBot2 插件（核心 LLM Bot + 可配置工具）
+│   ├── plugins/                     # 可扩展插件系统
+│   └── tests/                       # pytest 单元/集成测试
+├── frontend/
+│   └── src/
+│       ├── pages/                   # ConfigPanel / ModelSettings / Debugger / PromptStudio
+│       ├── components/              # Card / Sidebar / LogPanel / KnowledgeEditor
+│       ├── lib/                     # stores / api / providerDefaults / i18n
+│       └── locales/                 # 中英文语言文件
+├── simulations/                     # E2E 模拟测试
+│   ├── simulate.py                  # 验证脚本（文本 + OCR + 多 Bot）
+│   └── test_images/                 # OCR 测试图片
+├── run.py                           # 跨平台启动器
+├── docker-compose.yml
+└── README.md
+```
 
-- **Independent Configs**: Each bot has its own LLM provider, persona, knowledge base, and usage quotas
-- **Per-Bot API Key**: Each bot generates a unique `api_secret_key` on first load
-- **Lifecycle Control**: Start / stop / restart individual bots from the dashboard
-- **Knowledge Migration**: Legacy global `data/knowledge.sqlite` is automatically migrated to the first bot's directory on startup
+---
+
+## 提供商对照 / Providers
+
+| 标识 | 服务商 | 默认 Base URL | 协议 |
+|------|--------|--------------|------|
+| `openai` | OpenAI | `https://api.openai.com/v1` | OpenAI |
+| `google` | Google Gemini | — | Gemini SDK |
+| `anthropic` | Anthropic Claude | — | Anthropic SDK |
+| `grok` | xAI Grok | `https://api.x.ai` | xAI SDK |
+| `deepseek` | DeepSeek | `https://api.deepseek.com` | OpenAI 兼容 |
+| `siliconflow` | 硅基流动 | `https://api.siliconflow.cn/v1` | OpenAI 兼容 |
+| `volcengine` | 火山引擎 | `https://ark.cn-beijing.volces.com/api/v3` | OpenAI 兼容 |
+| `dashscope` | 阿里百炼 | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
+| `moonshot` | Moonshot | `https://api.moonshot.cn/v1` | OpenAI 兼容 |
+| `zhipu` | 智谱 AI | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
+| `stepfun` | 阶跃星辰 | `https://api.stepfun.com/v1` | OpenAI 兼容 |
+
+> **提示**：选择任一提供商后，前端自动填入默认 Base URL 和内置模型列表。如需自定义代理端点，选择 `openai` 并手动填入 URL。
+
+---
+
+## 模型设置 / Model Settings
+
+独立的 **模型设置** 页面，统一管理 LLM 提供商和推理参数：
+
+```
+提供商选择  →  自动填入默认 Base URL  +  内置模型列表
+API Key     →  Fetch Models 拉取可用模型  |  切换手动输入  |  Test Connection
+推理参数    →  temperature / max_tokens / top_p / top_k / frequency_penalty / presence_penalty（全部可选，留空用默认）
+自定义头    →  动态添加/删除 HTTP 请求头（适配代理鉴权）
+多模态      →  OCR 图片识别开关 + 流式响应模式切换
+自定义参数  →  键值对参数编辑器（text / number / boolean / json 类型）
+```
+
+---
+
+## 配置参考 / Configuration
+
+### 核心字段
+
+| 字段 | 说明 | 示例 |
+|------|------|------|
+| `discord_token` | Discord Bot Token | `MTA...` |
+| `llm_provider` | LLM 提供商 | `deepseek` |
+| `api_key` | 提供商 API Key | `sk-...` |
+| `model_name` | 模型标识符 | `deepseek-v4-pro` |
+| `openai_base_url` | OpenAI 兼容端点 | 自动填入 |
+| `temperature` | 推理温度 0–2 | `0.7`（留空=默认） |
+| `max_tokens` | 最大输出 token 数 | `4096`（留空=默认） |
+| `api_secret_key` | 内部 API 鉴权密钥 | 自动生成 |
+
+### 数据持久化 / Data
+
+| 路径 | 内容 |
+|------|------|
+| `data/config.json` | 全局配置 |
+| `data/bots/<id>/config.json` | Bot 独立配置 |
+| `data/bots/<id>/knowledge.sqlite` | Bot 知识库 |
+| `data/bots/<id>/usage_data.json` | Bot 用量统计 |
+| `data/logs/` | 应用日志（`/api/logs` 可查） |
 
 ---
 
 ## REST API
 
-### Core Endpoints
-
-| Method | Path | Description | Auth |
-|--------|------|-------------|------|
-| `GET` | `/api/config` | Get global configuration | Optional |
-| `POST` | `/api/config` | Update global configuration | Required |
-| `GET` | `/api/bots` | List all bot instances | Required |
-| `POST` | `/api/bots` | Create a new bot instance | Required |
-| `GET` | `/api/bots/{id}/config` | Get bot-specific config | Required |
-| `POST` | `/api/bots/{id}/config` | Update bot-specific config | Required |
-| `POST` | `/api/bots/{id}/start` | Start a bot instance | Required |
-| `POST` | `/api/bots/{id}/stop` | Stop a bot instance | Required |
-| `POST` | `/api/bots/{id}/restart` | Restart a bot instance | Required |
-| `DELETE` | `/api/bots/{id}` | Delete a bot instance | Required |
-| `POST` | `/api/chat/direct` | Direct LLM chat (debug) | Required |
-| `GET` | `/api/logs` | Fetch application logs | Required |
-| `GET` | `/api/usage/stats` | Usage statistics | Required |
-| `GET/POST` | `/api/usage/pricing` | Model pricing config | Required |
-
-### Memory / World Book Endpoints
+### Bot 管理
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/memory` | List all memories |
-| `POST` | `/api/memory` | Add a new memory |
-| `PUT` | `/api/memory/{id}` | Update a memory |
-| `DELETE` | `/api/memory/{id}` | Delete a memory |
-| `POST` | `/api/memory/clear` | Clear channel memory |
-| `GET` | `/api/memory/candidates` | List candidate memories |
-| `GET` | `/api/worldbook` | List world book entries |
-| `POST` | `/api/worldbook` | Add world book entry |
-| `PUT` | `/api/worldbook/{id}` | Update world book entry |
-| `DELETE` | `/api/worldbook/{id}` | Delete world book entry |
+| `GET` | `/api/bots` | 列表 |
+| `POST` | `/api/bots` | 创建 |
+| `DELETE` | `/api/bots/{id}` | 删除 |
+| `POST` | `/api/bots/{id}/rename` | 重命名 |
+| `GET/POST` | `/api/bots/{id}/config` | 获取/更新配置 |
+| `POST` | `/api/bots/{id}/start` | 启动 |
+| `POST` | `/api/bots/{id}/stop` | 停止 |
+| `POST` | `/api/bots/{id}/restart` | 重启 |
+| `GET/POST` | `/api/bots/{id}/export` · `/import` | 导出/导入配置 |
 
-### Plugin Trigger Endpoint
+### LLM 调试
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/chat/direct` | 直接发消息（带 attachments 支持图片） |
+| `POST` | `/api/models/list` | 拉取可用模型列表 |
+| `POST` | `/api/models/test` | 测试模型连接 |
+
+### 记忆 / 知识 / 插件 / 用量
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET/POST` | `/api/memory` | 记忆 CRUD |
+| `POST` | `/api/memory/clear` | 清除频道记忆 |
+| `GET` | `/api/memory/candidates` | 候选记忆 |
+| `GET/POST` | `/api/worldbook` | 世界书条目 |
+| `POST` | `/api/plugins/trigger` | 触发插件 |
+| `GET` | `/api/usage/stats` | 用量统计 |
+| `GET/POST` | `/api/usage/pricing` | 定价配置 |
+| `GET` | `/api/logs` | 应用日志 |
+
+> 所有变更接口需 `X-API-Key` 请求头（值 = `api_secret_key`）。
+
+---
+
+## E2E 模拟测试 / Simulation
 
 ```bash
-curl -X POST http://localhost:8093/api/plugins/trigger \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: YOUR_API_SECRET_KEY" \
-  -d '{
-    "plugin_name": "Weather Check",
-    "args": {"city": "Shanghai"}
-  }'
+# 单个 bot，含图片 OCR
+python simulations/simulate.py
+
+# 测试所有 bot
+python simulations/simulate.py --all
+
+# 最多测 2 个，跳过图片
+python simulations/simulate.py --all --max-bots 2 --no-image
+
+# 指定 bot + 自定义后端地址
+python simulations/simulate.py --bot-id my-bot --api-url http://192.168.1.100:8093
 ```
 
----
-
-## Plugin System
-
-Plugins extend the bot with custom tools and automations:
-
-- **Built-in Plugins**: Auto-memory ingestion (quality scoring + candidate promotion), repeat-parrot detection, auto-interject, world book injection
-- **Configurable Plugins**: HTTP-triggered external services with templated headers/body, response parsing, and context injection
-- **Search Plugin**: RAG (Retrieval-Augmented Generation) plugin with external search integration and content compression
-- **Tool Integration**: Plugins expose tool definitions compatible with LLM function calling
+测试步骤：问候 → 问答 → 图片识别（英文 / 中英 / 纯中文）→ 多轮上下文 → 角色扮演验证。每一步打印响应时间、Token 用量、Bot 回复、后端日志截取。
 
 ---
 
-## Security
+## 安全 / Security
 
-- **API Authentication**: All mutating endpoints require `X-API-Key` header matching the configured `api_secret_key`
-- **Per-Bot Keys**: Each bot instance generates its own independent API key, no cross-bot leakage
-- **CORS Control**: Backend only allows `Content-Type`, `X-API-Key`, and `X-Timezone` headers from configured origins
-- **SSRF Protection**: Plugin HTTP requests are validated against internal IP ranges (RFC 1918, loopback, link-local) with DNS rebinding defense
-- **No Client-Side Secrets**: API keys are never persisted in browser storage
+- 所有变更接口需 `X-API-Key` 鉴权，每 Bot 独立密钥
+- CORS 白名单限制来源和请求头
+- 插件 HTTP 请求 SSRF 防护（RFC 1918 / loopback / link-local + DNS rebinding）
+- API Key 不持久化到浏览器存储
+- `data/` 目录已在 `.gitignore` 中排除
 
 ---
 
-## Troubleshooting
+## 故障排查 / Troubleshooting
 
-### Web UI cannot reach backend
-- Verify backend is listening on port `8093`
-- Check `VITE_API_PROXY_TARGET` for local dev mode
-- In Docker: ensure both `backend` and `frontend` containers are healthy
-
-### Plugin API returns 403 / 401
-- `401`: API key is not configured — set `api_secret_key` in the Web UI
-- `403`: Verify the `X-API-Key` header matches the configured `api_secret_key`
-
-### Bot does not respond in Discord
-- Verify token validity and bot permissions (Send Messages, Read Message History, etc.)
-- Check trigger conditions: mention, keyword match, reply rules
-- Review backend logs via `/api/logs` or `docker compose logs backend`
-
-### Google Gemini errors
-```bash
-# In backend directory
-python -m pip install -r requirements.txt
-```
+| 现象 | 检查 |
+|------|------|
+| 前端连不上后端 | 后端 `8093` 端口 · Vite 代理配置 · Docker 容器状态 |
+| API 401 / 403 | `api_secret_key` 是否配置 · `X-API-Key` 值是否匹配 |
+| Bot Discord 不响应 | Token 权限 · 触发条件（@提及 / 关键词）· `/api/logs` 日志 |
+| 模型列表拉不到 | API Key 是否正确 · Base URL 是否可访问 · 提供商是否在 `models_test.py` 中注册 |
+| OCR 不工作 | `llm_is_multimodal` 是否开启 · OCR 提供商配置 |
 
 ---
 
 ## License
 
-MIT License. See [LICENSE](LICENSE).
-
----
-
-## 中文说明
-
-### 项目简介
-
-基于 NoneBot2 的多 Bot Discord 聊天机器人，支持多家 LLM 服务商，配备 Web 控制面板、知识增强、长期记忆和插件自动化系统。
-
-### 核心特性
-
-- **多服务商 LLM**：OpenAI / Gemini / Claude / xAI (Grok)，通过 Web UI 随时切换
-- **多 Bot 管理**：单个面板同时管理多个 Discord Bot，每个 Bot 独立配置、独立人设、独立知识库和配额
-- **Web 控制面板**：实时配置编辑、调试抓取、用量统计、Bot 生命周期控制（启动/停止/重启）
-- **分层人设系统**：按频道/服务器配置提示词、用户画像、身份组行为规则
-- **知识引擎**：世界书关键词注入、自动记忆摄取（质量评分 + 候选提升）、FTS5 全文搜索、向量语义召回
-- **插件系统**：可扩展的插件框架，支持 HTTP 触发、工具调用集成、外部 REST 接口
-- **用量统计**：Token 统计 + 按模型定价，可按用户/频道/服务器维度拆分
-- **安全加固**：API 密钥生命周期管理、CORS 白名单、SSRF DNS rebinding 防护、每 Bot 独立鉴权
-- **OCR/嵌入/重排**：内置多模态 OCR（图片转文字）、向量嵌入服务、重排序管道
-- **跨平台启动器**：`run.py` 统一管理安装、启动、停止、重启、状态查询
-
-### 运行方式
-
-#### Docker（推荐）
-
-```bash
-docker compose up --build -d
-```
-
-服务端口：前端 `http://localhost:8094`，后端 API `http://localhost:8093`，Redis 运行在 compose 网络内部。
-
-#### 本地开发
-
-```bash
-python run.py start              # 后台启动
-python run.py start --foreground  # 前台模式
-python run.py stop               # 停止
-python run.py restart            # 重启
-python run.py status             # 状态
-python run.py install            # 安装依赖
-```
-
-### 快速开始
-
-1. 克隆仓库 → 2. Docker 启动 → 3. 打开 `http://localhost:8094` → 4. 在 UI 中配置 Discord Token、LLM 服务商和模型，保存后启动 Bot
-
-### 关键配置
-
-- `discord_token`：Discord 机器人 Token
-- `llm_provider`：`openai` / `google` / `anthropic` / `xai`
-- `api_key`：所选服务商的 API Key
-- `model_name`：模型标识符
-- `api_secret_key`：后端接口鉴权密钥（`X-API-Key` 请求头）
-
-### 多 Bot 管理
-
-Web UI 支持创建并管理多个 Discord Bot 实例：每个 Bot 拥有独立的 LLM 配置、人设、知识库和用量统计。旧版全局知识库 `data/knowledge.sqlite` 在首次启动时会自动迁移到第一个 Bot 的目录下。
-
-### REST API
-
-主要端点包括 `/api/config`、`/api/bots`（Bot CRUD + 生命周期）、`/api/chat/direct`（LLM 调试）、`/api/memory`（记忆管理）、`/api/worldbook`（世界书管理）、`/api/usage/stats`（用量统计）、`/api/plugins/trigger`（插件触发）。所有变更接口需要 `X-API-Key` 请求头。
-
-### 故障排查
-
-- 前端无法连接后端：检查 `8093` 端口、Vite 代理配置、Docker 容器健康状态
-- 插件接口 401：`api_secret_key` 未配置；403：密钥不匹配
-- Bot 不响应：检查 Token 权限、触发条件、日志
+MIT — see [LICENSE](LICENSE).
