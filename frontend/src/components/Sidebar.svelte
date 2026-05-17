@@ -3,7 +3,7 @@
     import { onMount, createEventDispatcher } from 'svelte';
     import { t, get as t_get } from '../i18n.js';
     import {
-        fetchBots, createBot, deleteBot,
+        fetchBots, createBot, deleteBot, renameBot,
         startBot, stopBot, restartBot,
     } from '../lib/api.js';
 
@@ -28,6 +28,52 @@
     };
     let createError = '';
     let creating = false;
+    let editingBotId = null;
+    let editValue = '';
+    let renameError = '';
+
+    async function handleRename(botId, e) {
+        e.stopPropagation();
+        const newId = editValue.trim();
+        if (!newId || newId === botId) {
+            editingBotId = null;
+            return;
+        }
+        if (!newId.match(/^[a-z0-9_-]+$/)) {
+            renameError = 'Only lowercase letters, digits, hyphens, underscores.';
+            return;
+        }
+        renameError = '';
+        try {
+            const result = await renameBot(botId, newId);
+            editingBotId = null;
+            if (selectedBotId === botId) {
+                selectedBotId = result.bot_id;
+                dispatch('select', result.bot_id);
+            }
+            await loadBots();
+        } catch (err) {
+            renameError = String(err.message || err);
+        }
+    }
+
+    function startEdit(botId, e) {
+        e.stopPropagation();
+        editingBotId = botId;
+        editValue = botId;
+        renameError = '';
+        setTimeout(() => {
+            const input = document.querySelector(`.card-title-input[data-bot="${botId}"]`);
+            if (input) { input.focus(); input.select(); }
+        }, 50);
+    }
+
+    function cancelEdit(e) {
+        e.stopPropagation();
+        editingBotId = null;
+        renameError = '';
+    }
+
     async function loadBots() {
         loading = true;
         error = '';
@@ -149,24 +195,82 @@
             {:else}
                 <div class="bot-list">
                     {#each bots as bot (bot.bot_id)}
-                        <button
-                            class="bot-item"
+                        <!-- svelte-ignore a11y-no-static-element-interactions -->
+                        <div
+                            class="bot-card"
                             class:active={selectedBotId === bot.bot_id}
                             on:click={() => selectBot(bot.bot_id)}
+                            on:keypress={(e) => e.key === 'Enter' && selectBot(bot.bot_id)}
+                            role="button"
+                            tabindex="0"
                         >
-                            <span class="status-dot" class:running={bot.status === 'running'} style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
-                            <span class="bot-name">{bot.bot_name || bot.bot_id}</span>
-                            <span class="bot-platform" class:discord={bot.platform === 'discord' || !bot.platform} class:qq={bot.platform === 'qq'}>{bot.platform || 'discord'}</span>
-                            <div class="bot-item-actions" role="presentation" on:click|stopPropagation>
-                                {#if bot.status !== 'running'}
-                                    <button class="mini-btn start" on:click={(e) => handleStart(bot.bot_id, e)} title={$t('botManager.start')}>▶</button>
+                            <div class="card-top">
+                                <span class="status-dot" class:running={bot.status === 'running'} style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
+                                {#if editingBotId === bot.bot_id}
+                                    <div class="card-title-edit" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+                                        <input
+                                            class="card-title-input"
+                                            data-bot={bot.bot_id}
+                                            type="text"
+                                            bind:value={editValue}
+                                            on:keypress={(e) => e.key === 'Enter' && handleRename(bot.bot_id, e)}
+                                            on:blur={() => editingBotId = null}
+                                            pattern="^[a-z0-9_-]+$"
+                                        />
+                                        <button class="mini-btn confirm" on:click={(e) => handleRename(bot.bot_id, e)} title="Save">✓</button>
+                                        <button class="mini-btn cancel-edit" on:click={cancelEdit} title="Cancel">×</button>
+                                        {#if renameError}
+                                            <span class="rename-error">{renameError}</span>
+                                        {/if}
+                                    </div>
                                 {:else}
-                                    <button class="mini-btn stop" on:click={(e) => handleStop(bot.bot_id, e)} title={$t('botManager.stop')}>■</button>
-                                    <button class="mini-btn restart" on:click={(e) => handleRestart(bot.bot_id, e)} title={$t('botManager.restart')}>↻</button>
+                                    <span class="card-title" on:dblclick={(e) => startEdit(bot.bot_id, e)} title="Double-click to rename">{bot.bot_id}</span>
                                 {/if}
-                                <button class="mini-btn delete" on:click={(e) => handleDelete(bot.bot_id, e)} title={$t('botManager.delete')}>×</button>
                             </div>
-                        </button>
+                            <div class="card-info-primary">
+                                <span class="bot-name-text">{bot.bot_name || bot.bot_id}</span>
+                                <span class="platform-badge" class:discord={bot.platform === 'discord' || !bot.platform} class:qq={bot.platform === 'qq'}>{bot.platform || 'discord'}</span>
+                                {#if bot.enabled === false}
+                                    <span class="disabled-badge">DISABLED</span>
+                                {/if}
+                            </div>
+                            <div class="card-info-secondary">
+                                {#if bot.bot_nickname}<span>{bot.bot_nickname}</span>{/if}
+                                {#if bot.model_name}<span class="dot-sep">·</span><span>{bot.model_name}</span>{/if}
+                                {#if bot.llm_provider}<span class="dot-sep">·</span><span>{bot.llm_provider}</span>{/if}
+                            </div>
+                            {#if bot.trigger_keywords?.length}
+                                <div class="card-tags">
+                                    {#each bot.trigger_keywords.slice(0, 4) as kw}
+                                        <span class="keyword-tag">{kw}</span>
+                                    {/each}
+                                    {#if bot.trigger_keywords.length > 4}
+                                        <span class="keyword-tag more">+{bot.trigger_keywords.length - 4}</span>
+                                    {/if}
+                                </div>
+                            {/if}
+                            <div class="card-actions" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+                                {#if bot.status !== 'running'}
+                                    <button class="mini-btn start" on:click={(e) => handleStart(bot.bot_id, e)} title={$t('botManager.start')}>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                        <span>{$t('actionBtn.start')}</span>
+                                    </button>
+                                {:else}
+                                    <button class="mini-btn stop" on:click={(e) => handleStop(bot.bot_id, e)} title={$t('botManager.stop')}>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                                        <span>{$t('actionBtn.stop')}</span>
+                                    </button>
+                                    <button class="mini-btn restart" on:click={(e) => handleRestart(bot.bot_id, e)} title={$t('botManager.restart')}>
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                        <span>{$t('actionBtn.restart')}</span>
+                                    </button>
+                                {/if}
+                                <button class="mini-btn delete" on:click={(e) => handleDelete(bot.bot_id, e)} title={$t('botManager.delete')}>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    <span>{$t('actionBtn.delete')}</span>
+                                </button>
+                            </div>
+                        </div>
                     {/each}
                 </div>
             {/if}
@@ -192,6 +296,13 @@
                             <option value="anthropic">Anthropic</option>
                             <option value="google">Google (Gemini)</option>
                             <option value="xai">xAI (Grok)</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="siliconflow">SiliconFlow</option>
+                            <option value="volcengine">Volcano Ark</option>
+                            <option value="dashscope">DashScope</option>
+                            <option value="moonshot">Moonshot</option>
+                            <option value="zhipu">Zhipu GLM</option>
+                            <option value="stepfun">StepFun</option>
                         </select>
                         <input type="password" bind:value={createData.api_key} placeholder="LLM API key" />
                         <input type="text" bind:value={createData.model_name} placeholder="Model name (gpt-4o)" />
@@ -271,53 +382,242 @@
         padding: .5rem;
     }
 
-    .bot-item {
-        display: grid;
-        grid-template-columns: 20px 1fr auto auto;
-        align-items: center;
-        gap: .4rem;
-        width: 100%;
-        padding: .55rem .6rem;
-        margin-bottom: .2rem;
-        border: none;
-        border-radius: 8px;
-        background: transparent;
-        color: var(--text-light);
+    .bot-card {
+        background: var(--card-bg);
+        border-radius: var(--radius-md, 10px);
+        box-shadow: var(--shadow-soft);
+        margin-bottom: .5rem;
+        padding: .55rem .65rem;
         cursor: pointer;
-        font-size: .88rem;
-        text-align: left;
-        box-shadow: none;
+        transition: all .18s ease;
         position: relative;
+        border: 2px solid transparent;
+        outline: none;
     }
 
-    .bot-item:hover {
-        background: var(--panel-muted-bg);
-        color: var(--text-color);
+    .bot-card:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
+        border-color: var(--border-color);
     }
 
-    .bot-item.active {
-        background: linear-gradient(135deg, rgba(31, 139, 214, .18), rgba(31, 139, 214, .08));
-        color: var(--primary-color);
+    .bot-card.active {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 14px rgba(31, 139, 214, .12);
     }
 
-    .bot-item.active::before {
+    .bot-card.active::before {
         content: '';
         position: absolute;
-        left: 0;
-        top: 6px;
-        bottom: 6px;
+        left: -2px;
+        top: 8px;
+        bottom: 8px;
         width: 3px;
-        background: var(--sidebar-active-indicator, #1f8bd6);
+        background: var(--sidebar-active-indicator);
         border-radius: 0 3px 3px 0;
     }
 
-    :root[data-theme='neon'] .bot-item.active::before {
+    .card-top {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        margin-bottom: .25rem;
+    }
+
+    .card-title {
+        font-family: var(--font-mono, monospace);
+        font-size: .78rem;
+        font-weight: 700;
+        color: var(--text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: text;
+    }
+
+    .card-title:hover {
+        color: var(--primary-color);
+    }
+
+    .card-title-edit {
+        display: flex;
+        align-items: center;
+        gap: .15rem;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .card-title-input {
+        flex: 1;
+        min-width: 0;
+        font-family: var(--font-mono, monospace);
+        font-size: .72rem;
+        font-weight: 600;
+        padding: .18rem .3rem;
+        border: 1px solid var(--primary-color);
+        border-radius: 4px;
+        background: var(--surface-tint);
+        color: var(--text-color);
+        box-shadow: 0 0 6px rgba(31, 139, 214, .1);
+    }
+
+    .card-title-input:focus {
+        outline: none;
+    }
+
+    .mini-btn.confirm {
+        width: 22px;
+        height: 22px;
+    }
+
+    .mini-btn.confirm:hover {
+        color: var(--success-text);
+        border-color: var(--success-text);
+        background: var(--success-bg);
+    }
+
+    .mini-btn.cancel-edit {
+        width: 22px;
+        height: 22px;
+    }
+
+    .mini-btn.cancel-edit:hover {
+        color: var(--error-text);
+        border-color: var(--error-text);
+        background: var(--error-bg);
+    }
+
+    .rename-error {
+        font-size: .55rem;
+        color: var(--error-text);
+        position: absolute;
+        bottom: -14px;
+        left: 0;
+        white-space: nowrap;
+    }
+
+    .card-info-primary {
+        display: flex;
+        align-items: center;
+        gap: .35rem;
+        font-size: .72rem;
+        color: var(--text-light);
+        margin-bottom: .18rem;
+    }
+
+    .bot-name-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: 500;
+    }
+
+    .platform-badge {
+        font-size: .6rem;
+        text-transform: uppercase;
+        padding: .04rem .28rem;
+        border-radius: 3px;
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .platform-badge.discord {
+        background: rgba(88, 101, 242, .15);
+        color: #8ea1e1;
+    }
+
+    .platform-badge.qq {
+        background: rgba(18, 183, 106, .15);
+        color: #5cd9a6;
+    }
+
+    .disabled-badge {
+        font-size: .55rem;
+        padding: .02rem .22rem;
+        border-radius: 3px;
+        background: rgba(255, 51, 102, .12);
+        color: var(--error-text);
+        font-weight: 600;
+        flex-shrink: 0;
+    }
+
+    .card-info-secondary {
+        font-size: .65rem;
+        color: var(--text-muted, var(--text-light));
+        display: flex;
+        flex-wrap: wrap;
+        gap: .15rem;
+        margin-bottom: .25rem;
+    }
+
+    .dot-sep {
+        opacity: .4;
+    }
+
+    .card-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .2rem;
+        margin-bottom: .35rem;
+    }
+
+    .keyword-tag {
+        font-size: .58rem;
+        background: var(--panel-muted-bg);
+        color: var(--text-light);
+        border-radius: 3px;
+        padding: .03rem .3rem;
+        line-height: 1.4;
+    }
+
+    .keyword-tag.more {
+        opacity: .6;
+    }
+
+    .card-actions {
+        display: none;
+        gap: .12rem;
+        justify-content: flex-end;
+        padding-top: .3rem;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .bot-card:hover .card-actions {
+        display: flex;
+    }
+
+    .bot-card.active .card-actions {
+        display: flex;
+    }
+
+    :root[data-theme='neon'] .bot-card {
+        border-width: 2px;
+        border-style: solid;
+        border-color: rgba(0, 229, 255, .12);
+        box-shadow: 0 0 16px rgba(0, 229, 255, .04);
+    }
+
+    :root[data-theme='neon'] .bot-card:hover {
+        border-color: rgba(0, 229, 255, .25);
+        box-shadow: 0 0 20px rgba(0, 229, 255, .08);
+    }
+
+    :root[data-theme='neon'] .bot-card.active {
+        border-color: #00e5ff;
+        box-shadow: 0 0 18px rgba(0, 229, 255, .16);
+        background: linear-gradient(135deg, rgba(0, 229, 255, .06), rgba(0, 145, 255, .03));
+    }
+
+    :root[data-theme='neon'] .bot-card.active::before {
         width: 4px;
         box-shadow: 0 0 10px rgba(0, 229, 255, .4);
     }
 
-    :root[data-theme='neon'] .bot-item.active {
-        background: linear-gradient(135deg, rgba(0, 229, 255, .12), rgba(0, 145, 255, .06));
+    :root[data-theme='neon'] .card-title {
+        color: #c8d6ff;
+    }
+
+    :root[data-theme='neon'] .bot-card.active .card-title {
         color: #00e5ff;
     }
 
@@ -345,51 +645,10 @@
         50% { opacity: 0.5; }
     }
 
-    .bot-name {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-weight: 500;
-    }
-
-    .bot-platform {
-        font-size: .65rem;
-        opacity: .6;
-        padding: .1rem .35rem;
-        border-radius: 4px;
-        background: var(--panel-muted-bg);
-        transition: opacity .18s ease, background .18s ease;
-    }
-
-    .bot-item:hover .bot-platform {
-        opacity: .85;
-    }
-
-    .bot-platform.discord {
-        background: rgba(88, 101, 242, .15);
-        color: #8ea1e1;
-    }
-
-    .bot-platform.qq {
-        background: rgba(18, 183, 106, .15);
-        color: #5cd9a6;
-    }
-
-    .bot-item-actions {
-        display: none;
-        gap: .15rem;
-    }
-
-    .bot-item:hover .bot-item-actions {
-        display: flex;
-    }
-
     .mini-btn {
-        width: 22px;
-        height: 22px;
-        padding: 0;
-        font-size: .6rem;
-        border-radius: 4px;
+        height: 26px;
+        padding: 0 .4rem;
+        border-radius: 6px;
         border: 1px solid var(--border-color);
         background: var(--control-bg);
         color: var(--text-light);
@@ -397,13 +656,31 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: .3rem;
         box-shadow: none;
+        transition: all .15s ease;
+        font-size: .65rem;
+        font-weight: 600;
+        white-space: nowrap;
     }
 
-    .mini-btn.start:hover { color: var(--success-text); border-color: var(--success-text); }
-    .mini-btn.stop:hover { color: var(--error-text); border-color: var(--error-text); }
-    .mini-btn.restart:hover { color: var(--info-text); border-color: var(--info-text); }
-    .mini-btn.delete:hover { color: var(--error-text); border-color: var(--error-text); }
+    .mini-btn span {
+        line-height: 1;
+    }
+
+    .mini-btn:hover {
+        background: var(--control-hover-bg);
+        transform: scale(1.05);
+    }
+
+    .mini-btn:active {
+        transform: scale(.95);
+    }
+
+    .mini-btn.start:hover { color: var(--success-text); border-color: var(--success-text); background: var(--success-bg); }
+    .mini-btn.stop:hover { color: var(--error-text); border-color: var(--error-text); background: var(--error-bg); }
+    .mini-btn.restart:hover { color: var(--info-text); border-color: var(--info-text); background: var(--info-bg); }
+    .mini-btn.delete:hover { color: var(--error-text); border-color: var(--error-text); background: var(--error-bg); }
 
     .sidebar-status {
         padding: 2rem 1rem;
@@ -505,8 +782,7 @@
             min-width: 42px;
         }
 
-        .bot-item {
-            font-size: .8rem;
+        .bot-card {
             padding: .45rem .5rem;
         }
 
@@ -532,8 +808,8 @@
             border-right: none;
         }
 
-        .bot-item {
-            font-size: .82rem;
+        .bot-card {
+            padding: .4rem .5rem;
         }
     }
 </style>
