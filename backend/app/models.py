@@ -106,6 +106,13 @@ class Config(BaseModel):
     openai_base_url: Optional[str] = None
     anthropic_base_url: Optional[str] = None
     grok_base_url: Optional[str] = None
+    temperature: Optional[float] = Field(None, ge=0, le=2)
+    max_tokens: Optional[int] = Field(None, ge=1)
+    top_p: Optional[float] = Field(None, ge=0, le=1)
+    top_k: Optional[int] = Field(None, ge=1)
+    frequency_penalty: Optional[float] = Field(None, ge=-2, le=2)
+    presence_penalty: Optional[float] = Field(None, ge=-2, le=2)
+    custom_headers: List[dict] = Field(default_factory=list)
     model_name: str
     llm_is_multimodal: bool = True
     ocr_provider: str = "openai"
