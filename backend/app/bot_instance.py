@@ -168,4 +168,8 @@ class BotInstance:
             "enabled": self.config.get("enabled", True),
             "status": self.status,
             "uptime_seconds": uptime,
+            "bot_nickname": self.config.get("bot_nickname", ""),
+            "model_name": self.config.get("model_name", ""),
+            "llm_provider": self.config.get("llm_provider", "openai"),
+            "trigger_keywords": self.config.get("trigger_keywords", []),
         }

@@ -140,6 +140,50 @@ class BotManager:
                 raise ValueError(f"Bot '{bot_id}' not found")
             await instance.restart()
 
+    async def rename(self, old_id: str, new_id: str) -> str:
+        import re
+        if not new_id or not re.match(r'^[a-z0-9_-]+$', new_id):
+            raise ValueError("bot_id must contain only lowercase letters, digits, hyphens, and underscores")
+
+        async with self._lock:
+            if old_id not in self._instances:
+                raise ValueError(f"Bot '{old_id}' not found")
+            if new_id in self._instances:
+                raise ValueError(f"Bot '{new_id}' already exists")
+
+            instance = self._instances[old_id]
+            was_running = instance.is_running()
+
+            if was_running:
+                await instance.stop()
+
+            # Capture old paths before mutating bot_id (config_dir/config_path derive from bot_id)
+            old_dir = instance.config_dir
+            old_config_path = instance.config_path
+
+            instance.config["bot_id"] = new_id
+            instance.bot_id = new_id
+
+            # New paths now reflect the updated bot_id
+            new_dir = instance.config_dir
+            new_config_path = instance.config_path
+
+            old_dir.rename(new_dir)
+
+            import json
+            raw_config = json.loads(new_config_path.read_text(encoding="utf-8"))
+            raw_config["bot_id"] = new_id
+            new_config_path.write_text(json.dumps(raw_config, indent=2, ensure_ascii=False), encoding="utf-8")
+
+            del self._instances[old_id]
+            self._instances[new_id] = instance
+
+            if was_running:
+                await instance.start()
+
+            logger.info(f"Renamed bot '{old_id}' -> '{new_id}'")
+            return new_id
+
     async def shutdown(self) -> None:
         async with self._lock:
             for instance in list(self._instances.values()):

@@ -80,6 +80,19 @@ async def restart_bot(bot_id: str) -> Dict[str, Any]:
     return {"message": f"Bot '{bot_id}' restarted.", "status": instance.status}
 
 
+@router.put("/{bot_id}/rename")
+async def rename_bot(bot_id: str, body: Dict[str, str]) -> Dict[str, Any]:
+    new_id = body.get("new_id", "").strip()
+    if not new_id:
+        raise HTTPException(status_code=400, detail="new_id is required")
+    mgr = _get_manager()
+    try:
+        renamed = await mgr.rename(bot_id, new_id)
+        return {"message": f"Bot renamed to '{renamed}'.", "bot_id": renamed}
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
 @router.get("/{bot_id}/config")
 async def get_bot_config(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
