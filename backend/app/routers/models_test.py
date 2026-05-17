@@ -37,6 +37,8 @@ def _normalize_provider(provider: str) -> str:
         return "anthropic"
     if normalized in {"xai", "grok", "x.ai"}:
         return "grok"
+    if normalized in {"deepseek", "siliconflow", "volcengine", "dashscope", "moonshot", "zhipu", "stepfun"}:
+        return "openai"
     return normalized
 
 

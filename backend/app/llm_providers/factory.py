@@ -13,6 +13,23 @@ PROVIDER_MAP: Dict[str, Type[LLMProvider]] = {
     "google": GoogleProvider,
     "anthropic": AnthropicProvider,
     "grok": XAIProvider,
+    "deepseek": OpenAIProvider,
+    "siliconflow": OpenAIProvider,
+    "volcengine": OpenAIProvider,
+    "dashscope": OpenAIProvider,
+    "moonshot": OpenAIProvider,
+    "zhipu": OpenAIProvider,
+    "stepfun": OpenAIProvider,
+}
+
+PROVIDER_BASE_URLS: Dict[str, str] = {
+    "deepseek": "https://api.deepseek.com",
+    "siliconflow": "https://api.siliconflow.cn/v1",
+    "volcengine": "https://ark.cn-beijing.volces.com/api/v3",
+    "dashscope": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "moonshot": "https://api.moonshot.cn/v1",
+    "zhipu": "https://open.bigmodel.cn/api/paas/v4",
+    "stepfun": "https://api.stepfun.com/v1",
 }
 
 def get_llm_provider(config: Dict[str, Any]) -> LLMProvider:
@@ -32,10 +49,15 @@ def get_llm_provider(config: Dict[str, Any]) -> LLMProvider:
     if provider_name == "xai":
         provider_name = "grok"
     
+    provider_config = dict(config)
+    if provider_name in PROVIDER_BASE_URLS:
+        if not provider_config.get("openai_base_url") and not provider_config.get("base_url"):
+            provider_config["openai_base_url"] = PROVIDER_BASE_URLS[provider_name]
+    
     provider_class = PROVIDER_MAP.get(provider_name)
     
     if not provider_class:
         raise ValueError(f"Unsupported LLM provider: '{provider_name}'. "
                          f"Supported providers are: {list(PROVIDER_MAP.keys())}")
                          
-    return provider_class(config)
+    return provider_class(provider_config)
