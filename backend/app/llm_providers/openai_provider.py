@@ -19,6 +19,12 @@ class OpenAIProvider(LLMProvider):
         os.environ.setdefault("OPENAI_LOG", "warning")
         base_url = config.get("openai_base_url") or self.base_url
         self.client = openai.AsyncOpenAI(api_key=self.api_key, base_url=base_url)
+        if self.custom_headers:
+            for h in self.custom_headers:
+                name = h.get("name", "")
+                value = h.get("value", "")
+                if name and value:
+                    self.client.default_headers[name] = value
 
     def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Dict[str, Any]]:
         """
@@ -51,12 +57,7 @@ class OpenAIProvider(LLMProvider):
     ) -> AsyncGenerator[Tuple[str, Union[str, Dict[str, int]]], None]:
         
         llm_messages = self._prepare_messages(messages, images)
-        api_kwargs = {
-            "model": self.model,
-            "messages": llm_messages,
-            "stream": self.stream,
-            **self.custom_params
-        }
+        api_kwargs = self._build_api_kwargs(self.model, llm_messages, self.stream)
         if tools:
             api_kwargs["tools"] = tools
             api_kwargs["tool_choice"] = "auto"
@@ -138,7 +139,7 @@ class OpenAIProvider(LLMProvider):
                         except Exception as e:
                              llm_messages.append({ "tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": f"Error: {e}"})
 
-                    second_response = await self.client.chat.completions.create(model=self.model, messages=llm_messages, stream=False, **self.custom_params)
+                    second_response = await self.client.chat.completions.create(**self._build_api_kwargs(self.model, llm_messages, False))
                     content = second_response.choices[0].message.content
                     yield "final", content if content else ""
                     

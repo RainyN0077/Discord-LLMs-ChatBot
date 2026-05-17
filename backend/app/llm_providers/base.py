@@ -16,6 +16,13 @@ class LLMProvider(ABC):
         self.base_url = config.get("base_url")
         self.model = config.get("model_name")
         self.stream = config.get("stream_response", True)
+        self.temperature = config.get("temperature")
+        self.max_tokens = config.get("max_tokens")
+        self.top_p = config.get("top_p")
+        self.top_k = config.get("top_k")
+        self.frequency_penalty = config.get("frequency_penalty")
+        self.presence_penalty = config.get("presence_penalty")
+        self.custom_headers = config.get("custom_headers", [])
         self.custom_params = {param["name"]: param["value"] for param in config.get("custom_parameters", [])}
 
     def __repr__(self) -> str:
@@ -49,6 +56,18 @@ class LLMProvider(ABC):
         if False:
             yield "final", "This is an abstract method and should be implemented in subclasses."
         
+    def _build_api_kwargs(self, model, messages, stream, **extra):
+        kwargs = {"model": model, "messages": messages, "stream": stream}
+        if self.temperature is not None: kwargs["temperature"] = self.temperature
+        if self.max_tokens is not None: kwargs["max_tokens"] = self.max_tokens
+        if self.top_p is not None: kwargs["top_p"] = self.top_p
+        if self.top_k is not None: kwargs["top_k"] = self.top_k
+        if self.frequency_penalty is not None: kwargs["frequency_penalty"] = self.frequency_penalty
+        if self.presence_penalty is not None: kwargs["presence_penalty"] = self.presence_penalty
+        kwargs.update(self.custom_params)
+        kwargs.update(extra)
+        return kwargs
+
     def _handle_error(self, e: Exception) -> str:
         """统一处理API调用中的异常，并返回一个带特殊前缀的错误字符串。"""
         error_message = f"LLM_PROVIDER_ERROR: {self.__class__.__name__} encountered an error: {str(e)}"
