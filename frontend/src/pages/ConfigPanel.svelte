@@ -16,14 +16,13 @@
         userPersonas,
         roleConfigs,
         scopedPrompts,
-        isLoading,
-        statusMessage,
-        statusType,
+        activePage,
         saveConfig
     } from '../lib/stores.js';
-    import { fetchBotConfig, updateBotConfig, clearMemory, fetchAvailableModels, testModel, exportBotConfig, importBotConfig } from '../lib/api.js';
+    import { updateBotConfig, clearMemory, fetchAvailableModels, testModel, exportBotConfig, importBotConfig } from '../lib/api.js';
 import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
-import { mapConfigToStores } from '../lib/stores.js';
+    import { loadBotConfigToStores } from '../lib/stores.js';
+    import { providerForPlaceholder } from '../lib/providerDefaults.js';
 
     import Card from '../components/Card.svelte';
     import PluginEditor from '../components/PluginEditor.svelte';
@@ -51,9 +50,7 @@ import { mapConfigToStores } from '../lib/stores.js';
         loadingConfig = true;
         configError = '';
         try {
-            const loadedConfig = await fetchBotConfig(botId);
-            if (!loadedConfig) throw new Error('Empty config returned');
-            mapConfigToStores(loadedConfig);
+            await loadBotConfigToStores(botId);
         } catch (e) {
             configError = String(e.message || e);
         } finally {
@@ -144,13 +141,8 @@ import { mapConfigToStores } from '../lib/stores.js';
     let channelIdToClear = '';
     let fontFileInput;
 
-    // 模型选择相关变量
-    let availableModels = [];
-    let isLoadingModels = false;
-    let testResult = null;
-    let isTesting = false;
-    let useManualInput = false;
     let availableEmbeddingModels = [];
+    let prevEmbedProvider = null;
     let isLoadingEmbeddingModels = false;
     let embeddingTestResult = null;
     let isTestingEmbedding = false;
@@ -166,9 +158,6 @@ import { mapConfigToStores } from '../lib/stores.js';
     let isTestingOcr = false;
     let useManualOcrInput = false;
 
-    let prevLlmProvider = null;
-    let prevApiKey = null;
-    let prevEmbedProvider = null;
     let prevEmbedKey = null;
     let prevRerankProvider = null;
     let prevRerankKey = null;
@@ -192,15 +181,15 @@ import { mapConfigToStores } from '../lib/stores.js';
         { value: 'openai_compatible', labelKey: 'modelProviders.openaiCompatible' },
         { value: 'gemini', labelKey: 'modelProviders.gemini' },
         { value: 'anthropic', labelKey: 'modelProviders.anthropic' },
-        { value: 'anthropic_compatible', labelKey: 'modelProviders.anthropicCompatible' }
+        { value: 'anthropic_compatible', labelKey: 'modelProviders.anthropicCompatible' },
+        { value: 'deepseek', labelKey: 'modelProviders.deepseek' },
+        { value: 'siliconflow', labelKey: 'modelProviders.siliconflow' },
+        { value: 'volcengine', labelKey: 'modelProviders.volcengine' },
+        { value: 'dashscope', labelKey: 'modelProviders.dashscope' },
+        { value: 'moonshot', labelKey: 'modelProviders.moonshot' },
+        { value: 'zhipu', labelKey: 'modelProviders.zhipu' },
+        { value: 'stepfun', labelKey: 'modelProviders.stepfun' }
     ];
-
-    function getProviderBaseUrl() {
-        if ($coreConfig.llm_provider === 'openai') return $coreConfig.openai_base_url || '';
-        if ($coreConfig.llm_provider === 'grok') return $coreConfig.grok_base_url || '';
-        if ($coreConfig.llm_provider === 'anthropic') return $coreConfig.anthropic_base_url || '';
-        return '';
-    }
 
     function buildEndpoint(baseUrl, port) {
         const cleanedBase = (baseUrl || '').trim();
@@ -243,13 +232,6 @@ import { mapConfigToStores } from '../lib/stores.js';
             baseUrl: buildEndpoint($coreConfig.rerank_base_url, $coreConfig.rerank_port),
             modelName: $coreConfig.rerank_model_name
         };
-    }
-
-    function providerForPlaceholder(provider) {
-        if (provider === 'openai' || provider === 'openai_compatible') return 'openai';
-        if (provider === 'grok') return 'grok';
-        if (provider === 'gemini') return 'google';
-        return 'anthropic';
     }
 
     function setOcrTimeoutDisabled(disabled) {
@@ -340,60 +322,6 @@ async function resetFont() {
 }
 
     
-    // 模型选择相关函数
-    async function loadModels() {
-        if (!$coreConfig.api_key) {
-            showStatus(t_get('llmProvider.noApiKey'), 'error');
-            return;
-        }
-        
-        isLoadingModels = true;
-        try {
-            const result = await fetchAvailableModels(
-                $coreConfig.llm_provider,
-                $coreConfig.api_key,
-                getProviderBaseUrl()
-            );
-            availableModels = result.models;
-            useManualInput = false;
-            showStatus(t_get('llmProvider.modelsLoaded'), 'success');
-        } catch (e) {
-            showStatus(t_get('llmProvider.modelsLoadFailed') + e.message, 'error');
-            availableModels = [];
-            useManualInput = true;
-        } finally {
-            isLoadingModels = false;
-        }
-    }
-    
-    async function handleTestModel() {
-        if (!$coreConfig.model_name) {
-            showStatus(t_get('llmProvider.selectModelFirst'), 'error');
-            return;
-        }
-        
-        isTesting = true;
-        testResult = null;
-        try {
-            const result = await testModel(
-                $coreConfig.llm_provider,
-                $coreConfig.api_key,
-                getProviderBaseUrl(),
-                $coreConfig.model_name
-            );
-            testResult = result;
-            if (result.success) {
-                showStatus(t_get('llmProvider.testSuccess'), 'success');
-            } else {
-                showStatus(t_get('llmProvider.testFailed') + result.error, 'error');
-            }
-        } catch (e) {
-            showStatus(t_get('llmProvider.testError') + e.message, 'error');
-        } finally {
-            isTesting = false;
-        }
-    }
-
     async function loadAdvancedModels(task) {
         const config = getAdvancedConfig(task);
         if (!config.apiKey) {
@@ -507,14 +435,6 @@ async function resetFont() {
         }
     }
     
-    // 当provider或API key改变时，重置状态
-    $: if ($coreConfig.llm_provider !== prevLlmProvider || $coreConfig.api_key !== prevApiKey) {
-        prevLlmProvider = $coreConfig.llm_provider;
-        prevApiKey = $coreConfig.api_key;
-        availableModels = [];
-        testResult = null;
-        useManualInput = false;
-    }
     $: if ($coreConfig.embedding_provider !== prevEmbedProvider || $coreConfig.embedding_api_key !== prevEmbedKey) {
         prevEmbedProvider = $coreConfig.embedding_provider;
         prevEmbedKey = $coreConfig.embedding_api_key;
@@ -605,116 +525,10 @@ async function resetFont() {
                     <p class="info">{$t('globalConfig.apiKeyInfo')}</p>
                 </Card>
                 <Card title={$t('llmProvider.title')}>
-                    <div class="provider-top-grid">
-                        <div>
-                            <label for="llm-provider">{$t('llmProvider.select')}</label>
-                            <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
-                                <option value="openai">{$t('llmProvider.providers.openai')}</option><option value="grok">{$t('llmProvider.providers.grok')}</option><option value="google">{$t('llmProvider.providers.google')}</option><option value="anthropic">{$t('llmProvider.providers.anthropic')}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="api-key">{$t('llmProvider.apiKey')}</label>
-                            <input id="api-key" type="password" placeholder={$t('llmProvider.apiKeyPlaceholder')} bind:value={$coreConfig.api_key}>
-                        </div>
-                    </div>
-
-                    {#if $coreConfig.llm_provider === 'openai'}
-                        <div class="provider-extra-row">
-                            <label for="openai-base-url">{$t('llmProvider.baseUrl')} (OpenAI)</label>
-                            <input id="openai-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.openai_base_url}>
-                        </div>
-                    {:else if $coreConfig.llm_provider === 'grok'}
-                        <div class="provider-extra-row">
-                            <label for="grok-base-url">{$t('llmProvider.baseUrl')} (Grok)</label>
-                            <input id="grok-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.grok_base_url}>
-                        </div>
-                    {:else if $coreConfig.llm_provider === 'anthropic'}
-                        <div class="provider-extra-row">
-                            <label for="anthropic-base-url">{$t('llmProvider.baseUrl')} (Anthropic)</label>
-                            <input id="anthropic-base-url" type="text" placeholder={$t('llmProvider.baseUrlPlaceholder')} bind:value={$coreConfig.anthropic_base_url}>
-                        </div>
-                    {/if}
-                    
-                    <div class="model-selector-group">
-                        <label for="model-name">{$t('defaultBehavior.modelName')}</label>
-                        <div class="model-controls">
-                            {#if !useManualInput && availableModels.length > 0}
-                                <select id="model-name" bind:value={$coreConfig.model_name}>
-                                    <option value="">-- {$t('llmProvider.selectModel')} --</option>
-                                    {#each availableModels as model}
-                                        <option value={model}>{model}</option>
-                                    {/each}
-                                </select>
-                            {:else}
-                                <input id="model-name" type="text"
-                                       placeholder={$t(`defaultBehavior.modelPlaceholders.${$coreConfig.llm_provider}`)}
-                                       bind:value={$coreConfig.model_name}>
-                            {/if}
-                            
-                            <div class="model-buttons">
-                                <button class="action-btn-secondary"
-                                        on:click={loadModels}
-                                        disabled={isLoadingModels}
-                                        title={$t('llmProvider.fetchModelsTooltip')}>
-                                    {#if isLoadingModels}
-                                        {$t('llmProvider.loading')}
-                                    {:else if availableModels.length > 0}
-                                        🔄
-                                    {:else}
-                                        {$t('llmProvider.fetchModels')}
-                                    {/if}
-                                </button>
-                                
-                                {#if availableModels.length > 0}
-                                    <button class="action-btn-secondary"
-                                            on:click={() => useManualInput = !useManualInput}
-                                            title={$t('llmProvider.toggleInputMode')}>
-                                        {useManualInput ? '📋' : '✏️'}
-                                    </button>
-                                {/if}
-                                
-                                <button class="action-btn"
-                                        on:click={handleTestModel}
-                                        disabled={isTesting || !$coreConfig.model_name}>
-                                    {isTesting ? $t('llmProvider.testing') : $t('llmProvider.testConnection')}
-                                </button>
-                            </div>
-                        </div>
-                        
-                        {#if availableModels.length > 0 && !useManualInput}
-                            <p class="info">{$t('llmProvider.modelListInfo', { count: availableModels.length })}</p>
-                        {/if}
-                    </div>
-                    
-                    {#if testResult}
-                        <div class="test-result {testResult.success ? 'success' : 'error'}">
-                            <strong>{$t('llmProvider.testResult')}:</strong>
-                            {#if testResult.success}
-                                <p>{$t('llmProvider.modelResponded')}: "{testResult.response}"</p>
-                                {#if testResult.model_info?.usage}
-                                    <p class="usage-info">
-                                        Tokens: {testResult.model_info.usage.total_tokens}
-                                        (Prompt: {testResult.model_info.usage.prompt_tokens},
-                                        Completion: {testResult.model_info.usage.completion_tokens})
-                                    </p>
-                                {/if}
-                            {:else}
-                                <p>{testResult.error}</p>
-                            {/if}
-                        </div>
-                    {/if}
-
-                    <div class="provider-extra-row">
-                        <label class="checkbox-inline fancy-checkbox">
-                            <input type="checkbox" bind:checked={$coreConfig.llm_is_multimodal}>
-                            <span class="checkbox-box" aria-hidden="true"></span>
-                            <span class="checkbox-text">{$t('llmProvider.multimodalLabel')}</span>
-                        </label>
-                        <p class="info">{$t('llmProvider.multimodalInfo')}</p>
-                        {#if $coreConfig.llm_is_multimodal}
-                            <p class="info">{$t('llmProvider.ocrHiddenHint')}</p>
-                        {/if}
-                    </div>
+                    <p class="info">{$t('modelSettings.goToModelSettings')}</p>
+                    <button class="action-btn" on:click={() => activePage.set('models')}>
+                        {$t('modelSettings.openSettings')}
+                    </button>
                 </Card>
                 {#if !$coreConfig.llm_is_multimodal}
                 <Card title={$t('ocrSettings.title')}>
@@ -1491,30 +1305,14 @@ async function resetFont() {
         color: var(--error-text);
     }
     
-    .usage-info {
-        font-size: 0.85rem;
-        opacity: 0.8;
-        margin-top: 0.5rem;
+    .advanced-endpoint-grid {
+        margin-top: .8rem;
     }
 
     .provider-top-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: .9rem;
-    }
-
-    .advanced-endpoint-grid {
-        margin-top: .8rem;
-    }
-
-    .provider-extra-row {
-        display: flex;
-        flex-direction: column;
-        gap: .45rem;
-        padding: .7rem .8rem;
-        border: 1px solid var(--panel-muted-border);
-        border-radius: 12px;
-        background: var(--panel-soft-bg-2);
     }
 
     .api-key-container {

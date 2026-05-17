@@ -4,18 +4,18 @@
     import { fade } from 'svelte/transition';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang, get as t_get } from './i18n.js';
-    import { customFontName } from './lib/stores.js';
+    import { customFontName, activePage } from './lib/stores.js';
     import { setApiSecretKey } from './lib/api.js';
     import './styles/typography.css';
     import Sidebar from './components/Sidebar.svelte';
     import ConfigPanel from './pages/ConfigPanel.svelte';
+    import ModelSettings from './pages/ModelSettings.svelte';
     import Debugger from './pages/Debugger.svelte';
     import LogPanel from './components/LogPanel.svelte';
 
     let selectedBotId = null;
     let theme = 'light';
     let sidebarVisible = true;
-    let activePage = 'config';
 
     function handleBotSelect(event) {
         selectedBotId = event.detail;
@@ -112,11 +112,15 @@
         </div>
         <div class="header-actions">
             <nav class="page-nav" aria-label="Main navigation">
-                <button class:active={activePage === 'config'} on:click={() => activePage = 'config'}>
+                <button class:active={$activePage === 'config'} on:click={() => activePage.set('config')}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     {$t('tabs.core')}
                 </button>
-                <button class:active={activePage === 'debug'} on:click={() => activePage = 'debug'}>
+                <button class:active={$activePage === 'models'} on:click={() => activePage.set('models')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/><path d="M9 7h6"/></svg>
+                    {$t('appNav.modelSettings')}
+                </button>
+                <button class:active={$activePage === 'debug'} on:click={() => activePage.set('debug')}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     {$t('debugger.title')}
                 </button>
@@ -136,12 +140,16 @@
             <Sidebar bind:selectedBotId on:select={handleBotSelect} />
         {/if}
         <main class="main-content">
-            {#key activePage}
-                {#if activePage === 'config'}
+            {#key $activePage}
+                {#if $activePage === 'config'}
                     <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
                         <ConfigPanel {applyFont} botId={selectedBotId} />
                     </div>
-                {:else if activePage === 'debug'}
+                {:else if $activePage === 'models'}
+                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        <ModelSettings botId={selectedBotId} />
+                    </div>
+                {:else if $activePage === 'debug'}
                     <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
                         <Debugger />
                     </div>
