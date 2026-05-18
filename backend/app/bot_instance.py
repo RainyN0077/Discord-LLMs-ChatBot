@@ -143,6 +143,9 @@ class BotInstance:
         if not self.is_running():
             return
         self.status = "stopped"
+        if self._task and not self._task.done():
+            self._task.cancel()
+        self._task = None
         self._client = None
         self.started_at = None
         if self._usage_tracker:
@@ -151,6 +154,8 @@ class BotInstance:
         self._knowledge_manager = None
         self._plugin_manager = None
         self._usage_manager = None
+        from nb_plugins.core_llm_bot.matchers import unregister_bot_instance
+        unregister_bot_instance(self.bot_id)
         logger.info(f"Bot '{self.bot_id}' stopped.")
 
     async def restart(self) -> None:
