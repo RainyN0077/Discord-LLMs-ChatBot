@@ -34,6 +34,9 @@ async def lifespan(app: FastAPI):
         colorize=True,
     )
 
+    from .discord_patch import apply_component_emoji_fix
+    apply_component_emoji_fix()
+
     from nonebot.adapters.discord import Adapter as DiscordAdapter
     driver = nonebot.get_driver()
     driver.register_adapter(DiscordAdapter)
