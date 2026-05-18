@@ -16,6 +16,7 @@
     let error = '';
     let showCreateForm = false;
     let collapsed = false;
+    let operatingBotIds = [];
     let createData = {
         bot_id: '',
         bot_name: '',
@@ -44,16 +45,24 @@
             return;
         }
         renameError = '';
+        operatingBotIds = [...operatingBotIds, botId];
         try {
             const result = await renameBot(botId, newId);
             editingBotId = null;
-            if (selectedBotId === botId) {
-                selectedBotId = result.bot_id;
-                dispatch('select', result.bot_id);
+            const idx = bots.findIndex(b => b.bot_id === botId);
+            if (idx >= 0) {
+                bots[idx] = { ...bots[idx], bot_id: result.bot_id };
+                bots = [...bots];
+                const nextId = result.bot_id;
+                if (selectedBotId === botId) {
+                    selectedBotId = nextId;
+                    dispatch('select', selectedBotId);
+                }
             }
-            await loadBots();
         } catch (err) {
             renameError = String(err.message || err);
+        } finally {
+            operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
     }
 
@@ -97,41 +106,74 @@
 
     async function handleStart(botId, e) {
         e.stopPropagation();
-        try { await startBot(botId); await loadBots(); } catch (err) {
+        operatingBotIds = [...operatingBotIds, botId];
+        try {
+            const result = await startBot(botId);
+            const idx = bots.findIndex(b => b.bot_id === botId);
+            if (idx >= 0) {
+                bots[idx] = { ...bots[idx], status: result.status || 'starting' };
+                bots = [...bots];
+            }
+        } catch (err) {
             error = String(err.message || err);
             console.error('Operation failed:', err);
+        } finally {
+            operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
     }
 
     async function handleStop(botId, e) {
         e.stopPropagation();
-        try { await stopBot(botId); await loadBots(); } catch (err) {
+        operatingBotIds = [...operatingBotIds, botId];
+        try {
+            const result = await stopBot(botId);
+            const idx = bots.findIndex(b => b.bot_id === botId);
+            if (idx >= 0) {
+                bots[idx] = { ...bots[idx], status: result.status || 'stopped' };
+                bots = [...bots];
+            }
+        } catch (err) {
             error = String(err.message || err);
             console.error('Operation failed:', err);
+        } finally {
+            operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
     }
 
     async function handleRestart(botId, e) {
         e.stopPropagation();
-        try { await restartBot(botId); await loadBots(); } catch (err) {
+        operatingBotIds = [...operatingBotIds, botId];
+        try {
+            const result = await restartBot(botId);
+            const idx = bots.findIndex(b => b.bot_id === botId);
+            if (idx >= 0) {
+                bots[idx] = { ...bots[idx], status: result.status || 'running' };
+                bots = [...bots];
+            }
+        } catch (err) {
             error = String(err.message || err);
             console.error('Operation failed:', err);
+        } finally {
+            operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
     }
 
     async function handleDelete(botId, e) {
         e.stopPropagation();
         if (!confirm(t_get('botManager.deleteConfirm', { botId }))) return;
+        operatingBotIds = [...operatingBotIds, botId];
         try {
             await deleteBot(botId);
+            bots = bots.filter(b => b.bot_id !== botId);
             if (selectedBotId === botId) {
-                selectedBotId = bots.length > 1 ? bots.find(b => b.bot_id !== botId)?.bot_id || null : null;
+                selectedBotId = bots.length > 0 ? bots[0]?.bot_id || null : null;
                 dispatch('select', selectedBotId);
             }
-            await loadBots();
         } catch (err) {
             error = String(err.message || err);
             console.error('Operation failed:', err);
+        } finally {
+            operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
     }
 
@@ -199,11 +241,15 @@
                         <div
                             class="bot-card"
                             class:active={selectedBotId === bot.bot_id}
+                            class:operating={operatingBotIds.includes(bot.bot_id)}
                             on:click={() => selectBot(bot.bot_id)}
                             on:keypress={(e) => e.key === 'Enter' && selectBot(bot.bot_id)}
                             role="button"
                             tabindex="0"
                         >
+                            {#if operatingBotIds.includes(bot.bot_id)}
+                                <div class="card-progress-bar"></div>
+                            {/if}
                             <div class="card-top">
                                 <span class="status-dot" class:running={bot.status === 'running'} style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
                                 {#if editingBotId === bot.bot_id}
@@ -393,6 +439,29 @@
         position: relative;
         border: 2px solid transparent;
         outline: none;
+        overflow: hidden;
+    }
+
+    .bot-card.operating {
+        pointer-events: none;
+        opacity: .85;
+    }
+
+    .card-progress-bar {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 2px;
+        width: 100%;
+        background: linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%);
+        background-size: 200% 100%;
+        animation: cardProgress 1.2s ease-in-out infinite;
+        z-index: 1;
+    }
+
+    @keyframes cardProgress {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
     }
 
     .bot-card:hover {
