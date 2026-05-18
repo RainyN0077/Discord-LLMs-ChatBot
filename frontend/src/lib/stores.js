@@ -165,6 +165,11 @@ export const userPersonas = writable({});
 export const roleConfigs = writable({});
 export const scopedPrompts = writable({ guilds: {}, channels: {} });
 export const customParameters = writable([]);
+export const userOptionsConfig = writable({
+    enabled: false,
+    member_search_timeout_ms: 5000,
+    rules: {}
+});
 
 
 // --- General Purpose Stores (Unchanged) ---
@@ -328,6 +333,7 @@ export function mapConfigToStores(config) {
     roleConfigs.set(config.role_based_config || {});
     scopedPrompts.set(config.scoped_prompts || { guilds: {}, channels: {} });
     customParameters.set(config.custom_parameters || []);
+    userOptionsConfig.set(config.user_options || { enabled: false, member_search_timeout_ms: 5000, rules: {} });
 }
 
 export async function loadBotConfigToStores(botId) {
@@ -405,6 +411,7 @@ export async function saveConfig(botId = null) {
         user_personas: get(userPersonas),
         role_based_config: get(roleConfigs),
         scoped_prompts: get(scopedPrompts),
+        user_options: get(userOptionsConfig),
         custom_parameters: get(customParameters).map(p => {
             let value = p.value;
             if (p.type === 'number') value = parseFloat(p.value) || 0;

@@ -419,3 +419,22 @@ export async function importBotConfig(file, overwrite = false) {
     }
     return response.json();
 }
+
+export async function fetchBotGuilds(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/guilds`);
+}
+
+export async function fetchGuildChannels(botId, guildId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/guilds/${guildId}/channels`);
+}
+
+export async function fetchGuildRoles(botId, guildId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/guilds/${guildId}/roles`);
+}
+
+export async function searchGuildMembers(botId, guildId, query, timeoutMs = 5000) {
+    const params = new URLSearchParams();
+    if (query) params.set('query', query);
+    params.set('timeout_ms', String(timeoutMs));
+    return apiFetch(`${BASE_URL}/bots/${botId}/guilds/${guildId}/members?${params.toString()}`);
+}

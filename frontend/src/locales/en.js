@@ -7,7 +7,8 @@ export default {
     personaHub: 'Persona Hub',
     themeDark: 'Switch to dark mode',
     themeLight: 'Switch to light mode',
-    appearance: 'Appearance'
+    appearance: 'Appearance',
+    userOptions: 'User Options'
   },
   promptStudio: {
     title: 'Bot Behavior Configuration Center',
@@ -343,6 +344,52 @@ export default {
     personaPrompt: 'Describe this user\'s identity, characteristics, or relationship with the bot',
     add: 'Add User Portrait',
     triggerKeywordsPlaceholder: 'Trigger Keywords (comma-separated)'
+  },
+  userOptions: {
+    title: 'User Options',
+    titleFor: '{botId} - User Options',
+    remove: 'Remove',
+    tabs: {
+      portrait: 'User Portraits',
+      blocklist: 'Black/White List',
+      guildPortrait: 'Server Portraits',
+      channelPortrait: 'Channel Portraits',
+      rolePortrait: 'Role Portraits'
+    },
+    scopeGlobal: 'Global',
+    scopeGuild: 'Server',
+    scopeChannel: 'Channel',
+    scopeDm: 'DM ({id})',
+    blocklist: {
+      title: 'Block/White List',
+      info: 'Manage user blocklist/whitelist rules by scope. Channel rules have higher priority than server rules than global rules.',
+      enable: 'Enable user options system',
+      memberSearchTimeout: 'Member search timeout (ms)',
+      rules: 'Rules',
+      addRule: 'Add Rule',
+      scopeType: 'Scope Type',
+      selectGuild: 'Select Server',
+      selectChannel: 'Select Channel',
+      selectPlaceholder: '-- Select --',
+      channelIdPlaceholder: 'Enter channel ID',
+      dmUserId: 'User ID',
+      mode: 'Mode',
+      modeBlacklist: 'Blacklist',
+      modeWhitelist: 'Whitelist',
+      whitelistBehavior: 'Whitelist Behavior',
+      wlTriggersOnly: 'Only respond to whitelist',
+      wlMessagesOnly: 'Only show whitelist messages',
+      users: 'Users',
+      searchMembers: 'Search members...',
+      search: 'Search',
+      displayName: 'Display Name',
+      addUser: 'Add User',
+      denyResponse: 'Deny Response',
+      blockMessages: 'Block Messages',
+      negativePortrait: 'Negative Portrait',
+      negativePortraitPlaceholder: 'Enter negative portrait description...',
+      noMembersFound: 'No matching members found'
+    }
   },
   personaHub: {
     title: 'Persona Hub',

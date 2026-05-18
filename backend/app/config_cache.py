@@ -86,6 +86,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'auto_memory_recall_char_limit': 2200,
     'auto_memory_recall_max_age_days': 365,
     'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
+    'user_options': {
+        'enabled': False,
+        'member_search_timeout_ms': 5000,
+        'rules': {}
+    },
     'context_mode': 'channel',
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},

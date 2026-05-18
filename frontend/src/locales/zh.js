@@ -11,7 +11,9 @@ export default {
     modelSettings: '模型设置',
     controlPanel: '控制面板',
     themeDark: '切换到深色模式',
-    themeLight: '切换到浅色模式'
+    themeLight: '切换到浅色模式',
+    userOptions: '用户选项',
+    appearance: '外观设置'
   },
   buttons: {
     save: '保存配置并重启 Bot',
@@ -216,6 +218,52 @@ export default {
     personaPrompt: '描述这个用户的身份、特点或与 Bot 的关系',
     add: '添加用户画像',
     triggerKeywordsPlaceholder: '触发关键词（逗号分隔）'
+  },
+  userOptions: {
+    title: '用户选项',
+    titleFor: '{botId} - 用户选项',
+    remove: '删除',
+    tabs: {
+      portrait: '用户肖像',
+      blocklist: '黑白名单设置',
+      guildPortrait: '服务器肖像',
+      channelPortrait: '频道肖像',
+      rolePortrait: '身份组肖像'
+    },
+    scopeGlobal: '全局',
+    scopeGuild: '服务器',
+    scopeChannel: '频道',
+    scopeDm: '私聊 ({id})',
+    blocklist: {
+      title: '黑白名单',
+      info: '按作用域管理用户的黑名单/白名单规则。频道规则优先级高于服务器规则高于全局规则。',
+      enable: '启用用户选项系统',
+      memberSearchTimeout: '成员搜索超时 (毫秒)',
+      rules: '规则列表',
+      addRule: '添加规则',
+      scopeType: '作用域类型',
+      selectGuild: '选择服务器',
+      selectChannel: '选择频道',
+      selectPlaceholder: '-- 请选择 --',
+      channelIdPlaceholder: '输入频道 ID',
+      dmUserId: '用户 ID',
+      mode: '模式',
+      modeBlacklist: '黑名单',
+      modeWhitelist: '白名单',
+      whitelistBehavior: '白名单行为',
+      wlTriggersOnly: '仅响应白名单请求',
+      wlMessagesOnly: '仅显示白名单消息',
+      users: '用户列表',
+      searchMembers: '搜索成员...',
+      search: '搜索',
+      displayName: '显示名称',
+      addUser: '添加用户',
+      denyResponse: '拒绝响应',
+      blockMessages: '屏蔽用户消息',
+      negativePortrait: '恶化用户肖像',
+      negativePortraitPlaceholder: '输入负面肖像描述...',
+      noMembersFound: '未找到匹配成员'
+    }
   },
   pluginManager: {
     title: '插件管理器',

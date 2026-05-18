@@ -80,6 +80,16 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
 
     config = instance.config
 
+    guild_id = str(event.guild_id) if getattr(event, 'guild_id', None) else None
+    channel_id = str(event.channel_id)
+    user_id = str(event.author.id) if event.author else None
+
+    if user_id and config.get("user_options", {}).get("enabled"):
+        from app.core_logic.user_options_manager import is_user_blocked_from_response
+        if is_user_blocked_from_response(config, guild_id, channel_id, user_id):
+            logger.debug(f"User {user_id} blocked from response in scope channel={channel_id} guild={guild_id}")
+            return
+
     auto_interject_triggered = track_auto_interject(message_ctx, config, _auto_message_counts)
     repeat_parrot_content = track_repeat_parrot(message_ctx, config, _repeat_streaks)
 

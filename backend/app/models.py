@@ -28,6 +28,27 @@ class RoleConfig(BaseModel):
     display_color: str = "#ffffff"
 
 
+class UserBlocklistEntry(BaseModel):
+    user_id: str
+    user_display_name: str = ""
+    blacklist_mode: Literal["negative_portrait", "block_messages", "deny_response"] = "deny_response"
+    negative_portrait: str = ""
+
+
+class UserOptionRule(BaseModel):
+    scope_type: Literal["global", "guild", "channel", "dm"] = "global"
+    scope_id: str = ""
+    mode: Literal["blacklist", "whitelist"] = "blacklist"
+    whitelist_behavior: Literal["messages_only", "triggers_only"] = "triggers_only"
+    users: Dict[str, UserBlocklistEntry] = Field(default_factory=dict)
+
+
+class UserOptionsConfig(BaseModel):
+    enabled: bool = False
+    member_search_timeout_ms: int = Field(5000, ge=1000, le=30000)
+    rules: Dict[str, UserOptionRule] = Field(default_factory=dict)
+
+
 class ContextSettings(BaseModel):
     message_limit: int = Field(ge=0)
     char_limit: int = Field(ge=0)
@@ -155,6 +176,7 @@ class Config(BaseModel):
     world_book_dedup_threshold: Optional[float] = Field(0.0, ge=0, le=1)
     user_personas: Dict[str, Persona] = Field(default_factory=dict)
     role_based_config: Dict[str, RoleConfig] = Field(default_factory=dict)
+    user_options: UserOptionsConfig = Field(default_factory=UserOptionsConfig)
     scoped_prompts: ScopedPrompts = Field(default_factory=ScopedPrompts)
     context_mode: str
     channel_context_settings: ContextSettings

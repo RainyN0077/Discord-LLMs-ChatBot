@@ -8,6 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords, _format_author_id
+from .user_options_manager import is_user_blocked_from_context, is_user_whitelisted_for_context, should_filter_history, get_formatted_block_notice, resolve_user_options
 from ..utils import escape_content, matches_trigger_keywords
 from .knowledge_manager import get_knowledge_manager
 
@@ -226,6 +227,9 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
 
     bot_user_id = _get_bot_user_id(client)
 
+    guild_id = str(message.guild.id) if message.guild else None
+    channel_id = str(message.channel.id)
+
     use_api_history = not hasattr(message.channel, 'history')
     if use_api_history:
         raw_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
@@ -285,6 +289,13 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
     for hist_msg in reversed(fetched_history):
         if not hist_msg.clean_content and not hist_msg.attachments:
             continue
+
+        if should_filter_history(bot_config, guild_id, channel_id):
+            hist_author_id = str(hist_msg.author.id)
+            if is_user_blocked_from_context(bot_config, guild_id, channel_id, hist_author_id):
+                continue
+            if not is_user_whitelisted_for_context(bot_config, guild_id, channel_id, hist_author_id):
+                continue
 
         msg_class = _classify_message_author(hist_msg, bot_user_id)
         role = "assistant" if msg_class == 'own_bot' else "user"
@@ -428,6 +439,22 @@ def format_user_message_for_llm(
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
     author_id_str = _format_author_id(message.author, author_rich_id)
+
+    guild_id = str(message.guild.id) if message.guild else None
+    channel_id = str(message.channel.id)
+    user_id_str = str(message.author.id)
+
+    user_options_config = bot_config.get("user_options") or {}
+    if user_options_config.get("enabled"):
+        resolved = resolve_user_options(bot_config, guild_id, channel_id, user_id_str)
+        if resolved.is_blocked and resolved.mode == "blacklist":
+            block_notice = get_formatted_block_notice(
+                message.author, user_personas, role_based_configs, resolved.blacklist_mode
+            )
+            if resolved.blacklist_mode == "block_messages":
+                return USER_REQUEST_BLOCK_TPL.format(parts=block_notice)
+            elif resolved.blacklist_mode == "deny_response":
+                request_block_parts.insert(0, block_notice)
 
     user_identity_block = f"[当前用户信息]\n[{author_id_str}]\n[/当前用户信息]"
     request_block_parts.insert(0, user_identity_block)
