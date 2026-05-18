@@ -1,9 +1,56 @@
 ﻿# backend/app/core_logic/persona_manager.py
 import re
 from datetime import datetime
-from typing import Any, Dict, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import discord
+
+
+def _get_bot_user_id(client: Any) -> int:
+    user = getattr(client, 'user', None)
+    if user is not None and hasattr(user, 'id') and not callable(user.id):
+        return user.id
+    if hasattr(client, 'self_info') and client.self_info is not None:
+        return int(client.self_info.id)
+    if hasattr(client, 'self_id'):
+        return int(client.self_id)
+    return 0
+
+
+def _get_bot_display_name(client: Any) -> str:
+    user = getattr(client, 'user', None)
+    if user is not None:
+        return getattr(user, 'display_name', None) or getattr(user, 'name', 'Bot')
+    if hasattr(client, 'self_info') and client.self_info is not None:
+        return getattr(client.self_info, 'global_name', None) or getattr(client.self_info, 'username', 'Bot')
+    return 'Bot'
+
+
+def _get_bot_username(client: Any) -> str:
+    user = getattr(client, 'user', None)
+    if user is not None:
+        return getattr(user, 'name', 'Bot')
+    if hasattr(client, 'self_info') and client.self_info is not None:
+        return getattr(client.self_info, 'username', 'Bot')
+    return 'Bot'
+
+
+def _collect_other_bots(
+    message: Any,
+    bot_user_id: int,
+    personas: Dict[str, Any],
+    role_configs: Dict[str, Any],
+) -> List[str]:
+    other_bots: List[str] = []
+    members = getattr(message.guild, 'members', None)
+    if not members:
+        return other_bots
+    for member in members:
+        if member.bot and member.id != bot_user_id:
+            rich_id = get_rich_identity(member, personas, None)
+            bot_str = _format_author_id(member, rich_id)
+            other_bots.append(f"- {bot_str}")
+    return other_bots
 
 
 def get_highest_configured_role(
@@ -42,6 +89,22 @@ def get_rich_identity(
         return role_config["title"]
 
     return display_name
+
+
+def _format_author_id(author: Any, rich_id: str) -> str:
+    """Format author identity string: [display_name 代称：rich_id username id：user_id] or [Bot: ...]."""
+    user_id = author.id
+    username = getattr(author, 'username', None) or getattr(author, 'name', 'Unknown')
+    display_name = getattr(author, 'display_name', username)
+    is_bot = getattr(author, 'bot', False)
+
+    if is_bot:
+        return f"Bot: {display_name} {username} id：{user_id}"
+
+    if rich_id and rich_id != display_name:
+        return f"{display_name} 代称：{rich_id} {username} id：{user_id}"
+    else:
+        return f"{display_name} {username} id：{user_id}"
 
 
 def determine_bot_persona(
@@ -122,6 +185,24 @@ async def build_system_prompt(
     role_based_configs = bot_config.get("role_based_config", {})
 
     final_parts = [f"[Foundation and Core Rules]\n---\n{global_system_prompt}\n---"]
+
+    bot_user_id = _get_bot_user_id(bot)
+    bot_display_name = _get_bot_display_name(bot)
+    bot_username = _get_bot_username(bot)
+
+    if bot_user_id:
+        final_parts.append(
+            "[Bot Self-Awareness]\n"
+            f"- 你的身份：[{bot_display_name} {bot_username} id：{bot_user_id}]\n"
+            '- 历史消息中标记为 "assistant" 的消息是你发出的。\n'
+            '- 标记为 "[Bot: ...]" 的消息是其他 Bot，切勿混淆。\n'
+            "- 仅回复提及你、回复你、或包含触发关键词的消息。"
+        )
+
+    if bot_user_id and message.guild:
+        other_bots = _collect_other_bots(message, bot_user_id, user_personas, role_based_configs)
+        if other_bots:
+            final_parts.append("[当前频道其他 Bot]\n" + "\n".join(other_bots))
 
     if specific_persona_prompt:
         final_parts.append(f"[Current Persona for This Interaction]\n---\n{specific_persona_prompt}\n---")

@@ -1,4 +1,5 @@
 # backend/app/core_logic/context_builder.py
+import asyncio
 import json
 import logging
 import re
@@ -6,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 import discord
 
-from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords
+from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords, _format_author_id
 from ..utils import escape_content, matches_trigger_keywords
 from .knowledge_manager import get_knowledge_manager
 
@@ -99,6 +100,16 @@ class _ApiUserWrapper:
         return getattr(self._user, 'global_name', None) or getattr(self._user, 'username', 'Unknown')
 
     @property
+    def username(self) -> str:
+        if self._user is None:
+            return 'Unknown'
+        return getattr(self._user, 'username', 'Unknown')
+
+    @property
+    def name(self) -> str:
+        return self.username
+
+    @property
     def bot(self) -> bool:
         if self._user is None:
             return False
@@ -145,14 +156,28 @@ class _ApiReferenceWrapper:
 async def _fetch_history_via_api(client: Any, channel_id: int, message_id: int, limit: int, cutoff_timestamp: Optional[datetime]) -> List['_ApiHistoryWrapper']:
     if not hasattr(client, 'get_channel_messages'):
         return []
-    try:
-        raw = await client.get_channel_messages(
-            channel_id=channel_id,
-            before=str(message_id),
-            limit=min(limit, 100),
-        )
-    except Exception:
-        logger.warning("Failed to fetch channel history via REST API for channel %s", channel_id, exc_info=True)
+    max_retries = 2
+    retry_delay = 1.0
+    raw = None
+    for attempt in range(max_retries + 1):
+        try:
+            raw = await client.get_channel_messages(
+                channel_id=channel_id,
+                before=str(message_id),
+                limit=min(limit, 100),
+            )
+            break
+        except Exception:
+            if attempt < max_retries:
+                logger.warning(
+                    "Failed to fetch channel history via REST API for channel %s (attempt %d/%d), retrying in %.1fs...",
+                    channel_id, attempt + 1, max_retries + 1, retry_delay
+                )
+                await asyncio.sleep(retry_delay)
+            else:
+                logger.warning("Failed to fetch channel history via REST API for channel %s after %d attempts", channel_id, max_retries + 1, exc_info=True)
+                return []
+    if raw is None:
         return []
     bot_user_id = _get_bot_user_id(client)
     guild_id = None
@@ -168,9 +193,13 @@ async def _fetch_history_via_api(client: Any, channel_id: int, message_id: int, 
 # --- Constants for structured prompts ---
 # Using constants makes the code cleaner, easier to read, and simplifies future modifications.
 MESSAGE_FORMAT_TPL = "{author_id}: {content}{image_note}"
+USER_MESSAGE_TPL = "[{author_id_str}]: {content}{image_note}"
+BOT_MESSAGE_TPL = "[{author_id_str}]: {content}{image_note}"
+OWN_MESSAGE_TPL = "{content}{image_note}"
 IMAGE_NOTE_TPL = " [该消息还包含{count}张图片]"
 REPLY_CONTEXT_TPL = "[上下文：用户正在回复来自{author_info}的消息]\n回复的消息内容：{replied_content}"
 DELETED_REPLY_CONTEXT_TPL = "[上下文：用户正在回复一条已被删除的消息。]"
+INACCESSIBLE_REPLY_CONTEXT_TPL = "[上下文：用户正在回复一条当前不可见的消息，可能是图片、嵌入式内容或被网关忽略的消息。]"
 DIRECT_MESSAGE_TPL = "{user_message}"
 # [SECURITY] Use XML-like tags to wrap externally injected content to mitigate prompt injection.
 TOOL_CONTEXT_TPL = "[来自工具的额外上下文]\n<tool_output>\n{data}\n</tool_output>"
@@ -257,11 +286,11 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
         if not hist_msg.clean_content and not hist_msg.attachments:
             continue
 
-        is_bot = _is_message_from_bot(hist_msg, bot_user_id)
-        role = "assistant" if is_bot else "user"
+        msg_class = _classify_message_author(hist_msg, bot_user_id)
+        role = "assistant" if msg_class == 'own_bot' else "user"
 
         hist_role_config = None
-        if not is_bot:
+        if msg_class == 'user':
             hist_member = hist_msg.author
             if isinstance(hist_member, discord.User) and hasattr(message, 'guild') and message.guild:
                 hist_member = message.guild.get_member(hist_member.id) or hist_member
@@ -269,6 +298,7 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                 _, hist_role_config = get_highest_configured_role(hist_member, role_based_configs) or (None, None)
 
         rich_id = get_rich_identity(hist_msg.author, user_personas, hist_role_config)
+        author_id_str = _format_author_id(hist_msg.author, rich_id)
 
         image_note = ""
         if hist_msg.attachments:
@@ -278,11 +308,17 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
 
         clean_content = escape_content(hist_msg.clean_content)
 
-        if is_bot:
-            content = f"{clean_content}{image_note}".strip()
+        if msg_class == 'own_bot':
+            content = OWN_MESSAGE_TPL.format(content=clean_content, image_note=image_note).strip()
+        elif msg_class == 'other_bot':
+            content = BOT_MESSAGE_TPL.format(
+                author_id_str=author_id_str,
+                content=clean_content,
+                image_note=image_note
+            )
         else:
-            content = MESSAGE_FORMAT_TPL.format(
-                author_id=rich_id,
+            content = USER_MESSAGE_TPL.format(
+                author_id_str=author_id_str,
                 content=clean_content,
                 image_note=image_note
             )
@@ -298,6 +334,15 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
 
 def _is_message_from_bot(hist_msg: Any, bot_user_id: int) -> bool:
     return hist_msg.author.id == bot_user_id
+
+
+def _classify_message_author(hist_msg: Any, bot_user_id: int) -> str:
+    """Returns 'own_bot', 'other_bot', or 'user'."""
+    if hist_msg.author.id == bot_user_id:
+        return 'own_bot'
+    if getattr(hist_msg.author, 'bot', False):
+        return 'other_bot'
+    return 'user'
 
 
 def _mentions_bot(hist_msg: Any, bot_user_id: int) -> bool:
@@ -348,8 +393,9 @@ def format_user_message_for_llm(
         replied_role_config = None
         if isinstance(replied_member, discord.Member):
             _, replied_role_config = get_highest_configured_role(replied_member, role_based_configs) or (None, None)
-            
-        replied_author_info = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
+
+        replied_rich_id = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
+        replied_author_info = _format_author_id(replied_msg.author, replied_rich_id)
         
         replied_text_content = escape_content(replied_msg.clean_content)
         final_replied_description = replied_text_content
@@ -365,8 +411,12 @@ def format_user_message_for_llm(
                     final_replied_description = f"[消息内容是{image_count}张图片，请查看附件]"
         
         request_block_parts.append(REPLY_CONTEXT_TPL.format(author_info=replied_author_info, replied_content=final_replied_description))
-    elif message.reference: # 如果引用存在但不是有效消息（即已被删除）
-        request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
+    elif message.reference:
+        resolved = getattr(message.reference, 'resolved', None)
+        if isinstance(resolved, discord.DeletedReferencedMessage):
+            request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
+        else:
+            request_block_parts.append(INACCESSIBLE_REPLY_CONTEXT_TPL)
 
     # 添加当前消息中图片的信息
     current_image_info = ""
@@ -377,9 +427,13 @@ def format_user_message_for_llm(
             current_image_info = IMAGE_NOTE_TPL.format(count=current_image_count)
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
-    
-    current_user_message_str = MESSAGE_FORMAT_TPL.format(
-        author_id=author_rich_id,
+    author_id_str = _format_author_id(message.author, author_rich_id)
+
+    user_identity_block = f"[当前用户信息]\n[{author_id_str}]\n[/当前用户信息]"
+    request_block_parts.insert(0, user_identity_block)
+
+    current_user_message_str = USER_MESSAGE_TPL.format(
+        author_id_str=author_id_str,
         content=escape_content(final_text_content),
         image_note=current_image_info
     )
