@@ -49,6 +49,12 @@ class UserOptionsConfig(BaseModel):
     rules: Dict[str, UserOptionRule] = Field(default_factory=dict)
 
 
+class InteractionHistoryConfig(BaseModel):
+    enabled: bool = True
+    max_storage_bytes: int = Field(524288000, ge=10485760)
+    auto_prune: bool = True
+
+
 class ContextSettings(BaseModel):
     message_limit: int = Field(ge=0)
     char_limit: int = Field(ge=0)
@@ -121,6 +127,7 @@ class Config(BaseModel):
     platform: Literal["discord", "qq"] = "discord"
     enabled: bool = True
     discord_token: str
+    discord_intents: Dict[str, bool] = Field(default_factory=dict)
     llm_provider: str
     api_key: str
     base_url: Optional[str] = None
@@ -177,6 +184,7 @@ class Config(BaseModel):
     user_personas: Dict[str, Persona] = Field(default_factory=dict)
     role_based_config: Dict[str, RoleConfig] = Field(default_factory=dict)
     user_options: UserOptionsConfig = Field(default_factory=UserOptionsConfig)
+    interaction_history: InteractionHistoryConfig = Field(default_factory=InteractionHistoryConfig)
     scoped_prompts: ScopedPrompts = Field(default_factory=ScopedPrompts)
     context_mode: str
     channel_context_settings: ContextSettings

@@ -22,7 +22,7 @@ _cache_mtime: float = 0.0
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     'bot_id': '', 'bot_name': 'Unnamed Bot', 'platform': 'discord', 'enabled': True,
-    'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
+    'discord_token': '', 'discord_intents': {'guilds': True, 'guild_messages': True, 'direct_messages': True, 'message_content': True, 'members': True}, 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
     'openai_base_url': None, 'anthropic_base_url': None, 'grok_base_url': None,
     'deepseek_base_url': '', 'siliconflow_base_url': '', 'volcengine_base_url': '',
     'dashscope_base_url': '', 'moonshot_base_url': '', 'zhipu_base_url': '',
@@ -90,6 +90,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         'enabled': False,
         'member_search_timeout_ms': 5000,
         'rules': {}
+    },
+    'interaction_history': {
+        'enabled': True,
+        'max_storage_bytes': 524288000,
+        'auto_prune': True,
     },
     'context_mode': 'channel',
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},

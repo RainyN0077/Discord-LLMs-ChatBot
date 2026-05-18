@@ -438,3 +438,60 @@ export async function searchGuildMembers(botId, guildId, query, timeoutMs = 5000
     params.set('timeout_ms', String(timeoutMs));
     return apiFetch(`${BASE_URL}/bots/${botId}/guilds/${guildId}/members?${params.toString()}`);
 }
+
+export async function fetchBotDiagnostics(botId) {
+    return apiFetch(`${BASE_URL}/bots/${botId}/diagnostics`);
+}
+
+// --- Interaction History API ---
+export async function fetchInteractionTree(botId, filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.guild_id) params.set('guild_id', filters.guild_id);
+    if (filters.role_id) params.set('role_id', filters.role_id);
+    if (filters.channel_id) params.set('channel_id', filters.channel_id);
+    if (filters.member_id) params.set('member_id', filters.member_id);
+    return apiFetch(`${BASE_URL}/interactions/${botId}/tree?${params.toString()}`);
+}
+
+export async function fetchInteractionMembers(botId, guildId) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/members?guild_id=${guildId}`);
+}
+
+export async function fetchInteractionMessages(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/messages?guild_id=${guildId}&role_id=${roleId}&channel_id=${channelId}&member_id=${memberId}&date=${date}`);
+}
+
+export async function fetchInteractionImages(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/images?guild_id=${guildId}&role_id=${roleId}&channel_id=${channelId}&member_id=${memberId}&date=${date}`);
+}
+
+export async function fetchInteractionImageFile(botId, guildId, roleId, channelId, memberId, date, filename) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/image-file?guild_id=${guildId}&role_id=${roleId}&channel_id=${channelId}&member_id=${memberId}&date=${date}&filename=${encodeURIComponent(filename)}`);
+}
+
+export async function fetchInteractionUsage(botId) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/usage`);
+}
+
+export async function deleteInteractionRecords(botId, filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.guild_id) params.set('guild_id', filters.guild_id);
+    if (filters.channel_id) params.set('channel_id', filters.channel_id);
+    if (filters.member_id) params.set('member_id', filters.member_id);
+    if (filters.date) params.set('date', filters.date);
+    return apiFetch(`${BASE_URL}/interactions/${botId}/delete?${params.toString()}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function pruneInteractions(botId) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/prune`, {
+        method: 'POST',
+    });
+}
+
+export async function reconstructContext(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${botId}/context?guild_id=${guildId}&role_id=${roleId}&channel_id=${channelId}&member_id=${memberId}&date=${date}`, {
+        method: 'POST',
+    });
+}

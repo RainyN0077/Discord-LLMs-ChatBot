@@ -82,13 +82,19 @@ class BotInstance:
             token = self.config.get("discord_token", "")
             if not token:
                 return {}
+            default_intents = {
+                "guilds": True,
+                "guild_messages": True,
+                "direct_messages": True,
+                "message_content": True,
+                "members": True,
+            }
+            user_intents = self.config.get("discord_intents", {})
+            intents = {**default_intents, **user_intents}
+            intents = {k: bool(v) for k, v in intents.items()}
             return {
                 "token": token,
-                "intent": {
-                    "guild_messages": True,
-                    "direct_messages": True,
-                    "message_content": True,
-                },
+                "intent": intents,
             }
         elif platform == "qq":
             token = self.config.get("qq_token") or self.config.get("discord_token", "")

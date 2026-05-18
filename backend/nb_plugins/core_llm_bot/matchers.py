@@ -84,10 +84,48 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
     channel_id = str(event.channel_id)
     user_id = str(event.author.id) if event.author else None
 
+    async def _record_interaction(trigger_source: str):
+        ih_config = config.get("interaction_history", {})
+        if not ih_config.get("enabled", True):
+            return
+        try:
+            from app.core_logic.interaction_recorder import get_interaction_recorder
+            recorder = get_interaction_recorder()
+            member_name = (getattr(event.author, 'display_name', None)
+                           or getattr(event.author, 'name', None)
+                           or user_id or "")
+            role_id = "default"
+            if guild_id and hasattr(event, 'author') and hasattr(event.author, 'roles'):
+                for r in reversed(list(getattr(event.author, 'roles', []))):
+                    role_id = str(r.id)
+                    break
+            content = str(getattr(event, 'content', '') or '')
+            attachments = []
+            for att in getattr(event, 'attachments', []) or []:
+                if hasattr(att, 'url'):
+                    attachments.append(str(att.url))
+            bot_id_str = _resolve_bot_id(bot)
+            await recorder.record_message(
+                bot_id=bot_id_str,
+                guild_id=guild_id or "dm",
+                channel_id=channel_id,
+                member_id=user_id or "unknown",
+                member_name=member_name,
+                role_id=role_id,
+                content=content,
+                message_id=str(getattr(event, 'message_id', '') or ''),
+                attachments=attachments,
+                is_bot_reply=False,
+                trigger_source=trigger_source,
+            )
+        except Exception:
+            logger.debug("Failed to record interaction", exc_info=True)
+
     if user_id and config.get("user_options", {}).get("enabled"):
         from app.core_logic.user_options_manager import is_user_blocked_from_response
         if is_user_blocked_from_response(config, guild_id, channel_id, user_id):
             logger.debug(f"User {user_id} blocked from response in scope channel={channel_id} guild={guild_id}")
+            await _record_interaction("blocked")
             return
 
     auto_interject_triggered = track_auto_interject(message_ctx, config, _auto_message_counts)
@@ -118,6 +156,7 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
     if plugin_manager:
         plugin_result = await plugin_manager.process_message(message_ctx, plugin_runtime_config)
         if plugin_result is True:
+            await _record_interaction("plugin_consumed")
             return
 
     plugin_append_blocks: List[str] = []
@@ -135,9 +174,11 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
         )
         logger.info(f"Repeat parrot triggered in channel {event.channel_id}.")
         reset_channel_automation_state(event.channel_id, _auto_message_counts, _repeat_streaks)
+        await _record_interaction("parrot")
         return
 
     if not (normal_triggered or auto_interject_triggered or plugin_append_triggered):
+        await _record_interaction("none")
         return
 
     trigger_sources: List[str] = []
@@ -147,6 +188,9 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
         trigger_sources.append("auto_interject")
     if plugin_append_triggered:
         trigger_sources.append("plugin_append")
+
+    trigger_source_str = ",".join(trigger_sources) if trigger_sources else "unknown"
+    await _record_interaction(trigger_source_str)
 
     channel_id_str = str(event.channel_id)
     queue = _get_queue(_resolve_bot_id(bot))

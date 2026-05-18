@@ -524,6 +524,36 @@ async function resetFont() {
                     </div>
                     <p class="info">{$t('globalConfig.apiKeyInfo')}</p>
                 </Card>
+
+                {#if botId && $coreConfig.discord_token}
+                    {@const intents = $coreConfig.discord_intents || {}}
+                    <Card title={$t('globalConfig.intents.title')}>
+                        <p class="info">{$t('globalConfig.intents.info')}</p>
+                        <div class="intent-grid">
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={intents.guilds !== false} on:change={(e) => coreConfig.update(c => ({ ...c, discord_intents: { ...(c.discord_intents || {}), guilds: e.target.checked } }))}>
+                                <span class="slider"></span>{$t('globalConfig.intents.guilds')}
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={intents.guild_messages !== false} on:change={(e) => coreConfig.update(c => ({ ...c, discord_intents: { ...(c.discord_intents || {}), guild_messages: e.target.checked } }))}>
+                                <span class="slider"></span>{$t('globalConfig.intents.guildMessages')}
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={intents.direct_messages !== false} on:change={(e) => coreConfig.update(c => ({ ...c, discord_intents: { ...(c.discord_intents || {}), direct_messages: e.target.checked } }))}>
+                                <span class="slider"></span>{$t('globalConfig.intents.directMessages')}
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={intents.message_content !== false} on:change={(e) => coreConfig.update(c => ({ ...c, discord_intents: { ...(c.discord_intents || {}), message_content: e.target.checked } }))}>
+                                <span class="slider"></span>{$t('globalConfig.intents.messageContent')}
+                            </label>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={intents.members !== false} on:change={(e) => coreConfig.update(c => ({ ...c, discord_intents: { ...(c.discord_intents || {}), members: e.target.checked } }))}>
+                                <span class="slider"></span>{$t('globalConfig.intents.members')}
+                            </label>
+                        </div>
+                    </Card>
+                {/if}
+
                 <Card title={$t('llmProvider.title')}>
                     <p class="info">{$t('modelSettings.goToModelSettings')}</p>
                     <button class="action-btn" on:click={() => activePage.set('models')}>
@@ -1564,4 +1594,9 @@ async function resetFont() {
             width: 100%;
         }
     }
+    .intent-grid {
+        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: .5rem 1rem;
+    }
+    .intent-grid .toggle-switch { font-size: .8rem; }
 </style>

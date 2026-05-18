@@ -69,6 +69,7 @@ const defaultConfig = {
     user_personas: {},
     role_based_config: {},
     scoped_prompts: { guilds: {}, channels: {} },
+    interaction_history: { enabled: true, max_storage_bytes: 524288000, auto_prune: true },
     context_mode: 'channel',
     channel_context_settings: { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
     memory_context_settings: { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false },
@@ -170,6 +171,11 @@ export const userOptionsConfig = writable({
     member_search_timeout_ms: 5000,
     rules: {}
 });
+export const interactionHistoryConfig = writable({
+    enabled: true,
+    max_storage_bytes: 524288000,
+    auto_prune: true,
+});
 
 
 // --- General Purpose Stores (Unchanged) ---
@@ -244,6 +250,7 @@ export function mapConfigToStores(config) {
     // Distribute config data into the granular stores
     coreConfig.set({
         discord_token: config.discord_token,
+        discord_intents: config.discord_intents || { guilds: true, guild_messages: true, direct_messages: true, message_content: true, members: true },
         llm_provider: config.llm_provider,
         api_key: config.api_key,
         base_url: config.base_url,
@@ -334,6 +341,7 @@ export function mapConfigToStores(config) {
     scopedPrompts.set(config.scoped_prompts || { guilds: {}, channels: {} });
     customParameters.set(config.custom_parameters || []);
     userOptionsConfig.set(config.user_options || { enabled: false, member_search_timeout_ms: 5000, rules: {} });
+    interactionHistoryConfig.set(config.interaction_history || { enabled: true, max_storage_bytes: 524288000, auto_prune: true });
 }
 
 export async function loadBotConfigToStores(botId) {
@@ -412,6 +420,7 @@ export async function saveConfig(botId = null) {
         role_based_config: get(roleConfigs),
         scoped_prompts: get(scopedPrompts),
         user_options: get(userOptionsConfig),
+        interaction_history: get(interactionHistoryConfig),
         custom_parameters: get(customParameters).map(p => {
             let value = p.value;
             if (p.type === 'number') value = parseFloat(p.value) || 0;

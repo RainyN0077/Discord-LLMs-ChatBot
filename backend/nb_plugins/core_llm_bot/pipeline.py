@@ -195,6 +195,10 @@ async def execute_llm_pipeline(
 
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
 
+        await _record_bot_interaction(
+            bot, config, message_ctx, cleaned_response, trigger_sources, downloaded_images
+        )
+
         if usage_data:
             input_tokens = usage_data.get("input_tokens", 0)
             output_tokens = usage_data.get("output_tokens", 0)
@@ -323,3 +327,70 @@ async def process_knowledge_tags_from_context(
         cleaned_text = re.sub(r'<user_info\b.*?</user_info>', '', cleaned_text, flags=re.DOTALL)
 
     return cleaned_text.strip()
+
+
+async def _record_bot_interaction(
+    bot: Bot,
+    config: Dict[str, Any],
+    message_ctx: MessageContext,
+    bot_response: str,
+    trigger_sources: List[str],
+    downloaded_images: List[Dict[str, Any]],
+) -> None:
+    ih_config = config.get("interaction_history", {})
+    if not ih_config.get("enabled", True):
+        return
+    try:
+        from app.core_logic.interaction_recorder import get_interaction_recorder
+        recorder = get_interaction_recorder()
+
+        bot_id = str(getattr(bot, "self_id", "unknown"))
+        guild_id = str(message_ctx.guild.id) if message_ctx.guild else "dm"
+        channel_id = str(message_ctx.channel.id)
+
+        role_id = "default"
+        if message_ctx.guild and hasattr(message_ctx, 'author'):
+            if hasattr(message_ctx.author, 'roles'):
+                for r in reversed(list(getattr(message_ctx.author, 'roles', []))):
+                    role_id = str(r.id)
+                    break
+
+        trigger_source_str = ",".join(trigger_sources) if trigger_sources else "unknown"
+
+        member_name = getattr(message_ctx.author, "display_name", None) or getattr(message_ctx.author, "name", "") or str(getattr(message_ctx.author, "id", ""))
+
+        await recorder.record_message(
+            bot_id=bot_id,
+            guild_id=guild_id,
+            channel_id=channel_id,
+            member_id=str(getattr(message_ctx.author, "id", bot_id)),
+            member_name=member_name,
+            role_id=role_id,
+            content=bot_response,
+            message_id="bot_reply_" + str(message_ctx.id),
+            attachments=[],
+            is_bot_reply=True,
+            trigger_source=trigger_source_str,
+        )
+
+        if downloaded_images:
+            image_bytes_list = []
+            for img in downloaded_images:
+                img_bytes = img.get("bytes")
+                if img_bytes:
+                    image_bytes_list.append(img_bytes)
+            if image_bytes_list:
+                from datetime import datetime, timezone
+                date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                await recorder.record_images(
+                    bot_id=bot_id,
+                    guild_id=guild_id,
+                    channel_id=channel_id,
+                    member_id=str(getattr(message_ctx.author, "id", bot_id)),
+                    role_id=role_id,
+                    date_str=date_str,
+                    message_id=str(message_ctx.id),
+                    image_data_list=image_bytes_list,
+                )
+    except Exception:
+        logger.debug("Failed to record bot interaction", exc_info=True)

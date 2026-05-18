@@ -15,7 +15,7 @@
         saveConfig,
         loadBotConfigToStores
     } from '../lib/stores.js';
-    import { fetchBotGuilds, fetchGuildChannels, fetchGuildRoles, searchGuildMembers } from '../lib/api.js';
+    import { fetchBotGuilds, fetchGuildChannels, fetchGuildRoles, searchGuildMembers, fetchBotDiagnostics } from '../lib/api.js';
     import Card from '../components/Card.svelte';
 
     export let botId = null;
@@ -185,6 +185,7 @@
     let isSearching = {};
     let searchError = {};
     let memberSearchInput = {};
+    let isResolving = {};
 
     async function handleMemberSearch(ruleKey, guildId) {
         if (!botId || !guildId || !memberSearchInput[ruleKey]) return;
@@ -240,9 +241,72 @@
 
     let channelListCache = {};
     async function loadChannelsForGuild(guildId) {
-        if (!botId || !guildId) return;
+        if (!guildId || !botId) return;
         if (channelListCache[guildId]) return;
-        try { const data = await fetchGuildChannels(botId, guildId); channelListCache[guildId] = data.channels || []; } catch (_) {}
+        try {
+            const data = await fetchGuildChannels(botId, guildId);
+            channelListCache[guildId] = data.channels || [];
+        } catch (e) {
+            channelListCache[guildId] = [];
+        }
+    }
+
+    let showDiagnostics = false;
+    let diagnosticsData = null;
+    let diagnosticsLoading = false;
+    let manualGuildId = '';
+    let manualGuildIdInput = {};
+    let isRefreshingGuilds = false;
+
+    async function refreshGuilds() {
+        guildList = [];
+        guildListLoaded = false;
+        isRefreshingGuilds = true;
+        await loadGuildList();
+        isRefreshingGuilds = false;
+        showStatus($t('userOptions.guildListRefreshed'), 'success');
+    }
+
+    async function loadDiagnostics() {
+        if (!botId) return;
+        diagnosticsLoading = true;
+        try {
+            diagnosticsData = await fetchBotDiagnostics(botId);
+            showDiagnostics = true;
+        } catch (e) {
+            showStatus($t('userOptions.diagnosticsFailed', { error: e.message }), 'error');
+        } finally {
+            diagnosticsLoading = false;
+        }
+    }
+
+    async function resolveManualGuild(ruleKey) {
+        const gid = manualGuildIdInput[ruleKey];
+        if (!gid || !botId) return;
+        isResolving[ruleKey] = true;
+        try {
+            const data = await fetchBotGuilds(botId);
+            guildList = data.guilds || [];
+            guildListLoaded = true;
+            const match = guildList.find(g => g.id === gid || g.name === gid);
+            if (match) {
+                userOptionsConfig.update(config => {
+                    const rules = { ...config.rules };
+                    const rule = { ...rules[ruleKey] };
+                    rule.scope_id = match.id;
+                    rules[ruleKey] = rule;
+                    return { ...config, rules };
+                });
+                await loadChannelsForGuild(match.id);
+                showStatus($t('userOptions.guildResolved', { name: match.name }), 'success');
+            } else {
+                showStatus($t('userOptions.guildNotFound', { id: gid }), 'error');
+            }
+        } catch (e) {
+            showStatus($t('userOptions.guildResolveFailed', { error: e.message }), 'error');
+        } finally {
+            isResolving[ruleKey] = false;
+        }
     }
 
     function updateStore() { userOptionsConfig.set({ ...$userOptionsConfig }); }
@@ -382,6 +446,14 @@
                     </div>
                 </Card>
 
+                {#if guildListLoaded && guildList.length === 0}
+                    <div class="uo-guild-warning">
+                        <span class="uo-warning-icon">&#9888;</span>
+                        {$t('userOptions.blocklist.noGuildsWarning')}
+                        <button class="uo-inline-link" on:click={loadDiagnostics}>{$t('userOptions.blocklist.diagnostics')}</button>
+                    </div>
+                {/if}
+
                 <Card title={$t('userOptions.blocklist.rules')}>
                     <div class="uo-rules-container">
                         {#each ruleKeys as rk, idx (rk)}
@@ -439,12 +511,30 @@
                                         <option value="dm">{$t('userOptions.scopeDm', { id: '' })}</option>
                                     </select>
                                     {#if rule.scope_type === 'guild'}
-                                        <select class="uo-scope-select" value={rule.scope_id} on:change={(e) => { updateRuleField(rk, 'scope_id', e.target.value); loadChannelsForGuild(e.target.value); }}>
-                                            <option value="">{$t('userOptions.blocklist.selectPlaceholder')}</option>
-                                            {#each guildList as g}
-                                                <option value={g.id}>{g.name}</option>
-                                            {/each}
-                                        </select>
+                                        <div class="uo-guild-row">
+                                            <select class="uo-scope-select" value={rule.scope_id} on:change={(e) => { updateRuleField(rk, 'scope_id', e.target.value); loadChannelsForGuild(e.target.value); }}>
+                                                <option value="">{$t('userOptions.blocklist.selectPlaceholder')}</option>
+                                                {#each guildList as g}
+                                                    <option value={g.id}>{g.name}</option>
+                                                {/each}
+                                            </select>
+                                            <button class="uo-refresh-btn" on:click={refreshGuilds} disabled={isRefreshingGuilds} title={$t('userOptions.blocklist.refreshGuilds')}>
+                                                {#if isRefreshingGuilds}
+                                                    <span class="uo-spin">&curvearrowright;</span>
+                                                {:else}
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                                                {/if}
+                                            </button>
+                                            <button class="uo-diag-btn" on:click={loadDiagnostics} disabled={diagnosticsLoading} title={$t('userOptions.blocklist.diagnostics')}>
+                                                {diagnosticsLoading ? '...' : '?'}
+                                            </button>
+                                        </div>
+                                        <div class="uo-manual-guild-row">
+                                            <input class="uo-scope-input" type="text" placeholder={$t('userOptions.blocklist.manualGuildPlaceholder')} bind:value={manualGuildIdInput[rk]} on:keydown={(e) => { if (e.key === 'Enter') resolveManualGuild(rk); }}>
+                                            <button class="uo-resolve-btn" on:click={() => resolveManualGuild(rk)} disabled={isResolving[rk]}>
+                                                {isResolving[rk] ? '...' : $t('userOptions.blocklist.resolve')}
+                                            </button>
+                                        </div>
                                     {:else if rule.scope_type === 'channel'}
                                         <select class="uo-scope-select" value="" on:change={(e) => loadChannelsForGuild(e.target.value)}>
                                             <option value="">{$t('userOptions.blocklist.selectPlaceholder')}</option>
@@ -656,6 +746,45 @@
         </div>
     {/if}
 </div>
+
+{#if showDiagnostics && diagnosticsData}
+    <div class="uo-modal-overlay" on:click|self={() => showDiagnostics = false}>
+        <div class="uo-modal">
+            <div class="uo-modal-header">
+                <h3>{$t('userOptions.blocklist.diagnosticsTitle')}</h3>
+                <button class="uo-modal-close" on:click={() => showDiagnostics = false}>&times;</button>
+            </div>
+            <div class="uo-modal-body">
+                <div class="uo-diag-row">
+                    <span class="uo-diag-label">{$t('userOptions.blocklist.diagOnline')}</span>
+                    <span class="uo-diag-value" class:uo-diag-ok={diagnosticsData.online} class:uo-diag-err={!diagnosticsData.online}>
+                        {diagnosticsData.online ? $t('userOptions.blocklist.diagYes') : $t('userOptions.blocklist.diagNo')}
+                    </span>
+                </div>
+                <div class="uo-diag-row">
+                    <span class="uo-diag-label">{$t('userOptions.blocklist.diagGuildCount')}</span>
+                    <span class="uo-diag-value">{diagnosticsData.guild_count}</span>
+                </div>
+                {#each Object.entries(diagnosticsData.intents || {}) as [intent, enabled]}
+                    <div class="uo-diag-row">
+                        <span class="uo-diag-label">Intent: {intent}</span>
+                        <span class="uo-diag-value" class:uo-diag-ok={enabled} class:uo-diag-err={!enabled}>
+                            {enabled ? $t('userOptions.blocklist.diagEnabled') : $t('userOptions.blocklist.diagDisabled')}
+                        </span>
+                    </div>
+                {/each}
+                {#if diagnosticsData.warnings && diagnosticsData.warnings.length}
+                    <div class="uo-diag-warnings">
+                        <strong>{$t('userOptions.blocklist.diagWarnings')}:</strong>
+                        {#each diagnosticsData.warnings as w}
+                            <p class="uo-warning-text">&#9888; {w}</p>
+                        {/each}
+                    </div>
+                {/if}
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .user-options-panel {
@@ -892,4 +1021,70 @@
     .limit-group input { width:60px; padding:.2rem .3rem; font-size:.78rem; }
     .limit-group .unit { font-size:.75rem; color:var(--text-light); }
     .loading-state, .error-state, .empty-state { padding:2rem; text-align:center; color:var(--text-light); }
+
+    .uo-guild-warning {
+        background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3);
+        border-radius: 6px; padding: .55rem .75rem; margin-bottom: .75rem;
+        font-size: .78rem; color: var(--text-color); display: flex; align-items: center;
+        gap: .4rem;
+    }
+    .uo-warning-icon { font-size: 1rem; }
+    .uo-inline-link { background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: .78rem; text-decoration: underline; padding: 0; box-shadow: none; }
+
+    .uo-guild-row { display: flex; align-items: center; gap: .3rem; }
+    .uo-guild-row .uo-scope-select { flex: 1; }
+    .uo-refresh-btn, .uo-diag-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; border: 1px solid var(--floating-border);
+        border-radius: 4px; background: var(--panel-muted-bg); color: var(--text-light);
+        cursor: pointer; padding: 0; box-shadow: none; transition: all .15s;
+    }
+    .uo-refresh-btn:hover, .uo-diag-btn:hover { background: var(--panel-hover-bg); color: var(--text-color); }
+    .uo-refresh-btn:disabled, .uo-diag-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .uo-diag-btn { font-size: .85rem; font-weight: 700; }
+
+    .uo-manual-guild-row { display: flex; align-items: center; gap: .3rem; margin-top: .3rem; }
+    .uo-manual-guild-row .uo-scope-input { flex: 1; }
+    .uo-resolve-btn {
+        padding: .25rem .55rem; font-size: .72rem; border: 1px solid var(--floating-border);
+        border-radius: 4px; background: var(--panel-muted-bg); color: var(--text-color);
+        cursor: pointer; box-shadow: none; transition: all .15s; white-space: nowrap;
+    }
+    .uo-resolve-btn:hover { background: var(--panel-hover-bg); border-color: var(--primary-color); }
+    .uo-resolve-btn:disabled { opacity: .5; cursor: not-allowed; background: var(--panel-muted-bg); }
+
+    .uo-modal-overlay {
+        position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 1000;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .uo-modal {
+        background: var(--card-bg); border: 1px solid var(--floating-border);
+        border-radius: 10px; width: 90%; max-width: 420px; max-height: 80vh;
+        overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.3);
+    }
+    .uo-modal-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: .75rem 1rem; border-bottom: 1px solid var(--floating-border);
+    }
+    .uo-modal-header h3 { margin: 0; font-size: .95rem; color: var(--text-color); }
+    .uo-modal-close {
+        background: none; border: none; color: var(--text-light); font-size: 1.3rem;
+        cursor: pointer; padding: 0 .2rem; line-height: 1; box-shadow: none;
+    }
+    .uo-modal-close:hover { color: var(--danger-color); }
+    .uo-modal-body { padding: .75rem 1rem; }
+    .uo-diag-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: .35rem 0; border-bottom: 1px solid var(--floating-border);
+        font-size: .8rem;
+    }
+    .uo-diag-label { color: var(--text-light); }
+    .uo-diag-value { font-weight: 600; color: var(--text-color); }
+    .uo-diag-ok { color: #22c55e; }
+    .uo-diag-err { color: var(--danger-color); }
+    .uo-diag-warnings { margin-top: .5rem; padding: .5rem; background: rgba(234,179,8,.08); border-radius: 4px; }
+    .uo-diag-warnings strong { font-size: .78rem; color: var(--text-color); }
+    .uo-warning-text { font-size: .76rem; color: #eab308; margin: .2rem 0 0; }
+    .uo-spin { display: inline-block; animation: uoSpin 1s linear infinite; font-size: 1.1rem; }
+    @keyframes uoSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 </style>
