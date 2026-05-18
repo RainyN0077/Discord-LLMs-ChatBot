@@ -847,6 +847,10 @@ export default {
     applyCSS: 'Apply CSS',
     resetCSS: 'Reset to Default',
     resetAll: 'Reset All to Defaults',
-    cssPlaceholder: '/* Enter custom CSS here */\n/* CSS variables: --primary-color, --bg-color, --card-bg, --text-color, etc. */\n/* See README.md for the full CSS variable list */'
+    cssPlaceholder: '/* Enter custom CSS here */\n/* CSS variables: --primary-color, --bg-color, --card-bg, --text-color, etc. */\n/* See README.md for the full CSS variable list */',
+    cyberpunkWipTitle: '⚠ Under Construction',
+    cyberpunkWipBody: 'The Cyberpunk 2077 style is currently under active development. Visual quality is poor and many effects are incomplete. If you have suggestions, please submit an issue or PR on GitHub.',
+    cyberpunkWipConfirm: 'Enable Anyway',
+    cyberpunkWipCancel: 'Cancel',
   }
 };

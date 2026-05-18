@@ -559,6 +559,10 @@ export default {
     applyCSS: '应用 CSS',
     resetCSS: '重置为默认',
     resetAll: '恢复全部默认',
-    cssPlaceholder: '/* 在此输入自定义 CSS */\n/* 变量参考: --primary-color, --bg-color, --card-bg, --text-color 等 */\n/* 查看 README.md 获取完整 CSS 变量列表 */'
+    cssPlaceholder: '/* 在此输入自定义 CSS */\n/* 变量参考: --primary-color, --bg-color, --card-bg, --text-color 等 */\n/* 查看 README.md 获取完整 CSS 变量列表 */',
+    cyberpunkWipTitle: '⚠ 建设中',
+    cyberpunkWipBody: 'Cyberpunk 2077 风格目前仍在积极开发中，视觉效果极差，大量特效尚未完成。如有改进建议，欢迎前往 GitHub 提交 Issue 或 PR。',
+    cyberpunkWipConfirm: '仍然启用',
+    cyberpunkWipCancel: '取消',
   }
 };
