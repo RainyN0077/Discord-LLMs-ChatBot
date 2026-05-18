@@ -441,6 +441,15 @@ input[type="checkbox"] {
     background: rgba(0, 229, 255, .06);
 }
 
+[data-animations="off"] *,
+[data-animations="off"] *::before,
+[data-animations="off"] *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -450,4 +459,106 @@ input[type="checkbox"] {
         transition-duration: .01ms !important;
         scroll-behavior: auto !important;
     }
+}
+
+.overlay-enter {
+    animation: overlay-in .18s ease-out both;
+}
+
+.overlay-exit {
+    animation: overlay-out .12s ease-in both;
+}
+
+@keyframes overlay-in {
+    from {
+        opacity: 0;
+        transform: scale(.96);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes overlay-out {
+    from {
+        opacity: 1;
+        transform: scale(1);
+    }
+    to {
+        opacity: 0;
+        transform: scale(.96);
+    }
+}
+
+.card-interact {
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.card-interact:hover {
+    transform: translateY(-2px) scale(1.01);
+    box-shadow: 0 20px 40px rgba(15, 23, 42, .12);
+}
+
+[data-theme='dark'] .card-interact:hover {
+    box-shadow: 0 20px 40px rgba(3, 8, 16, .65);
+}
+
+[data-theme='neon'] .card-interact:hover {
+    box-shadow: 0 0 36px rgba(0, 229, 255, .18), 0 8px 32px rgba(0, 0, 0, .5);
+}
+
+.btn-press {
+    transition: transform .1s ease;
+}
+
+.btn-press:active {
+    transform: scale(.96);
+}
+
+.switch-spring .slider::before {
+    transition: transform .25s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+.fade-enter {
+    animation: fade-in .15s ease-out both;
+}
+
+.fade-exit {
+    animation: fade-out .1s ease-in both;
+}
+
+@keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+}
+
+[data-style="glass"] .card,
+[data-style="glass"] .app-header,
+[data-style="glass"] .sidebar {
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+}
+
+[data-style="glass"] .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+}
+
+[data-style="minimal"] .card {
+    box-shadow: none;
+    border: 1px solid var(--border-color);
+}
+
+[data-style="minimal"] .card::before {
+    display: none;
+}
+
+[data-style="minimal"] button {
+    box-shadow: none;
 }

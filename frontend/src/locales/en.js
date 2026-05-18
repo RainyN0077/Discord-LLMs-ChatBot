@@ -6,7 +6,8 @@ export default {
     directChat: 'Direct Chat',
     personaHub: 'Persona Hub',
     themeDark: 'Switch to dark mode',
-    themeLight: 'Switch to light mode'
+    themeLight: 'Switch to light mode',
+    appearance: 'Appearance'
   },
   promptStudio: {
     title: 'Bot Behavior Configuration Center',
@@ -835,5 +836,17 @@ export default {
     selectBot: 'Select a bot',
     configFor: 'Config: {botId}',
     loadingConfig: 'Loading configuration for {botId}...'
+  },
+  appearance: {
+    title: 'Appearance',
+    uiStyle: 'UI Style',
+    colorScheme: 'Color Scheme',
+    animationSettings: 'Animation Settings',
+    enablePageTransitions: 'Enable page transition animations',
+    customCSS: 'Custom CSS',
+    applyCSS: 'Apply CSS',
+    resetCSS: 'Reset to Default',
+    resetAll: 'Reset All to Defaults',
+    cssPlaceholder: '/* Enter custom CSS here */\n/* CSS variables: --primary-color, --bg-color, --card-bg, --text-color, etc. */\n/* See README.md for the full CSS variable list */'
   }
 };

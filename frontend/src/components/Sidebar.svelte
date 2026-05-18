@@ -459,6 +459,11 @@
         z-index: 1;
     }
 
+    .bot-item.active {
+        background: var(--sidebar-active-bg, linear-gradient(135deg, rgba(31, 139, 214, .18), rgba(31, 139, 214, .08)));
+        color: var(--sidebar-active-text, var(--primary-color));
+    }
+
     @keyframes cardProgress {
         0% { background-position: 200% 0; }
         100% { background-position: -200% 0; }
@@ -482,7 +487,7 @@
         top: 8px;
         bottom: 8px;
         width: 3px;
-        background: var(--sidebar-active-indicator);
+        background: var(--sidebar-active-indicator, var(--primary-color));
         border-radius: 0 3px 3px 0;
     }
 
@@ -771,7 +776,7 @@
     .create-btn {
         width: 100%;
         padding: .55rem;
-        background: linear-gradient(135deg, var(--primary-color), #1b73b0);
+        background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
         color: #fff;
         border: none;
         font-weight: 600;
@@ -819,7 +824,7 @@
     .create-submit {
         flex: 1;
         padding: .4rem;
-        background: linear-gradient(135deg, var(--save-color), #1a9156);
+        background: linear-gradient(135deg, var(--save-color), var(--save-hover));
         color: #fff;
         border: none;
         border-radius: 6px;

@@ -1,20 +1,21 @@
 <!-- src/App.svelte -->
 <script>
-    import { onMount } from 'svelte';
-    import { fade } from 'svelte/transition';
+    import { onMount, onDestroy } from 'svelte';
+    import { fade, fly } from 'svelte/transition';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang, get as t_get } from './i18n.js';
     import { customFontName, activePage } from './lib/stores.js';
     import { setApiSecretKey } from './lib/api.js';
+    import { initTheme, startThemeSync, stopThemeSync, animationsEnabled } from './lib/themeStore.js';
     import './styles/typography.css';
     import Sidebar from './components/Sidebar.svelte';
     import ConfigPanel from './pages/ConfigPanel.svelte';
     import ModelSettings from './pages/ModelSettings.svelte';
+    import AppearanceSettings from './pages/AppearanceSettings.svelte';
     import Debugger from './pages/Debugger.svelte';
     import LogPanel from './components/LogPanel.svelte';
 
     let selectedBotId = null;
-    let theme = 'light';
     let sidebarVisible = true;
 
     function handleBotSelect(event) {
@@ -55,13 +56,8 @@
             console.warn('Could not pre-fetch config:', e);
         }
 
-        const storedTheme = localStorage.getItem('theme');
-        if (storedTheme === 'dark' || storedTheme === 'light' || storedTheme === 'neon') {
-            theme = storedTheme;
-        } else {
-            theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        }
-        applyTheme(theme);
+        initTheme();
+        startThemeSync();
 
         try {
             const fontDataUrl = await loadFromIndexedDB('customFontDataUrl');
@@ -74,32 +70,15 @@
         }
     });
 
-    function applyTheme(nextTheme) {
-        theme = nextTheme;
-        document.documentElement.setAttribute('data-theme', nextTheme);
-        localStorage.setItem('theme', nextTheme);
-    }
-
-    function toggleTheme() {
-        const cycle = { light: 'dark', dark: 'neon', neon: 'light' };
-        applyTheme(cycle[theme]);
-    }
-
-    function themeIcon(t) {
-        if (t === 'light') return '☀';
-        if (t === 'dark') return '☾';
-        return '⚡';
-    }
-
-    function themeTitle(t) {
-        if (t === 'light') return t_get('appNav.themeLight');
-        if (t === 'dark') return t_get('appNav.themeDark');
-        return 'Neon Vector';
-    }
-
     function toggleSidebar() {
         sidebarVisible = !sidebarVisible;
     }
+
+    onDestroy(() => {
+        stopThemeSync();
+    });
+
+    $: animOn = $animationsEnabled;
 </script>
 
 <div class="app-shell">
@@ -120,6 +99,10 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z"/><path d="M9 7h6"/></svg>
                     {$t('appNav.modelSettings')}
                 </button>
+                <button class:active={$activePage === 'appearance'} on:click={() => activePage.set('appearance')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20"/><path d="M2 12h20"/></svg>
+                    {$t('appNav.appearance')}
+                </button>
                 <button class:active={$activePage === 'debug'} on:click={() => activePage.set('debug')}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     {$t('debugger.title')}
@@ -129,9 +112,6 @@
                 <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
                 <button class:active={$lang === 'en'} on:click={() => setLang('en')}>EN</button>
             </div>
-            <button class="theme-toggle" on:click={toggleTheme} title={themeTitle(theme)}>
-                {themeIcon(theme)}
-            </button>
         </div>
     </header>
 
@@ -142,20 +122,26 @@
         <main class="main-content">
             {#key $activePage}
                 {#if $activePage === 'config'}
-                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
                         <ConfigPanel {applyFont} botId={selectedBotId} />
                     </div>
                 {:else if $activePage === 'models'}
-                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
                         <ModelSettings botId={selectedBotId} />
                     </div>
+                {:else if $activePage === 'appearance'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;">
+                        <AppearanceSettings />
+                    </div>
                 {:else if $activePage === 'debug'}
-                    <div in:fade={{ duration: 150 }} out:fade={{ duration: 100 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
                         <Debugger />
                     </div>
                 {/if}
             {/key}
-            <LogPanel botId={selectedBotId} />
+            {#if $activePage !== 'appearance'}
+                <LogPanel botId={selectedBotId} />
+            {/if}
         </main>
     </div>
 </div>
@@ -299,22 +285,6 @@
         color: #fff;
     }
 
-    .theme-toggle {
-        background: transparent;
-        border: 1px solid var(--border-color);
-        color: var(--text-light);
-        padding: .25rem .55rem;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: .85rem;
-        box-shadow: none;
-    }
-
-    .theme-toggle:hover {
-        color: var(--text-color);
-        border-color: var(--primary-color);
-    }
-
     :root[data-theme='neon'] .app-header {
         border-bottom-color: rgba(0, 229, 255, .35);
         border-bottom-width: 2px;
@@ -324,15 +294,6 @@
     :root[data-theme='neon'] .app-logo {
         color: #00e5ff;
         text-shadow: 0 0 12px rgba(0, 229, 255, .3);
-    }
-
-    :root[data-theme='neon'] .theme-toggle {
-        border-color: rgba(0, 229, 255, .3);
-    }
-
-    :root[data-theme='neon'] .theme-toggle:hover {
-        border-color: #00e5ff;
-        box-shadow: 0 0 10px rgba(0, 229, 255, .2);
     }
 
     .app-body {
@@ -379,11 +340,6 @@
         .lang-switcher button {
             padding: .18rem .3rem;
             font-size: .7rem;
-        }
-
-        .theme-toggle {
-            padding: .2rem .4rem;
-            font-size: .75rem;
         }
     }
 
