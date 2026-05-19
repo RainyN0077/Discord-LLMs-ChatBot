@@ -45,6 +45,13 @@ FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "8094"))
 VITE_PROXY = os.getenv("VITE_API_PROXY_TARGET", f"http://localhost:{BACKEND_PORT}")
 
 IS_WINDOWS = os.name == "nt"
+PY_VER = sys.version_info
+
+
+def _check_python_compat() -> None:
+    if PY_VER >= (3, 14):
+        _log("compat", f"Python {PY_VER.major}.{PY_VER.minor} detected – requires websockets>=15.0", colour="Y")
+        _log("compat", "If you see 'proxy' keyword error, run: pip install 'websockets>=15.0'", colour="Y")
 
 # ── tiny colour helpers ──────────────────────────────────────────────
 _COL = {
@@ -226,6 +233,7 @@ def _wait_for_backend_sync(timeout: float = 60.0) -> bool:
 
 # ── commands ─────────────────────────────────────────────────────────
 def do_install() -> None:
+    _check_python_compat()
     vp = _ensure_venv()
     _log("1/3", "Upgrading pip / setuptools / wheel")
     subprocess.run([str(vp), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], check=True)
@@ -378,6 +386,7 @@ def _on_sigint(signum, frame):
 
 
 def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
+    _check_python_compat()
     signal.signal(signal.SIGINT, _on_sigint)
 
     vp = _ensure_venv()
