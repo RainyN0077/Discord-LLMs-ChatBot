@@ -1,5 +1,8 @@
 from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, field
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -11,13 +14,24 @@ class ResolvedUserOption:
     is_blocked: bool = False
 
 
-RULE_KEY_GLOBAL = "*"
 
 
-def _make_key(scope_type: str, scope_id: str) -> str:
-    if scope_type == "global" or not scope_id:
-        return RULE_KEY_GLOBAL
-    return f"{scope_type}:{scope_id}"
+def _user_in_rule(rule: Dict[str, Any], user_id: str) -> bool:
+    users = rule.get("users") or {}
+    user_id_str = str(user_id)
+    for user_entry in users.values():
+        if isinstance(user_entry, dict) and str(user_entry.get("user_id")) == user_id_str:
+            return True
+    return False
+
+
+def _get_user_entry(rule: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+    users = rule.get("users") or {}
+    user_id_str = str(user_id)
+    for user_entry in users.values():
+        if isinstance(user_entry, dict) and str(user_entry.get("user_id")) == user_id_str:
+            return user_entry
+    return {}
 
 
 def _match_rule(
@@ -26,27 +40,31 @@ def _match_rule(
     guild_id: Optional[str],
     channel_id: Optional[str],
 ) -> Optional[Dict[str, Any]]:
-    if channel_id:
-        key = _make_key("channel", channel_id)
-        rule = rules.get(key)
-        if rule and str(user_id) in (rule.get("users") or {}):
-            return rule
+    user_id_str = str(user_id)
 
-    if guild_id:
-        key = _make_key("guild", guild_id)
-        rule = rules.get(key)
-        if rule and str(user_id) in (rule.get("users") or {}):
-            return rule
+    channel_rule = None
+    guild_rule = None
+    global_rule = None
+    dm_rule = None
 
-    rule = rules.get(RULE_KEY_GLOBAL)
-    if rule and str(user_id) in (rule.get("users") or {}):
-        return rule
+    for _rule_key, rule in rules.items():
+        if not isinstance(rule, dict):
+            continue
+        scope_type = rule.get("scope_type", "")
+        scope_id = str(rule.get("scope_id", ""))
+        if scope_type == "channel" and scope_id == channel_id:
+            channel_rule = rule
+        elif scope_type == "guild" and scope_id == guild_id:
+            guild_rule = rule
+        elif scope_type == "global" or (not scope_id and scope_type != "dm"):
+            global_rule = rule
+        elif scope_type == "dm" and scope_id == channel_id:
+            dm_rule = rule
 
-    if channel_id:
-        key = _make_key("dm", channel_id)
-        rule = rules.get(key)
-        if rule and str(user_id) in (rule.get("users") or {}):
-            return rule
+    for candidate, label in [(channel_rule, "channel"), (guild_rule, "guild"), (global_rule, "global"), (dm_rule, "dm")]:
+        if candidate and _user_in_rule(candidate, user_id_str):
+            logger.info(f"[uo:match] MATCHED user={user_id_str} scope={label} mode={candidate.get('mode')}")
+            return candidate
 
     return None
 
@@ -73,10 +91,10 @@ def resolve_user_options(
     resolved.mode = rule.get("mode", "blacklist")
     resolved.is_blocked = True
 
+    user_entry = _get_user_entry(rule, user_id)
     if resolved.mode == "blacklist":
-        user_entry = (rule.get("users") or {}).get(str(user_id), {})
-        resolved.blacklist_mode = user_entry.get("blacklist_mode", "deny_response")
-        resolved.negative_portrait = user_entry.get("negative_portrait", "")
+        resolved.blacklist_mode = (user_entry.get("blacklist_mode") or "deny_response")
+        resolved.negative_portrait = user_entry.get("negative_portrait") or ""
     elif resolved.mode == "whitelist":
         resolved.whitelist_behavior = rule.get("whitelist_behavior", "triggers_only")
 
@@ -92,10 +110,20 @@ def is_user_blocked_from_response(
     resolved = resolve_user_options(config, guild_id, channel_id, user_id)
     if not resolved.is_blocked:
         return False
+    logger.info(
+        f"[uo:gate:check] user={user_id} mode={resolved.mode} "
+        f"blacklist_mode={resolved.blacklist_mode} whitelist_behavior={resolved.whitelist_behavior} "
+        f"is_blocked={resolved.is_blocked}"
+    )
     if resolved.mode == "blacklist":
-        return resolved.blacklist_mode in ("deny_response", "block_messages")
+        block = resolved.blacklist_mode in ("deny_response", "block_messages")
+        logger.info(f"[uo:gate:result] user={user_id} blacklist_mode={resolved.blacklist_mode} => block={block}")
+        return block
     if resolved.mode == "whitelist":
-        return resolved.whitelist_behavior == "triggers_only"
+        block = resolved.whitelist_behavior == "triggers_only"
+        logger.info(f"[uo:gate:result] user={user_id} whitelist_behavior={resolved.whitelist_behavior} => block={block}")
+        return block
+    logger.info(f"[uo:gate:result] user={user_id} unknown mode={resolved.mode} => block=False")
     return False
 
 
@@ -139,18 +167,26 @@ def is_user_whitelisted_for_context(
     if not rules:
         return True
 
-    for key_priority in [
-        _make_key("channel", channel_id),
-        _make_key("guild", guild_id) if guild_id else None,
-        RULE_KEY_GLOBAL,
-    ]:
-        if not key_priority:
+    user_id_str = str(user_id)
+    channel_rule = None
+    guild_rule = None
+    global_rule = None
+
+    for _rule_key, rule in rules.items():
+        if not isinstance(rule, dict):
             continue
-        rule = rules.get(key_priority)
-        if not rule:
-            continue
-        if rule.get("mode") == "whitelist" and rule.get("whitelist_behavior") == "messages_only":
-            return str(user_id) in (rule.get("users") or {})
+        scope_type = rule.get("scope_type", "")
+        scope_id = str(rule.get("scope_id", ""))
+        if scope_type == "channel" and scope_id == channel_id:
+            channel_rule = rule
+        elif scope_type == "guild" and scope_id == guild_id:
+            guild_rule = rule
+        elif scope_type == "global" or (not scope_id and scope_type not in ("dm", "channel", "guild")):
+            global_rule = rule
+
+    for rule in [channel_rule, guild_rule, global_rule]:
+        if rule and rule.get("mode") == "whitelist" and rule.get("whitelist_behavior") == "messages_only":
+            return _user_in_rule(rule, user_id_str)
 
     return True
 
@@ -165,14 +201,23 @@ def should_filter_history(
         return False
 
     rules: Dict[str, Any] = user_options.get("rules") or {}
-    for key_priority in [
-        _make_key("channel", channel_id),
-        _make_key("guild", guild_id) if guild_id else None,
-        RULE_KEY_GLOBAL,
-    ]:
-        if not key_priority:
+    channel_rule = None
+    guild_rule = None
+    global_rule = None
+
+    for _rule_key, rule in rules.items():
+        if not isinstance(rule, dict):
             continue
-        rule = rules.get(key_priority)
+        scope_type = rule.get("scope_type", "")
+        scope_id = str(rule.get("scope_id", ""))
+        if scope_type == "channel" and scope_id == channel_id:
+            channel_rule = rule
+        elif scope_type == "guild" and scope_id == guild_id:
+            guild_rule = rule
+        elif scope_type == "global" or (not scope_id and scope_type not in ("dm", "channel", "guild")):
+            global_rule = rule
+
+    for rule in [channel_rule, guild_rule, global_rule]:
         if not rule:
             continue
         mode = rule.get("mode")

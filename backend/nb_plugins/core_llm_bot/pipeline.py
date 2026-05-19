@@ -189,7 +189,14 @@ async def execute_llm_pipeline(
         final_chunks = split_message(cleaned_response, 2000)
         for i, chunk in enumerate(final_chunks):
             if i == 0 and chunk.strip():
-                await bot.send(event, chunk, reply_message=True)
+                try:
+                    await bot.send(event, chunk, reply_message=True)
+                except Exception as reply_err:
+                    if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
+                        logger.warning(f"Original message deleted, sending without reply: {reply_err}")
+                        await bot.send_to(channel_id=event.channel_id, message=chunk)
+                    else:
+                        raise
             elif i > 0:
                 await bot.send_to(channel_id=event.channel_id, message=chunk)
 
@@ -230,7 +237,14 @@ async def execute_llm_pipeline(
         logger.error(f"Error processing message: {e}", exc_info=True)
         error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-        await bot.send(event, error_msg, reply_message=True)
+        try:
+            await bot.send(event, error_msg, reply_message=True)
+        except Exception as send_err:
+            logger.warning(f"Failed to send error reply: {send_err}")
+            try:
+                await bot.send_to(channel_id=event.channel_id, message=error_msg)
+            except Exception:
+                logger.error("Failed to send error reply without reply reference, giving up")
 
 
 def _resolve_role_config(bot: Bot, event: MessageEvent, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:

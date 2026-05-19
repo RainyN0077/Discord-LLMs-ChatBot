@@ -123,8 +123,9 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
 
     if user_id and config.get("user_options", {}).get("enabled"):
         from app.core_logic.user_options_manager import is_user_blocked_from_response
-        if is_user_blocked_from_response(config, guild_id, channel_id, user_id):
-            logger.debug(f"User {user_id} blocked from response in scope channel={channel_id} guild={guild_id}")
+        block_result = is_user_blocked_from_response(config, guild_id, channel_id, user_id)
+        if block_result:
+            logger.info(f"[uo:gate] BLOCKED user={user_id} channel={channel_id} guild={guild_id}")
             await _record_interaction("blocked")
             return
 
@@ -224,6 +225,10 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
         return
 
     async def _handler(ctx: dict) -> None:
+        instance = _bot_instance_map.get(resolved_id)
+        if not instance:
+            logger.warning(f"[uo:handler] instance for bot {resolved_id} not found, skipping queued message")
+            return
         await execute_llm_pipeline(
             bot=ctx["bot"],
             event=ctx["event"],
@@ -231,7 +236,7 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
             trigger_sources=ctx["trigger_sources"],
             injected_data=ctx["injected_data"],
             plugin_append_blocks=ctx["plugin_append_blocks"],
-            instance=_bot_instance_map.get(resolved_id),
+            instance=instance,
             auto_message_counts=_auto_message_counts,
             repeat_streaks=_repeat_streaks,
         )
