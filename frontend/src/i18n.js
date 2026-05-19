@@ -111,6 +111,7 @@ const zhOverrides = {
         controlPanel: '控制面板',
         themeDark: '切换到深色模式',
         themeLight: '切换到浅色模式',
+        appearance: '外观',
     },
     modelProviders: {
         openai: 'OpenAI',
@@ -394,6 +395,18 @@ const zhOverrides = {
         stop: '停止',
         restart: '重启',
         delete: '删除',
+    },
+    appearance: {
+        title: '外观设置',
+        uiStyle: 'UI 风格',
+        colorScheme: '配色方案',
+        animationSettings: '动画设置',
+        enablePageTransitions: '启用页面过渡动画',
+        customCSS: '自定义 CSS',
+        applyCSS: '应用 CSS',
+        resetCSS: '重置为默认',
+        resetAll: '恢复全部默认',
+        cssPlaceholder: '/* 在此输入自定义 CSS */\n/* 变量参考: --primary-color, --bg-color, --card-bg, --text-color 等 */\n/* 查看 README.md 获取完整 CSS 变量列表 */',
     },
 };
 

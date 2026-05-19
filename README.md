@@ -244,3 +244,186 @@ python simulations/simulate.py --bot-id my-bot --api-url http://192.168.1.100:80
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+---
+
+## CSS 自定义指南 / CSS Customization Guide
+
+### CSS 变量系统
+
+BOT Manager 使用 CSS 自定义属性（CSS Variables）来管理整个 UI 的主题样式。所有颜色、阴影、圆角、间距等视觉属性都定义在 `:root` 下的 CSS 变量中。通过**外观设置**页面，你可以无需修改任何代码即可切换 UI 风格和配色方案，或注入自定义 CSS。
+
+### 完整 CSS 变量列表
+
+#### 背景 / 表面
+
+| 变量 | 说明 | 浅色默认值 |
+|------|------|-----------|
+| `--bg-color` | 主背景色 | `#eef2f7` |
+| `--card-bg` | 卡片背景色 | `#fff` |
+| `--surface-tint` | 输入框/控件背景 | `#f8fbff` |
+| `--panel-soft-bg` | 次级面板背景 | `#f8f9fa` |
+| `--panel-soft-bg-2` | 三级面板背景 | `#fafbfc` |
+| `--panel-muted-bg` | 弱化面板背景 | `rgba(15, 23, 42, .04)` |
+| `--panel-hover-bg` | 面板 hover 背景 | `#f6f8fb` |
+| `--control-bg` | 按钮控件背景 | `rgba(15, 23, 42, .06)` |
+| `--control-hover-bg` | 按钮 hover 背景 | `rgba(15, 23, 42, .1)` |
+
+#### 文字颜色
+
+| 变量 | 说明 | 浅色默认值 |
+|------|------|-----------|
+| `--text-color` | 主文字颜色 | `#1f2a37` |
+| `--text-light` | 次级文字颜色 | `#66768a` |
+| `--text-muted` | 弱化文字颜色 | `#9ca3af` |
+
+#### 主色 / 强调色
+
+| 变量 | 说明 | 浅色默认值 |
+|------|------|-----------|
+| `--primary-color` | 主色 | `#1f8bd6` |
+| `--primary-hover` | 主色悬停态 | `#1c75b5` |
+| `--success-bg` | 成功背景 | `#e0f2f1` |
+| `--success-text` | 成功文字 | `#00796b` |
+| `--error-bg` | 错误背景 | `#fce4ec` |
+| `--error-text` | 错误文字 | `#c2185b` |
+| `--info-bg` | 信息背景 | `#e1f5fe` |
+| `--info-text` | 信息文字 | `#0277bd` |
+| `--save-color` | 保存按钮颜色 | `#1ea864` |
+| `--save-hover` | 保存按钮悬停 | `#188a51` |
+
+#### 边框 / 分隔线
+
+| 变量 | 说明 | 浅色默认值 |
+|------|------|-----------|
+| `--border-color` | 边框颜色 | `#dde5ee` |
+| `--floating-border` | 浮动面板边框 | `rgba(15, 23, 42, .08)` |
+| `--panel-muted-border` | 弱化面板边框 | `rgba(15, 23, 42, .08)` |
+
+#### 阴影 / 圆角 / 间距
+
+| 变量 | 说明 | 浅色默认值 |
+|------|------|-----------|
+| `--shadow` | 主阴影 | `0 18px 36px rgba(15, 23, 42, .08)` |
+| `--shadow-soft` | 柔和阴影 | `0 6px 14px rgba(15, 23, 42, .07)` |
+| `--radius-md` | 小圆角 | `10px` |
+| `--radius-lg` | 大圆角 | `16px` |
+| `--gap-sm` | 小间距 | `0.5rem` |
+| `--gap-md` | 中间距 | `1rem` |
+| `--gap-lg` | 大间距 | `1.5rem` |
+| `--padding-sm` | 小内边距 | `0.5rem` |
+| `--padding-md` | 中内边距 | `0.75rem` |
+| `--padding-lg` | 大内边距 | `1.25rem` |
+
+#### 侧边栏
+
+| 变量 | 说明 |
+|------|------|
+| `--sidebar-bg` | 侧边栏背景 |
+| `--sidebar-border` | 侧边栏边框 |
+| `--sidebar-active-indicator` | 侧边栏当前指示色 |
+
+#### 日志面板
+
+| 变量 | 说明 |
+|------|------|
+| `--log-shell-bg` | 日志面板背景 |
+| `--log-text-color` | 日志文字颜色 |
+| `--log-time-color` | 日志时间戳颜色 |
+
+#### 标签页 / 导航
+
+| 变量 | 说明 |
+|------|------|
+| `--tab-bg` | 标签背景 |
+| `--tab-hover-bg` | 标签 hover 背景 |
+| `--tab-text` | 标签文字 |
+| `--tab-active-bg` | 活动标签背景 |
+| `--tab-active-text` | 活动标签文字 |
+
+#### 浮动面板 / 底部栏
+
+| 变量 | 说明 |
+|------|------|
+| `--floating-bg` | 浮动面板背景 |
+| `--footer-bg` | 底部栏背景 |
+| `--footer-border` | 底部栏边框 |
+
+### 自定义 CSS 示例
+
+#### 更换主色调
+
+```css
+:root {
+  --primary-color: #e91e63;
+  --primary-hover: #c2185b;
+}
+```
+
+#### 调整字体大小
+
+```css
+body {
+  font-size: 15px;
+}
+
+h2 {
+  font-size: 1.2rem;
+}
+```
+
+#### 自定义侧边栏宽度
+
+```css
+.sidebar {
+  width: 280px !important;
+}
+```
+
+#### 修改卡片圆角
+
+```css
+:root {
+  --radius-md: 6px;
+  --radius-lg: 12px;
+}
+```
+
+#### 自定义代码块/日志字体
+
+```css
+.css-editor,
+.log-panel {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+```
+
+### 动画控制
+
+动画通过 `<html>` 标签上的 `data-animations` 属性控制：
+
+- `data-animations="on"` — 正常播放所有动画（默认）
+- `data-animations="off"` — 禁用所有 CSS 动画和过渡
+
+在外观设置页面中切换「启用页面过渡动画」开关即可控制此属性。你也可以在自定义 CSS 中用此选择器编写条件样式：
+
+```css
+[data-animations="off"] .my-element {
+  /* 仅在动画关闭时生效 */
+}
+```
+
+### 主题开发指南
+
+1. 打开 **外观设置** 页面
+2. 选择一种 **UI 风格**（浅色/深色/霓虹/毛玻璃/极简）
+3. 为当前风格选择一种 **配色方案**（默认/初音绿/天依蓝/樱粉/紫苑/黄昏/深林）
+4. 在 **自定义 CSS** 编辑器中输入额外样式，点击「应用」
+5. 所有设置自动保存到浏览器本地存储，刷新页面后自动恢复
+
+### CSS 书写规范
+
+- **优先使用 `var(--xxx)` 引用已有变量**——代码库中的变量保持语义化，方便统一管理和主题切换
+- **避免使用 `!important`**——除非确有必要覆盖内联样式，否则应依赖选择器特异性
+- **选择器特异性建议**——使用类选择器（`.card`）而非标签选择器，避免与组件内部样式冲突
+- **不建议在自定义 CSS 中覆盖 `:root` 变量**——外观设置页面的配色方案已经提供了完整的变量管理。请使用 UI 风格 + 配色方案矩阵来修改主题色，仅在需要细粒度调整时使用自定义 CSS
