@@ -1,0 +1,8 @@
+# Optional: AstrBot migration dependencies
+# Install with: pip install -r requirements-astrbot.txt
+# NOTE: py-cord (AstrBot's Discord lib) conflicts with discord.py.
+# This is expected — the AstrBot subprocess runs with its own dependencies.
+# Do NOT install both discord.py and py-cord in the same environment unless
+# you are separating the management layer from AstrBot processes.
+
+astrbot>=4.26,<5.0
