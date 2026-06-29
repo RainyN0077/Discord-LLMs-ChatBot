@@ -42,6 +42,12 @@ import { saveToIndexedDB, deleteFromIndexedDB } from '../lib/fontStorage.js';
     let importPendingData = null;
     let importPendingBotId = null;
 
+    // AstrBot migration mode switch
+    let showAstrbotModal = false;
+    let astrbotCountdown = 0;
+    let astrbotCountdownTimer = null;
+    let astrbotPendingMode = 'nonebot';
+
     let configLoadSeq = 0;
 
     async function loadInstanceConfig(seq) {
@@ -456,6 +462,58 @@ async function resetFont() {
         ocrTestResult = null;
         useManualOcrInput = false;
     }
+
+    // --- AstrBot Migration Mode Switch ---
+    function handleAstrbotToggle(event) {
+        const wantsAstrbot = event.target.checked;
+        const currentMode = $coreConfig.provider_mode || 'nonebot';
+
+        if (wantsAstrbot && currentMode !== 'astrbot') {
+            // Switching TO astrbot — show warning modal with countdown
+            astrbotPendingMode = 'astrbot';
+            showAstrbotModal = true;
+            astrbotCountdown = 3;
+            startAstrbotCountdown();
+        } else if (!wantsAstrbot && currentMode === 'astrbot') {
+            // Switching BACK to nonebot — no warning needed
+            coreConfig.update(c => ({ ...c, provider_mode: 'nonebot' }));
+            showStatus('已切换回 NoneBot 模式。保存后生效。', 'success', 3000);
+        }
+    }
+
+    function startAstrbotCountdown() {
+        if (astrbotCountdownTimer) clearInterval(astrbotCountdownTimer);
+        astrbotCountdownTimer = setInterval(() => {
+            astrbotCountdown -= 1;
+            if (astrbotCountdown <= 0) {
+                clearInterval(astrbotCountdownTimer);
+                astrbotCountdownTimer = null;
+                astrbotCountdown = 0;
+            }
+        }, 1000);
+    }
+
+    function confirmAstrbotSwitch() {
+        if (astrbotCountdown > 0) return;
+        coreConfig.update(c => ({ ...c, provider_mode: astrbotPendingMode }));
+        showAstrbotModal = false;
+        if (astrbotCountdownTimer) {
+            clearInterval(astrbotCountdownTimer);
+            astrbotCountdownTimer = null;
+        }
+        showStatus('已切换到 AstrBot 模式（测试中）。保存配置后 Bot 将重启。', 'warning', 6000);
+    }
+
+    function cancelAstrbotSwitch() {
+        showAstrbotModal = false;
+        astrbotPendingMode = 'nonebot';
+        if (astrbotCountdownTimer) {
+            clearInterval(astrbotCountdownTimer);
+            astrbotCountdownTimer = null;
+        }
+        // Reset the toggle back to off
+        coreConfig.update(c => ({ ...c, provider_mode: 'nonebot' }));
+    }
 </script>
 
 <div class="config-panel">
@@ -492,6 +550,39 @@ async function resetFont() {
                         {isImporting ? $t('importExport.importing') : $t('importExport.confirmImport')}
                     </button>
                     <button class="import-cancel-btn" on:click={cancelImport}>{$t('importExport.cancel')}</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- AstrBot Migration Confirmation Modal -->
+    {#if showAstrbotModal}
+        <div class="modal-overlay" on:click={() => {}} on:keydown={() => {}}>
+            <div class="modal-content astrbot-modal">
+                <h3>⚡ 切换底层框架到 AstrBot</h3>
+                <div class="astrbot-warning">
+                    <p>⚠️ <strong>此功能目前处于测试阶段 (Beta)</strong></p>
+                    <p>切换到 AstrBot 将会重启 Bot 进程，Bot 将短暂离线。</p>
+                    <p>如遇到问题，可随时在设置中切换回 NoneBot 模式。</p>
+                </div>
+                <div class="astrbot-countdown">
+                    {#if astrbotCountdown > 0}
+                        <p>请阅读以上提示，{astrbotCountdown} 秒后可确认切换...</p>
+                    {:else}
+                        <p>已了解风险，可以确认切换</p>
+                    {/if}
+                </div>
+                <div class="astrbot-modal-actions">
+                    <button
+                        class="astrbot-confirm-btn"
+                        disabled={astrbotCountdown > 0}
+                        on:click={confirmAstrbotSwitch}
+                    >
+                        {astrbotCountdown > 0 ? `请等待 ${astrbotCountdown}s` : '确认切换到 AstrBot'}
+                    </button>
+                    <button class="astrbot-cancel-btn" on:click={cancelAstrbotSwitch}>
+                        取消
+                    </button>
                 </div>
             </div>
         </div>
@@ -553,6 +644,22 @@ async function resetFont() {
                         </div>
                     </Card>
                 {/if}
+
+                <!-- AstrBot Migration Toggle -->
+                <Card title="Bot 底层框架">
+                    <p class="info">切换 Bot 的底层运行框架。AstrBot 模式目前处于测试阶段。</p>
+                    <label class="toggle-switch switch-spring">
+                        <input
+                            type="checkbox"
+                            checked={($coreConfig.provider_mode || 'nonebot') === 'astrbot'}
+                            on:change={(e) => handleAstrbotToggle(e)}
+                        >
+                        <span class="slider"></span>
+                        <span class="toggle-label">
+                            {($coreConfig.provider_mode || 'nonebot') === 'astrbot' ? 'AstrBot (测试中)' : 'NoneBot (当前)'}
+                        </span>
+                    </label>
+                </Card>
 
                 <Card title={$t('llmProvider.title')}>
                     <p class="info">{$t('modelSettings.goToModelSettings')}</p>
@@ -1599,4 +1706,49 @@ async function resetFont() {
         gap: .5rem 1rem;
     }
     .intent-grid .toggle-switch { font-size: .8rem; }
+
+    /* --- AstrBot Migration Modal --- */
+    .modal-overlay {
+        position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0, 0, 0, 0.6); display: flex; align-items: center;
+        justify-content: center; z-index: 1000;
+    }
+    .astrbot-modal {
+        background: var(--card-bg); border: 1px solid var(--border-color);
+        border-radius: 12px; padding: 2rem; max-width: 480px; width: 90%;
+        box-shadow: 0 8px 32px rgba(0,0,0,.4);
+    }
+    .astrbot-modal h3 {
+        margin: 0 0 1rem; font-size: 1.2rem; color: var(--primary-color);
+    }
+    .astrbot-warning {
+        background: rgba(255, 152, 0, 0.12); border-left: 4px solid #ff9800;
+        border-radius: 6px; padding: .75rem 1rem; margin-bottom: 1rem;
+        font-size: .85rem; line-height: 1.5;
+    }
+    .astrbot-warning p { margin: .25rem 0; }
+    .astrbot-countdown {
+        text-align: center; padding: .75rem; margin-bottom: 1rem;
+        font-size: .9rem; color: var(--text-light);
+    }
+    .astrbot-modal-actions {
+        display: flex; gap: .75rem; justify-content: flex-end;
+    }
+    .astrbot-confirm-btn {
+        padding: .55rem 1.25rem; border: none; border-radius: 6px;
+        cursor: pointer; font-size: .85rem; font-weight: 600;
+        background: var(--primary-color); color: #fff; transition: opacity .2s;
+    }
+    .astrbot-confirm-btn:disabled {
+        opacity: .45; cursor: not-allowed;
+    }
+    .astrbot-cancel-btn {
+        padding: .55rem 1.25rem; border: 1px solid var(--border-color);
+        border-radius: 6px; cursor: pointer; font-size: .85rem;
+        background: transparent; color: var(--text-light);
+    }
+    .astrbot-cancel-btn:hover { background: var(--border-color); }
+    .toggle-label {
+        font-weight: 500;
+    }
 </style>
