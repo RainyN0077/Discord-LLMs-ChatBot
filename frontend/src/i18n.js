@@ -1,7 +1,27 @@
 // src/i18n.js
 import { writable, derived } from 'svelte/store';
-import en from './locales/en.js';
-import zh from './locales/zh.js';
+
+// --- Dynamic locale loaders (only the active language is loaded) ---
+const localeLoaders = {
+    en: () => import('./locales/en.js'),
+    zh: () => import('./locales/zh.js'),
+};
+const _translations = {};
+
+async function loadLocale(langCode) {
+    if (_translations[langCode]) return;
+    if (localeLoaders[langCode]) {
+        try {
+            const mod = await localeLoaders[langCode]();
+            const raw = mod.default;
+            _translations[langCode] = langCode === 'zh'
+                ? mergeDeep(raw, zhOverrides)
+                : raw;
+        } catch (err) {
+            console.error(`Failed to load locale "${langCode}":`, err);
+        }
+    }
+}
 
 function mergeDeep(base, extra) {
     if (typeof base !== 'object' || base === null) return extra;
@@ -410,16 +430,23 @@ const zhOverrides = {
     },
 };
 
-const translations = { en, zh: mergeDeep(zh, zhOverrides) };
-
 const getInitialLang = () => {
-    if (typeof window === 'undefined') return 'en';
+    if (typeof window === 'undefined') return 'zh';
     const browserLang = navigator.language.split('-')[0];
-    return translations[browserLang] ? browserLang : 'en';
+    return localeLoaders[browserLang] ? browserLang : 'zh';
 };
 
 const storedLang = typeof window !== 'undefined' ? localStorage.getItem('lang') : null;
 export const lang = writable(storedLang || getInitialLang());
+
+// Preload the default locale immediately so translations are ready ASAP
+const initialLang = storedLang || getInitialLang();
+if (localeLoaders[initialLang]) {
+    loadLocale(initialLang).then(() => {
+        // Re-trigger reactivity once translations are loaded
+        lang.update(v => v);
+    });
+}
 
 lang.subscribe((value) => {
     if (typeof window !== 'undefined') {
@@ -427,10 +454,16 @@ lang.subscribe((value) => {
     }
 });
 
+let _pendingLang = null;
+
 export function setLang(newLang) {
-    if (translations[newLang]) {
-        lang.set(newLang);
-    }
+    if (!localeLoaders[newLang]) return;
+    _pendingLang = newLang;
+    loadLocale(newLang).then(() => {
+        if (_pendingLang === newLang) {
+            lang.set(newLang);
+        }
+    });
 }
 
 function translate(currentLang, key, vars = {}) {
@@ -439,7 +472,7 @@ function translate(currentLang, key, vars = {}) {
     }
 
     const readKey = (langCode) => {
-        let value = translations[langCode];
+        let value = _translations[langCode];
         const keys = key.split('.');
         for (const k of keys) {
             if (value && typeof value === 'object' && k in value) {

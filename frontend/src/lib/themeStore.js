@@ -1,5 +1,19 @@
 import { writable, get } from 'svelte/store';
-import { STYLES } from './themes.js';
+
+// --- Lazy theme loader ---
+let _STYLES = null;
+let _stylesPromise = null;
+
+async function getStyles() {
+    if (_STYLES) return _STYLES;
+    if (!_stylesPromise) {
+        _stylesPromise = import('./themes.js').then(mod => {
+            _STYLES = mod.STYLES;
+            return _STYLES;
+        });
+    }
+    return _stylesPromise;
+}
 
 const BASE_COLORS = {
   light: {
@@ -260,7 +274,8 @@ function varsToCSS(vars) {
     .join('\n');
 }
 
-function buildThemeCSS(styleId, schemeId) {
+async function buildThemeCSS(styleId, schemeId) {
+  const STYLES = await getStyles();
   const style = STYLES[styleId];
   if (!style) return '';
   let scheme = style.schemes[schemeId];
@@ -283,9 +298,9 @@ function buildThemeCSS(styleId, schemeId) {
   return `${selector} {\n${varsToCSS(merged)}\n}`;
 }
 
-export function applyTheme(styleId, schemeId) {
+export async function applyTheme(styleId, schemeId) {
   const el = ensureStyleElement();
-  el.innerHTML = buildThemeCSS(styleId, schemeId);
+  el.innerHTML = await buildThemeCSS(styleId, schemeId);
   document.documentElement.setAttribute('data-theme', styleId);
   document.documentElement.setAttribute('data-style', styleId);
 }
@@ -304,6 +319,15 @@ export function resetToDefaults() {
 export function initTheme() {
   const styleId = get(activeStyle);
   const schemeId = get(activeScheme);
+
+  // Apply base colors synchronously to prevent flash of unstyled content
+  // while the full theme (themes.js) loads asynchronously
+  const baseColors = BASE_COLORS[styleId] || BASE_COLORS.light;
+  const el = ensureStyleElement();
+  el.innerHTML = `:root {\n${varsToCSS(baseColors)}\n}`;
+  document.documentElement.setAttribute('data-theme', styleId);
+
+  // Then load the full theme asynchronously (fire-and-forget)
   applyTheme(styleId, schemeId);
 
   const animEnabled = get(animationsEnabled);

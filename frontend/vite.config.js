@@ -12,5 +12,20 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
-  }
+  },
+  build: {
+    target: 'es2020',
+    minify: 'esbuild',
+    cssCodeSplit: true,
+    reportCompressedSize: false,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/svelte')) {
+            return 'vendor-svelte';
+          }
+        },
+      },
+    },
+  },
 })

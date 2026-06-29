@@ -7,7 +7,14 @@
   import PluginEditor from '../components/PluginEditor.svelte';
   import RoleConfigEditor from '../components/RoleConfigEditor.svelte';
   import { promptTemplates, behaviorConfig, saveConfig, fetchConfig, statusMessage, statusType, isLoading, roleConfigs } from '../lib/stores.js';
-  import { fetchPromptPresets, fetchPresetDetails, savePromptPreset, deletePromptPreset, fetchPromptPreview } from '../lib/api.js';
+
+  // Stubs — these API functions are not yet implemented on the backend.
+  // When implemented, replace these with real imports from '../lib/api.js'.
+  const fetchPromptPresets = () => { console.warn('fetchPromptPresets: not implemented'); return Promise.resolve([]); };
+  const fetchPresetDetails = () => { console.warn('fetchPresetDetails: not implemented'); return Promise.resolve({}); };
+  const savePromptPreset = () => { console.warn('savePromptPreset: not implemented'); return Promise.resolve(); };
+  const deletePromptPreset = () => { console.warn('deletePromptPreset: not implemented'); return Promise.resolve(); };
+  const fetchPromptPreview = () => { console.warn('fetchPromptPreview: not implemented'); return Promise.resolve({ final_system_prompt: '', final_user_request: '', construction_log: [] }); };
 
   function debounce(fn, delay) {
     let timer;

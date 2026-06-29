@@ -9,12 +9,48 @@
     import { initTheme, startThemeSync, stopThemeSync, animationsEnabled } from './lib/themeStore.js';
     import './styles/typography.css';
     import Sidebar from './components/Sidebar.svelte';
-    import ConfigPanel from './pages/ConfigPanel.svelte';
-    import ModelSettings from './pages/ModelSettings.svelte';
-    import AppearanceSettings from './pages/AppearanceSettings.svelte';
-    import Debugger from './pages/Debugger.svelte';
-    import UserOptions from './pages/UserOptions.svelte';
     import LogPanel from './components/LogPanel.svelte';
+
+    // --- Lazy page loaders (code-split each page into its own chunk) ---
+    const pageLoaders = {
+        config: () => import('./pages/ConfigPanel.svelte'),
+        models: () => import('./pages/ModelSettings.svelte'),
+        appearance: () => import('./pages/AppearanceSettings.svelte'),
+        debug: () => import('./pages/Debugger.svelte'),
+        userOptions: () => import('./pages/UserOptions.svelte'),
+    };
+    let configPromise;
+    let modelsPromise;
+    let appearancePromise;
+    let debugPromise;
+    let userOptionsPromise;
+
+    const pageCache = {};
+
+    function loadPage(key) {
+        if (!pageCache[key]) {
+            pageCache[key] = pageLoaders[key]().catch(err => {
+                delete pageCache[key]; // allow retry on next navigation
+                throw err;
+            });
+        }
+        return pageCache[key];
+    }
+
+    $: {
+        // Only load the currently active page — do NOT preload all pages
+        const page = $activePage;
+        if (pageLoaders[page]) {
+            const promise = loadPage(page);
+            switch (page) {
+                case 'config': configPromise = promise; break;
+                case 'models': modelsPromise = promise; break;
+                case 'appearance': appearancePromise = promise; break;
+                case 'debug': debugPromise = promise; break;
+                case 'userOptions': userOptionsPromise = promise; break;
+            }
+        }
+    }
 
     let selectedBotId = null;
     let sidebarVisible = true;
@@ -128,23 +164,53 @@
             {#key $activePage}
                 {#if $activePage === 'config'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
-                        <ConfigPanel {applyFont} botId={selectedBotId} />
+                        {#await configPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} {applyFont} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'models'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
-                        <ModelSettings botId={selectedBotId} />
+                        {#await modelsPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'appearance'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;">
-                        <AppearanceSettings />
+                        {#await appearancePromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'debug'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
-                        <Debugger />
+                        {#await debugPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'userOptions'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
-                        <UserOptions botId={selectedBotId} />
+                        {#await userOptionsPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {/if}
             {/key}
@@ -370,5 +436,45 @@
         .header-actions {
             gap: .25rem;
         }
+    }
+
+    /* --- Lazy page loading states --- */
+    .page-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 3rem 1rem;
+        color: var(--text-light);
+        font-size: 0.85rem;
+        flex: 1;
+    }
+    .page-spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid var(--border-color);
+        border-top-color: var(--primary-color);
+        border-radius: 50%;
+        animation: page-spin 0.7s linear infinite;
+    }
+    @keyframes page-spin {
+        to { transform: rotate(360deg); }
+    }
+    .page-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 2rem 1rem;
+        color: var(--error-text);
+        text-align: center;
+        flex: 1;
+    }
+    .page-error pre {
+        font-size: 0.75rem;
+        max-width: 100%;
+        overflow-x: auto;
+        color: var(--text-light);
     }
 </style>
