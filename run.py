@@ -165,11 +165,13 @@ def _is_alive(pid: int) -> bool:
 
 
 def _kill(pid: int) -> bool:
+    """Kill a process by PID. Returns True if the process was killed."""
     if not _is_alive(pid):
         return False
     try:
         if IS_WINDOWS:
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+            # /T kills the entire process tree (critical for uvicorn --reload)
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
         else:
             os.kill(pid, signal.SIGTERM)
             time.sleep(0.3)
@@ -178,6 +180,48 @@ def _kill(pid: int) -> bool:
         return True
     except OSError:
         return False
+
+
+def _kill_port(port: int) -> bool:
+    """Kill whichever process is listening on the given port. Returns True if a process was killed."""
+    if not _port_open(port):
+        return False
+    try:
+        if IS_WINDOWS:
+            # Find PID listening on the port
+            r = subprocess.run(
+                ["cmd.exe", "/c", f'netstat -ano | findstr ":{port} " | findstr "LISTENING"'],
+                capture_output=True, text=True,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                lines = r.stdout.strip().splitlines()
+                killed_pids = set()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts:
+                        pid_str = parts[-1]
+                        if pid_str.isdigit() and pid_str not in killed_pids:
+                            killed_pids.add(pid_str)
+                            subprocess.run(
+                                ["taskkill", "/F", "/T", "/PID", pid_str],
+                                capture_output=True,
+                            )
+                return len(killed_pids) > 0
+        else:
+            r = subprocess.run(
+                ["lsof", "-ti", f":{port}"], capture_output=True, text=True
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                for pid_str in r.stdout.strip().splitlines():
+                    pid = int(pid_str)
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(0.3)
+                    if _is_alive(pid):
+                        os.kill(pid, signal.SIGKILL)
+                return True
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return False
 
 
 async def _wait_for_backend(timeout: float = 60.0) -> bool:
@@ -261,22 +305,40 @@ def do_status() -> None:
 
 
 def do_stop() -> None:
+    """Stop all managed processes. Falls back to port-based killing if PID is stale."""
     stopped = 0
+
+    # Phase 1: kill by tracked PID
     for name in ("backend", "frontend"):
         pid = _read_pid(name)
         if pid:
             if _kill(pid):
                 _log("stop", f"{name} (PID {pid})", colour="G")
                 stopped += 1
+            elif _is_alive(pid):
+                _log("stop", f"{name} PID {pid} — failed to kill, trying port fallback", colour="Y")
             else:
-                _log("stop", f"{name} PID {pid} already gone", colour="Y")
+                _log("stop", f"{name} PID {pid} already gone (stale pid file)", colour="Y")
             _clear_pid(name)
 
-    for name in ("backend", "frontend"):
-        _clear_pid(name)
-
-    if not stopped:
-        _log("stop", "No managed processes found", colour="Y")
+    # Phase 2: port-based fallback — kill anything still listening
+    port_map = {"backend": BACKEND_PORT, "frontend": FRONTEND_PORT}
+    for name, port in port_map.items():
+        if _port_open(port):
+            _log("stop", f"Port {port} ({name}) still occupied — killing by port", colour="Y")
+            if _kill_port(port):
+                _log("stop", f"{name} killed by port {port}", colour="G")
+                stopped += 1
+                # Wait for port to release — retry up to 3s
+                for _ in range(30):
+                    if not _port_open(port):
+                        break
+                    time.sleep(0.1)
+                else:
+                    _log("stop", f"Port {port} still occupied after kill — may need manual intervention", colour="R")
+            else:
+                _log("stop", f"Could not free port {port} ({name})", colour="R")
+            _clear_pid(name)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -372,17 +434,58 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
             t.cancel()
 
 
+_shutting_down = False
+_SIGINT_FORCE_TIMEOUT = 5  # seconds before force-kill after first SIGINT
+
+
 def _on_sigint(signum, frame):
-    print(f"\n{c('Y', 'Shutting down...')}")
+    global _shutting_down
+    if _shutting_down:
+        # Second Ctrl+C: immediate force-kill
+        print(f"\n{c('R', 'Force quitting...')}")
+        for p in CHILD_PROCS:
+            try:
+                if IS_WINDOWS:
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+                else:
+                    p.kill()
+            except Exception:
+                pass
+        os._exit(1)
+
+    _shutting_down = True
+    print(f"\n{c('Y', 'Shutting down... (press Ctrl+C again to force)')}")
+
+    # Phase 1: graceful terminate (SIGTERM / CTRL_BREAK_EVENT)
+    for p in CHILD_PROCS:
+        try:
+            if IS_WINDOWS:
+                # Send CTRL_BREAK_EVENT to the process group (uvicorn handles this)
+                try:
+                    p.send_signal(signal.CTRL_BREAK_EVENT)
+                except Exception:
+                    subprocess.run(["taskkill", "/PID", str(p.pid)], capture_output=True)
+            else:
+                p.terminate()
+        except Exception:
+            pass
+
+    # Phase 2: after timeout, force kill
+    time.sleep(_SIGINT_FORCE_TIMEOUT)
     for p in CHILD_PROCS:
         try:
             if IS_WINDOWS:
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
             else:
-                p.terminate()
+                p.kill()
         except Exception:
             pass
-    sys.exit(0)
+
+    # Also clean up via port as final fallback
+    _kill_port(BACKEND_PORT)
+    _kill_port(FRONTEND_PORT)
+
+    os._exit(0)
 
 
 def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
@@ -436,7 +539,7 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
 def _spawn_bg(name: str, args: list[str], cwd: Path, env_extra: dict, port: int) -> subprocess.Popen | None:
     kwargs: dict = {"cwd": str(cwd), "env": dict(os.environ, **env_extra)}
     if IS_WINDOWS:
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS
         kwargs["startupinfo"] = subprocess.STARTUPINFO(
             dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0,
         )
@@ -461,6 +564,22 @@ def _spawn_bg(name: str, args: list[str], cwd: Path, env_extra: dict, port: int)
 
 def do_start_background(backend_only: bool, frontend_only: bool) -> None:
     do_stop()
+
+    # Wait for ports to actually release before starting new processes
+    ports_to_check = []
+    if not frontend_only:
+        ports_to_check.append(("backend", BACKEND_PORT))
+    if not backend_only:
+        ports_to_check.append(("frontend", FRONTEND_PORT))
+
+    for name, port in ports_to_check:
+        for _ in range(50):  # up to 5 seconds
+            if not _port_open(port):
+                break
+            time.sleep(0.1)
+        else:
+            _log(name, f"Port {port} still occupied — starting anyway, may fail", colour="Y")
+
     vp = _ensure_venv()
 
     if not frontend_only:
