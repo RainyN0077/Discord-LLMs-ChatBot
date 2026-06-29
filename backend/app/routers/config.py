@@ -31,7 +31,12 @@ def _get_first_bot_config():
 async def get_config_endpoint(api_key: str = Depends(get_api_key_optional)):
     config_data = _get_first_bot_config()
     if not api_key:
-        return {"api_secret_key": config_data.get("api_secret_key", "")}
+        # Bootstrap: frontend needs api_secret_key to authenticate.
+        # This endpoint is only accessible on localhost (CORS-restricted).
+        existing_key = config_data.get("api_secret_key", "")
+        if not existing_key:
+            return {"api_secret_key": ""}
+        return {"api_secret_key": existing_key}
     try:
         Config.parse_obj(config_data)
         logger.info("Config validation successful")
