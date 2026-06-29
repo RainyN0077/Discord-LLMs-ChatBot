@@ -226,7 +226,7 @@ def _kill_port(port: int) -> bool:
 
 async def _wait_for_backend(timeout: float = 60.0) -> bool:
     """Wait for backend HTTP server to respond (application ready)."""
-    url = f"http://localhost:{BACKEND_PORT}/"
+    url = f"http://127.0.0.1:{BACKEND_PORT}/"
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
@@ -236,7 +236,7 @@ async def _wait_for_backend(timeout: float = 60.0) -> bool:
         if _port_open(BACKEND_PORT):
             if httpx:
                 try:
-                    async with httpx.AsyncClient(timeout=2.0) as client:
+                    async with httpx.AsyncClient(timeout=1.0) as client:
                         r = await client.get(url)
                         if r.status_code < 500:
                             return True
@@ -252,7 +252,7 @@ async def _wait_for_backend(timeout: float = 60.0) -> bool:
 
 def _wait_for_backend_sync(timeout: float = 60.0) -> bool:
     """Synchronous version for background mode."""
-    url = f"http://localhost:{BACKEND_PORT}/"
+    url = f"http://127.0.0.1:{BACKEND_PORT}/"
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
