@@ -18,6 +18,16 @@ class BotManager:
     def __init__(self):
         self._instances: Dict[str, BotInstance] = {}
         self._lock = asyncio.Lock()
+        self._astrbot_manager = None  # Lazy-init on first astrbot-mode bot
+
+    def _get_astrbot_manager(self):
+        if self._astrbot_manager is None:
+            from .astrbot_manager import AstrBotProcessManager
+            self._astrbot_manager = AstrBotProcessManager()
+            # Store in state module so bot_instance can access it
+            from . import state
+            state.astrbot_process_manager = self._astrbot_manager
+        return self._astrbot_manager
 
     def get(self, bot_id: str) -> Optional[BotInstance]:
         return self._instances.get(bot_id)
@@ -87,6 +97,14 @@ class BotManager:
                     logger.info(f"Loaded bot config: {bot_id}")
                 except Exception as e:
                     logger.error(f"Failed to load bot '{bot_id}': {e}", exc_info=True)
+
+            # Lazy-init AstrBotProcessManager if any bot uses astrbot mode
+            has_astrbot = any(
+                inst.provider_mode == "astrbot" for inst in self._instances.values()
+            )
+            if has_astrbot:
+                self._get_astrbot_manager()
+
             for bot_id, instance in self._instances.items():
                 if instance.config.get("enabled", True):
                     try:
@@ -192,4 +210,6 @@ class BotManager:
                 except Exception as e:
                     logger.error(f"Error stopping bot '{instance.bot_id}': {e}", exc_info=True)
             self._instances.clear()
+            if self._astrbot_manager:
+                await self._astrbot_manager.shutdown()
             logger.info("All bots shut down.")

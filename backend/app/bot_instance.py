@@ -28,6 +28,11 @@ class BotInstance:
         self._bot_process_lock = None
 
     @property
+    def provider_mode(self) -> str:
+        """Return the provider mode: 'nonebot' (legacy) or 'astrbot'."""
+        return self.config.get("provider_mode", "nonebot")
+
+    @property
     def config_dir(self) -> Path:
         return BOTS_DIR / self.bot_id
 
@@ -139,11 +144,34 @@ class BotInstance:
 
         self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
 
+        if self.provider_mode == "astrbot":
+            await self._start_astrbot()
+        else:
+            await self._start_nonebot()
+
+        self.status = "running"
+        logger.info(f"Bot '{self.bot_id}' started (mode={self.provider_mode}).")
+
+    async def _start_nonebot(self) -> None:
+        """Start the bot via the legacy NoneBot2 adapter."""
         from nb_plugins.core_llm_bot.matchers import register_bot_instance
         register_bot_instance(self.bot_id, self)
 
-        self.status = "running"
-        logger.info(f"Bot '{self.bot_id}' started via NoneBot adapter.")
+    async def _start_astrbot(self) -> None:
+        """Start the bot via AstrBot subprocess."""
+        from .state import astrbot_process_manager
+        from .astrbot_manager import AstrBotProcessError
+
+        if astrbot_process_manager is None:
+            raise RuntimeError("AstrBotProcessManager not initialized in state.")
+
+        try:
+            await astrbot_process_manager.start(self.bot_id, self.config)
+            logger.info(f"Bot '{self.bot_id}' AstrBot process started.")
+        except AstrBotProcessError as e:
+            self.status = "error"
+            logger.error(f"Failed to start AstrBot process for '{self.bot_id}': {e}")
+            raise
 
     async def stop(self) -> None:
         if not self.is_running():
@@ -160,9 +188,24 @@ class BotInstance:
         self._knowledge_manager = None
         self._plugin_manager = None
         self._usage_manager = None
+
+        if self.provider_mode == "astrbot":
+            await self._stop_astrbot()
+        else:
+            await self._stop_nonebot()
+
+        logger.info(f"Bot '{self.bot_id}' stopped.")
+
+    async def _stop_nonebot(self) -> None:
+        """Unregister from NoneBot2 adapter."""
         from nb_plugins.core_llm_bot.matchers import unregister_bot_instance
         unregister_bot_instance(self.bot_id)
-        logger.info(f"Bot '{self.bot_id}' stopped.")
+
+    async def _stop_astrbot(self) -> None:
+        """Stop the AstrBot subprocess."""
+        from .state import astrbot_process_manager
+        if astrbot_process_manager:
+            await astrbot_process_manager.stop(self.bot_id)
 
     async def restart(self) -> None:
         await self.stop()
@@ -183,4 +226,5 @@ class BotInstance:
             "model_name": self.config.get("model_name", ""),
             "llm_provider": self.config.get("llm_provider", "openai"),
             "trigger_keywords": self.config.get("trigger_keywords", []),
+            "provider_mode": self.provider_mode,
         }
