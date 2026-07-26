@@ -1,4 +1,5 @@
 # backend/app/lll_providers/openai_provider.py
+import asyncio
 import openai
 import base64
 import json
@@ -102,7 +103,10 @@ class OpenAIProvider(LLMProvider):
                         function_to_call = tool_functions.get(function_name)
                         try:
                             function_args = json.loads(tool_call['function']['arguments'])
-                            function_response = function_to_call(**function_args)
+                            if asyncio.iscoroutinefunction(function_to_call):
+                                function_response = await function_to_call(**function_args)
+                            else:
+                                function_response = function_to_call(**function_args)
                             llm_messages.append({ "tool_call_id": tool_call['id'], "role": "tool", "name": function_name, "content": function_response })
                         except Exception as e:
                             logger.error(f"Error executing tool {function_name}: {e}")
@@ -134,7 +138,10 @@ class OpenAIProvider(LLMProvider):
                         function_to_call = tool_functions.get(function_name)
                         try:
                             function_args = json.loads(tool_call.function.arguments)
-                            function_response = function_to_call(**function_args)
+                            if asyncio.iscoroutinefunction(function_to_call):
+                                function_response = await function_to_call(**function_args)
+                            else:
+                                function_response = function_to_call(**function_args)
                             llm_messages.append({ "tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": function_response })
                         except Exception as e:
                              llm_messages.append({ "tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": f"Error: {e}"})

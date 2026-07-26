@@ -1,4 +1,5 @@
-﻿from datetime import datetime, timezone
+﻿import asyncio
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 import json
 import logging
@@ -138,7 +139,7 @@ class MemoryPlugin(BasePlugin):
 
         return False
 
-    def add_to_memory(
+    async def add_to_memory(
         self,
         content: str,
         message: Optional[Any] = None,
@@ -156,12 +157,12 @@ class MemoryPlugin(BasePlugin):
             threshold = self._resolve_threshold(config, "memory_dedup_threshold")
             if threshold > 0:
                 normalized = km._normalize(content)
-                existing_id = km.check_duplicate_memory(normalized)
+                existing_id = await km.check_duplicate_memory(normalized)
                 if existing_id:
                     return json.dumps({"status": "duplicate_found", "message": "A similar memory entry already exists."})
 
             timestamp = datetime.now(timezone.utc).isoformat()
-            ingest_result = km.ingest_memory_candidate(
+            ingest_result = await km.ingest_memory_candidate(
                 content=content,
                 timestamp=timestamp,
                 user_id=str(message.author.id),
@@ -222,7 +223,7 @@ class MemoryPlugin(BasePlugin):
             return [str(item).strip().lower() for item in data if str(item).strip()]
         return []
 
-    def add_to_world_book(
+    async def add_to_world_book(
         self,
         keywords: str,
         content: str,
@@ -244,7 +245,7 @@ class MemoryPlugin(BasePlugin):
             threshold = self._resolve_threshold(config, "world_book_dedup_threshold")
             if threshold > 0:
                 normalized = self._normalize_for_compare(content).lower()
-                existing_id = km.check_duplicate_world_book(normalized)
+                existing_id = await km.check_duplicate_world_book(normalized)
                 if existing_id:
                     return json.dumps({"status": "duplicate_found", "message": "A similar world book entry already exists."})
 
@@ -294,7 +295,7 @@ class MemoryPlugin(BasePlugin):
                 else:
                     user_search_log = f"Could not find a user matching '{subject_of_knowledge}'."
 
-            entry_id = km.add_world_book_entry(
+            entry_id = await km.add_world_book_entry(
                 keywords=keywords,
                 content=content,
                 linked_user_id=linked_user_id,

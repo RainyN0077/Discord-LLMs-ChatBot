@@ -294,7 +294,7 @@ async def process_knowledge_tags_from_context(
                 user_id = str(message_ctx.author.id)
                 user_name = message_ctx.author.name
                 try:
-                    ingest_result = knowledge_mgr.ingest_memory_candidate(
+                    ingest_result = await knowledge_mgr.ingest_memory_candidate(
                         content=stripped_content,
                         timestamp=timestamp,
                         user_id=user_id,
@@ -328,7 +328,7 @@ async def process_knowledge_tags_from_context(
             if not content.strip():
                 continue
             try:
-                knowledge_mgr.add_world_book_entry(
+                await knowledge_mgr.add_world_book_entry(
                     keywords=keywords,
                     content=content,
                     linked_user_id=uid,

@@ -284,7 +284,7 @@ async def direct_chat(request: DirectChatRequest):
             mock_user_message.attachments = _build_mock_attachments(current_attachments)
             mock_user_message.reference = None
 
-            formatted_content = format_user_message_for_llm(mock_user_message, mock_bot, config, role_config)
+            formatted_content = await format_user_message_for_llm(mock_user_message, mock_bot, config, role_config)
             debug_detail_data = {
                 "original_content": str(msg.content or ""),
                 "formatted_content": formatted_content,

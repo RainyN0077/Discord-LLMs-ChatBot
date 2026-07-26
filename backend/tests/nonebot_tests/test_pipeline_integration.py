@@ -125,7 +125,7 @@ async def test_format_user_message_for_llm_with_message_context():
         "scoped_prompts": {},
     }
 
-    result = format_user_message_for_llm(
+    result = await format_user_message_for_llm(
         message=message_ctx,
         client=bot,
         bot_config=config,

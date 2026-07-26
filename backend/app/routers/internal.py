@@ -104,7 +104,7 @@ async def knowledge_ingest(
     ingest_type = payload.get("type", "memory")
     try:
         if ingest_type == "memory":
-            result = knowledge_manager.ingest_memory_candidate(
+            result = await knowledge_manager.ingest_memory_candidate(
                 content=payload.get("content", ""),
                 timestamp=payload.get("timestamp", datetime.now(timezone.utc).isoformat()),
                 user_id=payload.get("user_id", "unknown"),
@@ -115,7 +115,7 @@ async def knowledge_ingest(
             )
             return result
         elif ingest_type == "world_book":
-            knowledge_manager.add_world_book_entry(
+            await knowledge_manager.add_world_book_entry(
                 keywords=payload.get("keywords", ""),
                 content=payload.get("content", ""),
                 linked_user_id=payload.get("linked_user_id"),

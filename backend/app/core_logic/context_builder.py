@@ -372,7 +372,7 @@ def _replies_to_bot(hist_msg: Any, bot_user_id: int) -> bool:
         return False
     return getattr(resolved.author, 'id', None) == bot_user_id
 
-def format_user_message_for_llm(
+async def format_user_message_for_llm(
     message: discord.Message,
     client: discord.Client,
     bot_config: Dict[str, Any],
@@ -488,13 +488,13 @@ def format_user_message_for_llm(
         relevant_user_ids.update(keyword_mentioned_ids)
 
         for user_id in relevant_user_ids:
-            user_entries = get_knowledge_manager().get_world_book_entries_for_user(user_id)
+            user_entries = await get_knowledge_manager().get_world_book_entries_for_user(user_id)
             for entry in user_entries:
                 if entry['id'] not in added_entry_ids:
                     all_wb_entries.append(entry)
                     added_entry_ids.add(entry['id'])
 
-        text_triggered_entries = get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
+        text_triggered_entries = await get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
         for entry in text_triggered_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)

@@ -208,7 +208,7 @@ class TestProcessKnowledgeTags:
         mock_message.channel.id = 222
 
         mock_km = MagicMock()
-        mock_km.ingest_memory_candidate = MagicMock(return_value={"status": "promoted", "memory_id": "mem-1"})
+        mock_km.ingest_memory_candidate = AsyncMock(return_value={"status": "promoted", "memory_id": "mem-1"})
 
         text = "Hello <memory>important fact</memory> World"
 
@@ -237,7 +237,7 @@ class TestProcessKnowledgeTags:
         mock_message.channel.id = 222
 
         mock_km = MagicMock()
-        mock_km.ingest_memory_candidate = MagicMock(return_value={"status": "staged", "candidate_id": "c-1"})
+        mock_km.ingest_memory_candidate = AsyncMock(return_value={"status": "staged", "candidate_id": "c-1"})
 
         text = "<memory>fact one</memory> mid <memory>fact two</memory>"
 
@@ -259,7 +259,7 @@ class TestProcessKnowledgeTags:
         mock_message.channel.id = 222
 
         mock_km = MagicMock()
-        mock_km.ingest_memory_candidate = MagicMock(return_value={"status": "staged"})
+        mock_km.ingest_memory_candidate = AsyncMock(return_value={"status": "staged"})
 
         text = "Before <memory>  </memory> After"
 
@@ -282,7 +282,7 @@ class TestProcessKnowledgeTags:
         mock_message.guild.id = 999
 
         mock_km = MagicMock()
-        mock_km.add_world_book_entry = MagicMock()
+        mock_km.add_world_book_entry = AsyncMock()
 
         text = "Context <user_info id=12345;keywords=python,code;content=User is a developer></user_info> End"
 
@@ -313,7 +313,7 @@ class TestProcessKnowledgeTags:
         mock_message.guild = None
 
         mock_km = MagicMock()
-        mock_km.add_world_book_entry = MagicMock()
+        mock_km.add_world_book_entry = AsyncMock()
 
         text = "<user_info id=99999;content=Direct message user></user_info> text"
 
@@ -338,8 +338,8 @@ class TestProcessKnowledgeTags:
         mock_message.guild.id = 999
 
         mock_km = MagicMock()
-        mock_km.ingest_memory_candidate = MagicMock(return_value={"status": "promoted", "memory_id": "m1"})
-        mock_km.add_world_book_entry = MagicMock()
+        mock_km.ingest_memory_candidate = AsyncMock(return_value={"status": "promoted", "memory_id": "m1"})
+        mock_km.add_world_book_entry = AsyncMock()
 
         text = "Start <memory>remember this</memory> mid <user_info id=42;content=Profile data></user_info> End"
 
@@ -368,7 +368,7 @@ class TestProcessKnowledgeTags:
         mock_message.channel.id = 222
 
         mock_km = MagicMock()
-        mock_km.add_world_book_entry = MagicMock()
+        mock_km.add_world_book_entry = AsyncMock()
 
         text = "Before <user_info nofields></user_info> After"
 
@@ -389,7 +389,7 @@ class TestProcessKnowledgeTags:
         mock_message.channel.id = 222
 
         mock_km = MagicMock()
-        mock_km.ingest_memory_candidate = MagicMock(side_effect=RuntimeError("DB failure"))
+        mock_km.ingest_memory_candidate = AsyncMock(side_effect=RuntimeError("DB failure"))
 
         text = "<memory>some content</memory> rest"
 

@@ -1,4 +1,5 @@
 # backend/app/llm_providers/google_provider.py
+import asyncio
 import json
 import logging
 import os
@@ -157,7 +158,7 @@ class GoogleProvider(LLMProvider):
         function_calls = getattr(response, "function_calls", None)
         return list(function_calls or [])
 
-    def _append_tool_call_turns(
+    async def _append_tool_call_turns(
         self, contents: List[types.Content], function_calls: List[Any], tool_functions: Dict[str, callable]
     ) -> List[types.Content]:
         model_parts: List[types.Part] = []
@@ -175,7 +176,10 @@ class GoogleProvider(LLMProvider):
             if function_to_call:
                 try:
                     logger.info("Executing tool '%s' with args: %s", fn_name, fn_args)
-                    function_result = function_to_call(**fn_args)
+                    if asyncio.iscoroutinefunction(function_to_call):
+                        function_result = await function_to_call(**fn_args)
+                    else:
+                        function_result = function_to_call(**fn_args)
                     parsed_result: Any = function_result
                     if isinstance(function_result, str):
                         try:
@@ -246,7 +250,7 @@ class GoogleProvider(LLMProvider):
 
                 function_calls = self._extract_function_calls(first_response)
                 if function_calls:
-                    contents = self._append_tool_call_turns(contents, function_calls, tool_functions)
+                    contents = await self._append_tool_call_turns(contents, function_calls, tool_functions)
 
             if self.stream:
                 full_response = ""

@@ -77,7 +77,7 @@ async def simulate_debugger_run(request: DebuggerRequest):
         mock_message,
         active_directives_log,
     )
-    formatted_content = format_user_message_for_llm(mock_message, mock_bot, config, role_config)
+    formatted_content = await format_user_message_for_llm(mock_message, mock_bot, config, role_config)
 
     llm_messages = [
         {"role": "system", "content": system_prompt},

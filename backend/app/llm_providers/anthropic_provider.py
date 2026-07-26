@@ -1,4 +1,5 @@
 # backend/app/llm_providers/anthropic_provider.py
+import asyncio
 import anthropic
 import base64
 import json
@@ -132,7 +133,10 @@ class AnthropicProvider(LLMProvider):
                 function_to_call = tool_functions.get(tool_name)
                 if function_to_call:
                     try:
-                        function_response = function_to_call(**tool_input)
+                        if asyncio.iscoroutinefunction(function_to_call):
+                            function_response = await function_to_call(**tool_input)
+                        else:
+                            function_response = function_to_call(**tool_input)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,

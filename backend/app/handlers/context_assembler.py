@@ -37,7 +37,7 @@ async def build_full_context(
         bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log
     )
 
-    final_formatted_content = format_user_message_for_llm(
+    final_formatted_content = await format_user_message_for_llm(
         message, bot, config, role_config, injected_data
     )
 

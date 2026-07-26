@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import json
 import logging
@@ -172,7 +173,7 @@ class XAIProvider(LLMProvider):
         except Exception:
             return str(result)
 
-    def _append_tool_results(self, chat: Any, response: Any, tool_functions: Dict[str, callable]) -> None:
+    async def _append_tool_results(self, chat: Any, response: Any, tool_functions: Dict[str, callable]) -> None:
         chat.append(response)
 
         for tool_call in response.tool_calls:
@@ -192,7 +193,10 @@ class XAIProvider(LLMProvider):
             if function_to_call:
                 try:
                     logger.info("Executing xAI tool '%s' with args: %s", function_name, function_args)
-                    tool_output = function_to_call(**function_args)
+                    if asyncio.iscoroutinefunction(function_to_call):
+                        tool_output = await function_to_call(**function_args)
+                    else:
+                        tool_output = function_to_call(**function_args)
                 except Exception as tool_error:
                     logger.error("Error executing xAI tool %s: %s", function_name, tool_error)
                     tool_output = f"Error: {tool_error}"
@@ -232,7 +236,7 @@ class XAIProvider(LLMProvider):
                 usage_data = self._merge_usage(usage_data, first_usage)
 
                 if first_response.tool_calls:
-                    self._append_tool_results(chat, first_response, tool_functions)
+                    await self._append_tool_results(chat, first_response, tool_functions)
                 else:
                     yield "final", first_text
                     if usage_data:

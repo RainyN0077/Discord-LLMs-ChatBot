@@ -51,10 +51,7 @@ class LLMProvider(ABC):
               - "final": 第二个元素是最终文本内容(str)
               - "usage": 第二个元素是用量数据字典(Dict[str, int])
         """
-        # 这是一个生成器，所以需要用 yield 来满足类型提示
-        # 实际实现应该在子类中，这里只是为了让 linter 满意
-        if False:
-            yield "final", "This is an abstract method and should be implemented in subclasses."
+        raise NotImplementedError("Subclasses must implement get_response_stream")
         
     def _build_api_kwargs(self, model, messages, stream, **extra):
         kwargs = {"model": model, "messages": messages, "stream": stream}

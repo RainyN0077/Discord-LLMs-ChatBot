@@ -211,7 +211,7 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
     # We need the author's role config for get_rich_identity
     _, author_role_config = get_highest_configured_role(mock_message.author, simulated_bot_config.get("role_based_config", {})) or (None, None)
 
-    user_request = format_user_message_for_llm(
+    user_request = await format_user_message_for_llm(
         message=mock_message,
         client=Stub(), # Not used for preview
         bot_config=simulated_bot_config,
