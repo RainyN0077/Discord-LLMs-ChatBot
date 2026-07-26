@@ -1,10 +1,16 @@
+import asyncio
 import json
 import math
 import os
 import re
-import sqlite3
+import sqlite3  # only used for sync schema init (__init__)
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
+
+import aiosqlite
+
+from .sqlite_pool import SQLiteConnectionPool
 
 
 class KnowledgeManager:
@@ -24,21 +30,31 @@ class KnowledgeManager:
         "auto_memory_recall_max_age_days": 365,
     }
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(self, db_path: Optional[str] = None, pool_max_connections: int = 10, pool_idle_timeout: float = 300.0):
         if db_path is None:
             db_dir = "data"
             os.makedirs(db_dir, exist_ok=True)
             self.db_path = os.path.join(db_dir, "knowledge_base.sqlite")
         else:
             self.db_path = db_path
-        self.init_db()
+        self._pool = SQLiteConnectionPool(
+            self.db_path,
+            max_connections=pool_max_connections,
+            idle_timeout=pool_idle_timeout,
+        )
+        # Schema init is sync using a temporary raw sqlite3 connection.
+        self._init_db_sync()
 
-    def get_conn(self):
-        conn = sqlite3.connect(self.db_path, timeout=15)
-        conn.row_factory = sqlite3.Row
-        return conn
+    # ------------------------------------------------------------------
+    # Sync schema initialisation (runs once in __init__)
+    # ------------------------------------------------------------------
 
-    def init_db(self):
+    def _init_db_sync(self) -> None:
+        """Initialise the database schema synchronously.
+
+        Uses a one-off ``sqlite3`` connection so that ``__init__`` can
+        remain a plain (non-async) constructor.
+        """
         scripts_dir = "/app/scripts"
         if not os.path.isdir(scripts_dir):
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -47,16 +63,21 @@ class KnowledgeManager:
         if not os.path.exists(init_script_path):
             print(f"CRITICAL: Database initialization script not found at {init_script_path}")
             return
-        with self.get_conn() as conn:
-            cursor = conn.cursor()
-            try:
-                with open(init_script_path, "r", encoding="utf-8") as f:
-                    cursor.executescript(f.read())
-                self._ensure_runtime_schema(cursor)
-                conn.commit()
-            except sqlite3.Error:
-                conn.rollback()
-                raise
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
+            with open(init_script_path, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
+            self._ensure_runtime_schema(conn.cursor())
+            conn.commit()
+        except sqlite3.Error:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
 
     def _ensure_runtime_schema(self, cursor: sqlite3.Cursor) -> None:
         cursor.execute("PRAGMA table_info(memory_candidates)")
@@ -74,6 +95,19 @@ class KnowledgeManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_normalized_content ON memory(normalized_content)")
         if memory_cols and "embedding" not in memory_cols:
             cursor.execute("ALTER TABLE memory ADD COLUMN embedding BLOB")
+
+    # ------------------------------------------------------------------
+    # Async connection pool access
+    # ------------------------------------------------------------------
+
+    @asynccontextmanager
+    async def get_conn(self) -> AsyncIterator[aiosqlite.Connection]:
+        async with self._pool.acquire() as conn:
+            yield conn
+
+    # ------------------------------------------------------------------
+    # Pure helpers (unchanged, sync)
+    # ------------------------------------------------------------------
 
     def _safe_int(self, value: Any, default: int, lo: int, hi: int) -> int:
         try:
@@ -178,42 +212,49 @@ class KnowledgeManager:
         s_clean = 0.0 if self._low_signal(content) else 1.0
         return max(0.0, min(1.0, 0.25 * s_len + 0.35 * s_seen + 0.25 * s_users + 0.15 * s_clean))
 
-    def _find_existing_memory(self, normalized: str) -> Optional[int]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute(
+    # ------------------------------------------------------------------
+    # Async DB helpers
+    # ------------------------------------------------------------------
+
+    async def _find_existing_memory(self, normalized: str) -> Optional[int]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute(
                 "SELECT promoted_memory_id FROM memory_candidates WHERE normalized_content=? AND promoted=1 AND promoted_memory_id IS NOT NULL LIMIT 1",
                 (normalized,),
             )
-            row = c.fetchone()
+            row = await c.fetchone()
             if row and row["promoted_memory_id"]:
                 return int(row["promoted_memory_id"])
-            c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
-            row = c.fetchone()
+            await c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
+            row = await c.fetchone()
             if row:
                 return int(row["id"])
         return None
 
+    # ------------------------------------------------------------------
     # Memory CRUD
-    def add_memory(self, content: str, timestamp: str, user_id: str, user_name: str, source: str) -> Optional[int]:
+    # ------------------------------------------------------------------
+
+    async def add_memory(self, content: str, timestamp: str, user_id: str, user_name: str, source: str) -> Optional[int]:
         try:
             safe_user = (user_name or "Unknown").replace('"', '""')
             tag = f'[memory timestamp="{timestamp}" source="{source}" user_name="{safe_user}" user_id="{user_id}"]'
             tagged_content = f"{tag} {content}".strip()
             normalized = self._normalize(content)
-            with self.get_conn() as conn:
-                c = conn.cursor()
-                c.execute(
+            async with self.get_conn() as conn:
+                c = await conn.cursor()
+                await c.execute(
                     "INSERT INTO memory (content, normalized_content, timestamp, user_id, user_name, source) VALUES (?, ?, ?, ?, ?, ?)",
                     (tagged_content, normalized, timestamp, user_id, user_name, source),
                 )
                 memory_id = c.lastrowid
-                c.execute(
+                await c.execute(
                     "INSERT INTO memory_stats (memory_id, recall_count, last_recalled_at, last_recall_score) VALUES (?, 0, NULL, 0) ON CONFLICT(memory_id) DO NOTHING",
                     (memory_id,),
                 )
                 if normalized:
-                    c.execute(
+                    await c.execute(
                         """
                         INSERT INTO memory_candidates (
                             normalized_content, content_sample, first_seen, last_seen, seen_count, distinct_user_count,
@@ -245,12 +286,12 @@ class KnowledgeManager:
                             "direct_add_promoted",
                         ),
                     )
-                conn.commit()
+                await conn.commit()
                 return memory_id
-        except sqlite3.IntegrityError:
+        except aiosqlite.IntegrityError:
             return None
 
-    def ingest_memory_candidate(
+    async def ingest_memory_candidate(
         self,
         content: str,
         timestamp: str,
@@ -272,7 +313,7 @@ class KnowledgeManager:
             return {"status": "skipped_too_short"}
         if self._low_signal(cleaned):
             return {"status": "skipped_low_signal"}
-        existing_id = self._find_existing_memory(normalized)
+        existing_id = await self._find_existing_memory(normalized)
         if existing_id:
             return {"status": "duplicate_existing", "memory_id": existing_id}
 
@@ -281,10 +322,10 @@ class KnowledgeManager:
         uid = str(user_id or "unknown_user")
         cid = str(channel_id) if channel_id is not None else ""
 
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM memory_candidates WHERE normalized_content=? LIMIT 1", (normalized,))
-            row = c.fetchone()
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT * FROM memory_candidates WHERE normalized_content=? LIMIT 1", (normalized,))
+            row = await c.fetchone()
             if row:
                 candidate = dict(row)
                 elapsed = (now - self._dt(candidate.get("last_seen"))).total_seconds()
@@ -304,7 +345,7 @@ class KnowledgeManager:
                     channels.add(cid)
                 seen_count = int(candidate.get("seen_count", 0)) + 1
                 distinct_users = len(users)
-                c.execute(
+                await c.execute(
                     """
                     UPDATE memory_candidates
                     SET content_sample=?, last_seen=?, seen_count=?, distinct_user_count=?, last_user_id=?, last_user_name=?,
@@ -329,7 +370,7 @@ class KnowledgeManager:
             else:
                 seen_count = 1
                 distinct_users = 1
-                c.execute(
+                await c.execute(
                     """
                     INSERT INTO memory_candidates (
                         normalized_content, content_sample, first_seen, last_seen, seen_count, distinct_user_count,
@@ -352,7 +393,7 @@ class KnowledgeManager:
                     ),
                 )
                 candidate_id = c.lastrowid
-            conn.commit()
+            await conn.commit()
 
         score = self._quality_score(cleaned, seen_count, distinct_users, p)
         should_promote = force_promote or (source == "ai_tag" and p["auto_memory_direct_promote_ai_tag"]) or (
@@ -362,59 +403,59 @@ class KnowledgeManager:
         )
 
         if should_promote:
-            memory_id = self.add_memory(cleaned, now_ts, uid, user_name, source)
+            memory_id = await self.add_memory(cleaned, now_ts, uid, user_name, source)
             if memory_id:
-                with self.get_conn() as conn:
-                    c = conn.cursor()
-                    c.execute(
+                async with self.get_conn() as conn:
+                    c = await conn.cursor()
+                    await c.execute(
                         "UPDATE memory_candidates SET promoted=1, promoted_memory_id=?, promoted_at=?, last_reason=? WHERE id=?",
                         (memory_id, datetime.now(timezone.utc).isoformat(), "auto_promoted", candidate_id),
                     )
-                    conn.commit()
+                    await conn.commit()
                 return {"status": "promoted", "candidate_id": candidate_id, "memory_id": memory_id, "score": score}
-            existing_id = self._find_existing_memory(normalized)
+            existing_id = await self._find_existing_memory(normalized)
             if existing_id:
                 return {"status": "duplicate_existing", "candidate_id": candidate_id, "memory_id": existing_id, "score": score}
             return {"status": "promotion_failed", "candidate_id": candidate_id, "score": score}
 
         return {"status": "staged", "candidate_id": candidate_id, "score": score, "seen_count": seen_count, "distinct_user_count": distinct_users}
 
-    def check_duplicate_memory(self, normalized: str) -> Optional[int]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
-            row = c.fetchone()
+    async def check_duplicate_memory(self, normalized: str) -> Optional[int]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT id FROM memory WHERE normalized_content = ? LIMIT 1", (normalized,))
+            row = await c.fetchone()
             if row:
                 return int(row["id"])
-            c.execute(
+            await c.execute(
                 "SELECT promoted_memory_id FROM memory_candidates WHERE normalized_content=? AND promoted=1 AND promoted_memory_id IS NOT NULL LIMIT 1",
                 (normalized,),
             )
-            row = c.fetchone()
+            row = await c.fetchone()
             if row and row["promoted_memory_id"]:
                 return int(row["promoted_memory_id"])
         return None
 
-    def check_duplicate_world_book(self, normalized: str) -> Optional[int]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id FROM world_book WHERE LOWER(content) = ? LIMIT 1", (normalized,))
-            row = c.fetchone()
+    async def check_duplicate_world_book(self, normalized: str) -> Optional[int]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT id FROM world_book WHERE LOWER(content) = ? LIMIT 1", (normalized,))
+            row = await c.fetchone()
             if row:
                 return int(row["id"])
         return None
 
-    def get_all_memories(self) -> List[Dict[str, Any]]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM memory ORDER BY timestamp DESC")
-            return [dict(r) for r in c.fetchall()]
+    async def get_all_memories(self) -> List[Dict[str, Any]]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT * FROM memory ORDER BY timestamp DESC")
+            return [dict(r) for r in await c.fetchall()]
 
-    def _get_memory_embedding(self, memory_id: int) -> Optional[List[float]]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT embedding FROM memory WHERE id=?", (memory_id,))
-            row = c.fetchone()
+    async def _get_memory_embedding(self, memory_id: int) -> Optional[List[float]]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT embedding FROM memory WHERE id=?", (memory_id,))
+            row = await c.fetchone()
             if row and row["embedding"]:
                 import struct
                 data = row["embedding"]
@@ -425,13 +466,13 @@ class KnowledgeManager:
                     return None
         return None
 
-    def _set_memory_embedding(self, memory_id: int, embedding: List[float]) -> None:
+    async def _set_memory_embedding(self, memory_id: int, embedding: List[float]) -> None:
         import struct
         data = struct.pack(f">{len(embedding)}d", *embedding)
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("UPDATE memory SET embedding=? WHERE id=?", (data, memory_id))
-            conn.commit()
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("UPDATE memory SET embedding=? WHERE id=?", (data, memory_id))
+            await conn.commit()
 
     async def get_relevant_memories(self, query_text: str, top_k: int = 12, char_limit: int = 2200, max_age_days: int = 365, config: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         top_k = max(1, min(50, int(top_k)))
@@ -443,15 +484,15 @@ class KnowledgeManager:
 
         rows: List[Dict[str, Any]] = []
         seen: Set[int] = set()
-        with self.get_conn() as conn:
-            c = conn.cursor()
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
             if q_tokens:
                 def _fts5_quote(token: str) -> str:
                     safe = token.replace('"', '""')
                     return f'"{safe}"'
                 match = " OR ".join(_fts5_quote(t) for t in q_tokens)
                 try:
-                    c.execute(
+                    await c.execute(
                         """
                         SELECT m.*, COALESCE(ms.recall_count,0) AS recall_count, bm25(memory_fts) AS fts_rank
                         FROM memory m JOIN memory_fts ON memory_fts.rowid=m.id
@@ -460,13 +501,13 @@ class KnowledgeManager:
                         """,
                         (match, top_k * 6),
                     )
-                    for r in c.fetchall():
+                    for r in await c.fetchall():
                         d = dict(r)
                         rows.append(d)
                         seen.add(int(d["id"]))
-                except sqlite3.Error:
+                except aiosqlite.Error:
                     logger.warning("FTS5 query failed for memory recall (query tokens: %s)", list(q_tokens)[:10])
-            c.execute(
+            await c.execute(
                 """
                 SELECT m.*, COALESCE(ms.recall_count,0) AS recall_count, 0 AS fts_rank
                 FROM memory m LEFT JOIN memory_stats ms ON ms.memory_id=m.id
@@ -474,7 +515,7 @@ class KnowledgeManager:
                 """,
                 (max(100, top_k * 6),),
             )
-            for r in c.fetchall():
+            for r in await c.fetchall():
                 d = dict(r)
                 mid = int(d["id"])
                 if mid not in seen:
@@ -490,7 +531,7 @@ class KnowledgeManager:
                     emb_candidates: List[Tuple[float, Dict[str, Any]]] = []
                     for row in rows:
                         mid = int(row["id"])
-                        cached = self._get_memory_embedding(mid)
+                        cached = await self._get_memory_embedding(mid)
                         if cached is None:
                             plain = self._strip_tag(str(row.get("content", "")))
                             if not plain:
@@ -498,7 +539,7 @@ class KnowledgeManager:
                             try:
                                 new_emb = await get_embedding(plain, config)
                                 if new_emb:
-                                    self._set_memory_embedding(mid, new_emb)
+                                    await self._set_memory_embedding(mid, new_emb)
                                     cached = new_emb
                             except Exception:
                                 pass
@@ -566,17 +607,17 @@ class KnowledgeManager:
             payload.append((int(row["id"]), float(score)))
             row.pop("_plain", None)
             chosen.append(row)
-        self._record_recall(payload)
+        await self._record_recall(payload)
         return chosen
 
-    def _record_recall(self, payload: List[Tuple[int, float]]) -> None:
+    async def _record_recall(self, payload: List[Tuple[int, float]]) -> None:
         if not payload:
             return
         now = datetime.now(timezone.utc).isoformat()
-        with self.get_conn() as conn:
-            c = conn.cursor()
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
             for memory_id, score in payload:
-                c.execute(
+                await c.execute(
                     """
                     INSERT INTO memory_stats (memory_id, recall_count, last_recalled_at, last_recall_score)
                     VALUES (?, 1, ?, ?)
@@ -587,17 +628,17 @@ class KnowledgeManager:
                     """,
                     (memory_id, now, score),
                 )
-            conn.commit()
+            await conn.commit()
 
-    def get_memory_candidates(self, include_promoted: bool = False, limit: int = 200) -> List[Dict[str, Any]]:
+    async def get_memory_candidates(self, include_promoted: bool = False, limit: int = 200) -> List[Dict[str, Any]]:
         limit = max(1, min(2000, int(limit)))
-        with self.get_conn() as conn:
-            c = conn.cursor()
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
             if include_promoted:
-                c.execute("SELECT * FROM memory_candidates ORDER BY promoted ASC, seen_count DESC, last_seen DESC LIMIT ?", (limit,))
+                await c.execute("SELECT * FROM memory_candidates ORDER BY promoted ASC, seen_count DESC, last_seen DESC LIMIT ?", (limit,))
             else:
-                c.execute("SELECT * FROM memory_candidates WHERE promoted=0 ORDER BY seen_count DESC, last_seen DESC LIMIT ?", (limit,))
-            rows = [dict(r) for r in c.fetchall()]
+                await c.execute("SELECT * FROM memory_candidates WHERE promoted=0 ORDER BY seen_count DESC, last_seen DESC LIMIT ?", (limit,))
+            rows = [dict(r) for r in await c.fetchall()]
         for row in rows:
             row["user_ids"] = sorted(self._set_from_json(row.get("user_ids_json")))
             row["channel_ids"] = sorted(self._set_from_json(row.get("channel_ids_json")))
@@ -607,25 +648,25 @@ class KnowledgeManager:
             row.pop("source_types_json", None)
         return rows
 
-    def delete_memory_candidate(self, candidate_id: int) -> bool:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM memory_candidates WHERE id=?", (candidate_id,))
-            conn.commit()
+    async def delete_memory_candidate(self, candidate_id: int) -> bool:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("DELETE FROM memory_candidates WHERE id=?", (candidate_id,))
+            await conn.commit()
             return c.rowcount > 0
 
-    def promote_memory_candidate(self, candidate_id: int, source: str = "manual_promote") -> Optional[int]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM memory_candidates WHERE id=? LIMIT 1", (candidate_id,))
-            row = c.fetchone()
+    async def promote_memory_candidate(self, candidate_id: int, source: str = "manual_promote") -> Optional[int]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT * FROM memory_candidates WHERE id=? LIMIT 1", (candidate_id,))
+            row = await c.fetchone()
             if not row:
                 return None
             item = dict(row)
         if item.get("promoted") and item.get("promoted_memory_id"):
             return int(item["promoted_memory_id"])
         ts = datetime.now(timezone.utc).isoformat()
-        memory_id = self.add_memory(
+        memory_id = await self.add_memory(
             content=item.get("content_sample", ""),
             timestamp=ts,
             user_id=str(item.get("last_user_id") or "system"),
@@ -633,34 +674,34 @@ class KnowledgeManager:
             source=source,
         )
         if memory_id:
-            with self.get_conn() as conn:
-                c = conn.cursor()
-                c.execute(
+            async with self.get_conn() as conn:
+                c = await conn.cursor()
+                await c.execute(
                     "UPDATE memory_candidates SET promoted=1, promoted_memory_id=?, promoted_at=?, last_reason=? WHERE id=?",
                     (memory_id, ts, "manual_promoted", candidate_id),
                 )
-                conn.commit()
+                await conn.commit()
             return memory_id
-        return self._find_existing_memory(str(item.get("normalized_content") or ""))
+        return await self._find_existing_memory(str(item.get("normalized_content") or ""))
 
-    def delete_memory(self, memory_id: int) -> bool:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM memory WHERE id=?", (memory_id,))
+    async def delete_memory(self, memory_id: int) -> bool:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("DELETE FROM memory WHERE id=?", (memory_id,))
             deleted = c.rowcount > 0
-            c.execute("DELETE FROM memory_stats WHERE memory_id=?", (memory_id,))
-            c.execute(
+            await c.execute("DELETE FROM memory_stats WHERE memory_id=?", (memory_id,))
+            await c.execute(
                 "UPDATE memory_candidates SET promoted=0, promoted_memory_id=NULL, promoted_at=NULL, last_reason=? WHERE promoted_memory_id=?",
                 ("promoted_memory_deleted", memory_id),
             )
-            conn.commit()
+            await conn.commit()
             return deleted
 
-    def update_memory(self, memory_id: int, new_content: str) -> bool:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT content FROM memory WHERE id=?", (memory_id,))
-            row = c.fetchone()
+    async def update_memory(self, memory_id: int, new_content: str) -> bool:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT content FROM memory WHERE id=?", (memory_id,))
+            row = await c.fetchone()
             if not row:
                 return False
             content = row["content"]
@@ -672,48 +713,51 @@ class KnowledgeManager:
                     tag = ""
             else:
                 tag = ""
-            c.execute("UPDATE memory SET content=? WHERE id=?", (f"{tag} {new_content}".strip(), memory_id))
-            conn.commit()
+            await c.execute("UPDATE memory SET content=? WHERE id=?", (f"{tag} {new_content}".strip(), memory_id))
+            await conn.commit()
             return c.rowcount > 0
 
+    # ------------------------------------------------------------------
     # World Book methods
-    def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None, source: Optional[str] = None) -> int:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("INSERT INTO world_book (keywords, content, linked_user_id, source) VALUES (?, ?, ?, ?)", (keywords, content, linked_user_id, source))
-            conn.commit()
+    # ------------------------------------------------------------------
+
+    async def add_world_book_entry(self, keywords: str, content: str, linked_user_id: Optional[str] = None, source: Optional[str] = None) -> int:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("INSERT INTO world_book (keywords, content, linked_user_id, source) VALUES (?, ?, ?, ?)", (keywords, content, linked_user_id, source))
+            await conn.commit()
             return c.lastrowid
 
-    def get_all_world_book_entries(self) -> List[Dict[str, Any]]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT * FROM world_book ORDER BY id")
-            return [dict(r) for r in c.fetchall()]
+    async def get_all_world_book_entries(self) -> List[Dict[str, Any]]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT * FROM world_book ORDER BY id")
+            return [dict(r) for r in await c.fetchall()]
 
-    def update_world_book_entry(self, entry_id: int, keywords: str, content: str, enabled: bool, linked_user_id: Optional[str] = None) -> bool:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute(
+    async def update_world_book_entry(self, entry_id: int, keywords: str, content: str, enabled: bool, linked_user_id: Optional[str] = None) -> bool:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute(
                 "UPDATE world_book SET keywords=?, content=?, enabled=?, linked_user_id=? WHERE id=?",
                 (keywords, content, 1 if enabled else 0, linked_user_id, entry_id),
             )
-            conn.commit()
+            await conn.commit()
             return c.rowcount > 0
 
-    def delete_world_book_entry(self, entry_id: int) -> bool:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("DELETE FROM world_book WHERE id=?", (entry_id,))
-            conn.commit()
+    async def delete_world_book_entry(self, entry_id: int) -> bool:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("DELETE FROM world_book WHERE id=?", (entry_id,))
+            await conn.commit()
             return c.rowcount > 0
 
-    def get_world_book_entries_for_user(self, user_id: str) -> List[Dict[str, Any]]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id, keywords, content FROM world_book WHERE enabled=1 AND linked_user_id=?", (user_id,))
-            return [dict(r) for r in c.fetchall()]
+    async def get_world_book_entries_for_user(self, user_id: str) -> List[Dict[str, Any]]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT id, keywords, content FROM world_book WHERE enabled=1 AND linked_user_id=?", (user_id,))
+            return [dict(r) for r in await c.fetchall()]
 
-    def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
+    async def find_world_book_entries_for_text(self, text: str) -> List[Dict[str, Any]]:
         lower = (text or "").lower()
         if not lower.strip():
             return []
@@ -721,9 +765,9 @@ class KnowledgeManager:
         if not tokens:
             return []
         try:
-            entries = self._find_world_book_candidates_via_fts(tokens)
-        except sqlite3.Error:
-            entries = self._find_world_book_candidates_full_scan()
+            entries = await self._find_world_book_candidates_via_fts(tokens)
+        except aiosqlite.Error:
+            entries = await self._find_world_book_candidates_full_scan()
         return self._filter_keyword_matches(entries, lower)
 
     def _extract_search_tokens(self, text: str) -> List[str]:
@@ -739,14 +783,14 @@ class KnowledgeManager:
                 break
         return out
 
-    def _find_world_book_candidates_via_fts(self, query_tokens: List[str]) -> List[Dict[str, Any]]:
+    async def _find_world_book_candidates_via_fts(self, query_tokens: List[str]) -> List[Dict[str, Any]]:
         def _fts5_quote(token: str) -> str:
             safe = token.replace('"', '""')
             return f'"{safe}"'
         match_query = " OR ".join(_fts5_quote(t) for t in query_tokens)
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute(
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute(
                 """
                 SELECT wb.id, wb.keywords, wb.content
                 FROM world_book wb
@@ -755,13 +799,13 @@ class KnowledgeManager:
                 """,
                 (match_query,),
             )
-            return [dict(r) for r in c.fetchall()]
+            return [dict(r) for r in await c.fetchall()]
 
-    def _find_world_book_candidates_full_scan(self) -> List[Dict[str, Any]]:
-        with self.get_conn() as conn:
-            c = conn.cursor()
-            c.execute("SELECT id, keywords, content FROM world_book WHERE enabled = 1")
-            return [dict(r) for r in c.fetchall()]
+    async def _find_world_book_candidates_full_scan(self) -> List[Dict[str, Any]]:
+        async with self.get_conn() as conn:
+            c = await conn.cursor()
+            await c.execute("SELECT id, keywords, content FROM world_book WHERE enabled = 1")
+            return [dict(r) for r in await c.fetchall()]
 
     def _filter_keyword_matches(self, entries: List[Dict[str, Any]], lower_text: str) -> List[Dict[str, Any]]:
         matched, added = [], set()
@@ -797,3 +841,8 @@ def get_knowledge_manager(bot_id: str = None) -> KnowledgeManager:
     if _knowledge_manager is None:
         _knowledge_manager = KnowledgeManager()
     return _knowledge_manager
+
+
+# Lazy import for logger to avoid circular dependency at module level
+import logging
+logger = logging.getLogger(__name__)
