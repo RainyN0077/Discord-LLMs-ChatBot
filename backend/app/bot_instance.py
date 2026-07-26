@@ -5,9 +5,18 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from pathlib import Path
 
+from enum import Enum
+
 from .config_cache import load_config, get_bot_config_path, get_bot_knowledge_path, get_bot_usage_path, DEFAULT_CONFIG, BOTS_DIR
 
 logger = logging.getLogger(__name__)
+
+
+class BotStatus(str, Enum):
+    STOPPED = "stopped"
+    STARTING = "starting"
+    RUNNING = "running"
+    STOPPING = "stopping"
 
 
 class BotInstance:
@@ -15,7 +24,8 @@ class BotInstance:
         self.bot_id = bot_id
         self.config: Dict[str, Any] = {}
         self.platform: str = "discord"
-        self.status: str = "stopped"
+        self.status: BotStatus = BotStatus.STOPPED
+        self._status_lock = asyncio.Lock()
         self._task: Optional[asyncio.Task] = None
         self._client: Any = None
         self.memory_cutoffs: Dict[int, datetime] = {}
@@ -50,10 +60,13 @@ class BotInstance:
 
     def load_config(self) -> Dict[str, Any]:
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        from .security.secrets_manager import SecretsManager
+        sm = SecretsManager()
         if self.config_path.exists():
             import json
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
+            data = sm.decrypt_dict(data)
             from .config_cache import _set_defaults_recursive
             _set_defaults_recursive(DEFAULT_CONFIG, data)
             if not data.get("api_secret_key"):
@@ -63,9 +76,10 @@ class BotInstance:
             from copy import deepcopy
             data = deepcopy(DEFAULT_CONFIG)
             data["bot_id"] = self.bot_id
+            encrypted = sm.encrypt_dict(data)
             with open(self.config_path, "w", encoding="utf-8") as f:
                 import json
-                json.dump(data, f, indent=2, ensure_ascii=False)
+                json.dump(encrypted, f, indent=2, ensure_ascii=False)
         self.config = data
         self.config["bot_id"] = self.bot_id
         self.platform = data.get("platform", "discord")
@@ -74,12 +88,14 @@ class BotInstance:
     def save_config(self, config_dict: Dict[str, Any]) -> None:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         import json
+        from .security.secrets_manager import SecretsManager
+        encrypted = SecretsManager().encrypt_dict(config_dict)
         with open(self.config_path, "w", encoding="utf-8") as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
+            json.dump(encrypted, f, indent=2, ensure_ascii=False)
         self.config = config_dict
 
     def is_running(self) -> bool:
-        return self.status == "running"
+        return self.status == BotStatus.RUNNING
 
     def generate_env_config(self) -> Dict[str, Any]:
         platform = self.config.get("platform", "discord")
@@ -112,12 +128,22 @@ class BotInstance:
         if self.is_running():
             logger.warning(f"Bot '{self.bot_id}' is already running.")
             return
+        async with self._status_lock:
+            if self.status != BotStatus.STOPPED:
+                logger.warning(
+                    f"Bot '{self.bot_id}' cannot start: status={self.status.value}."
+                )
+                return
+            self.status = BotStatus.STARTING
+        self.started_at = datetime.now(timezone.utc)
+
         self.load_config()
         if not self.config.get("enabled", True):
             logger.info(f"Bot '{self.bot_id}' is disabled. Skipping start.")
+            async with self._status_lock:
+                self.status = BotStatus.STOPPED
+            self.started_at = None
             return
-        self.status = "starting"
-        self.started_at = datetime.now(timezone.utc)
 
         from .usage_tracker import UsageTracker
         from .core_logic.knowledge_manager import KnowledgeManager
@@ -144,12 +170,26 @@ class BotInstance:
 
         self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
 
-        if self.provider_mode == "astrbot":
-            await self._start_astrbot()
-        else:
-            await self._start_nonebot()
+        try:
+            if self.provider_mode == "astrbot":
+                await self._start_astrbot()
+            else:
+                await self._start_nonebot()
+        except Exception:
+            async with self._status_lock:
+                self.status = BotStatus.STOPPED
+            self.started_at = None
+            if self._usage_tracker:
+                await self._usage_tracker.close()
+            self._usage_tracker = None
+            self._knowledge_manager = None
+            self._plugin_manager = None
+            self._usage_manager = None
+            logger.error(f"Bot '{self.bot_id}' failed to start.")
+            raise
 
-        self.status = "running"
+        async with self._status_lock:
+            self.status = BotStatus.RUNNING
         logger.info(f"Bot '{self.bot_id}' started (mode={self.provider_mode}).")
 
     async def _start_nonebot(self) -> None:
@@ -169,14 +209,23 @@ class BotInstance:
             await astrbot_process_manager.start(self.bot_id, self.config)
             logger.info(f"Bot '{self.bot_id}' AstrBot process started.")
         except AstrBotProcessError as e:
-            self.status = "error"
             logger.error(f"Failed to start AstrBot process for '{self.bot_id}': {e}")
             raise
 
     async def stop(self) -> None:
-        if not self.is_running():
-            return
-        self.status = "stopped"
+        async with self._status_lock:
+            if self.status != BotStatus.RUNNING:
+                return
+            self.status = BotStatus.STOPPING
+
+        try:
+            if self.provider_mode == "astrbot":
+                await self._stop_astrbot()
+            else:
+                await self._stop_nonebot()
+        except Exception:
+            logger.exception(f"Error during provider stop for bot '{self.bot_id}'")
+
         if self._task and not self._task.done():
             self._task.cancel()
         self._task = None
@@ -189,11 +238,8 @@ class BotInstance:
         self._plugin_manager = None
         self._usage_manager = None
 
-        if self.provider_mode == "astrbot":
-            await self._stop_astrbot()
-        else:
-            await self._stop_nonebot()
-
+        async with self._status_lock:
+            self.status = BotStatus.STOPPED
         logger.info(f"Bot '{self.bot_id}' stopped.")
 
     async def _stop_nonebot(self) -> None:

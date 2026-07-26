@@ -144,16 +144,19 @@ class TestBotManager:
     def test_migrate_legacy_config(self, tmp_path, monkeypatch):
         import app.config_cache as cc
         import app.bot_manager as bm
+        from app.security.secrets_manager import SecretsManager
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
         bots_dir = data_dir / "bots"
         bots_dir.mkdir(exist_ok=True)
         config_file = data_dir / "config.json"
-        config_file.write_text(json.dumps({
+        sm = SecretsManager()
+        legacy_config = {
             "bot_id": "legacy-bot",
             "bot_name": "Legacy",
             "discord_token": "test-token-value-for-legacy-bot-min-50-chars",
-        }), encoding="utf-8")
+        }
+        config_file.write_text(json.dumps(sm.encrypt_dict(legacy_config)), encoding="utf-8")
 
         monkeypatch.setattr(cc, "DATA_DIR", data_dir)
         monkeypatch.setattr(cc, "CONFIG_FILE", config_file)

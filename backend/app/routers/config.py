@@ -1,10 +1,12 @@
+import json
 import logging
+import os
 
-from fastapi import APIRouter, HTTPException, Depends
-from pydantic import ValidationError
+from fastapi import APIRouter, HTTPException, Depends, Request
+from pydantic import BaseModel, ValidationError
 
-from ..config_cache import load_config, save_config, DEFAULT_BOT_ID
-from ..dependencies import get_api_key, get_api_key_optional
+from ..config_cache import load_config, save_config, DEFAULT_BOT_ID, CONFIG_FILE
+from ..dependencies import get_api_key
 from ..models import Config
 from .. import state
 
@@ -28,15 +30,8 @@ def _get_first_bot_config():
 
 
 @router.get("/api/config")
-async def get_config_endpoint(api_key: str = Depends(get_api_key_optional)):
+async def get_config_endpoint(api_key: str = Depends(get_api_key)):
     config_data = _get_first_bot_config()
-    if not api_key:
-        # Bootstrap: frontend needs api_secret_key to authenticate.
-        # This endpoint is only accessible on localhost (CORS-restricted).
-        existing_key = config_data.get("api_secret_key", "")
-        if not existing_key:
-            return {"api_secret_key": ""}
-        return {"api_secret_key": existing_key}
     try:
         Config.parse_obj(config_data)
         logger.info("Config validation successful")
@@ -45,6 +40,47 @@ async def get_config_endpoint(api_key: str = Depends(get_api_key_optional)):
         logger.error(f"Config validation failed: {e}")
         config_data["_validation_warning"] = str(e)
         return config_data
+
+
+class BootstrapRequest(BaseModel):
+    api_secret_key: str
+
+
+def _is_localhost(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    return host in ("127.0.0.1", "::1", "localhost")
+
+
+@router.post("/api/auth/bootstrap")
+async def bootstrap_api_secret(request: Request, body: BootstrapRequest):
+    if not _is_localhost(request):
+        raise HTTPException(status_code=403, detail="Bootstrap is only allowed from localhost.")
+    if not body.api_secret_key:
+        raise HTTPException(status_code=422, detail="api_secret_key must not be empty.")
+
+    # Read the raw config file directly to bypass load_config()'s auto-generation of api_secret_key.
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                raw_config = json.load(f)
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Bootstrap: failed to read config file: {e}")
+            raise HTTPException(status_code=500, detail="Failed to read configuration.")
+    else:
+        raw_config = {}
+
+    existing_key = raw_config.get("api_secret_key")
+    if existing_key:
+        raise HTTPException(status_code=403, detail="API secret key is already configured. Bootstrap is disabled.")
+
+    raw_config["api_secret_key"] = body.api_secret_key
+    save_config(raw_config)
+    # Invalidate cache so subsequent load_config() calls pick up the new key.
+    from ..config_cache import invalidate_cache as invalidate_config_cache
+    invalidate_config_cache()
+
+    logger.info("Bootstrap: api_secret_key has been set.")
+    return {"message": "API secret key has been set.", "api_secret_key": body.api_secret_key}
 
 
 @router.post("/api/config", dependencies=[Depends(get_api_key)])

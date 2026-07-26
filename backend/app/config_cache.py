@@ -3,10 +3,12 @@ import json
 import logging
 import os
 import secrets
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .ocr_service import DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS
+from .security.secrets_manager import SecretsManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,8 @@ DEFAULT_BOT_ID = "main"
 
 _cache: Optional[Dict[str, Any]] = None
 _cache_mtime: float = 0.0
+_cache_lock: threading.RLock = threading.RLock()
+_secrets_manager = SecretsManager()
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     'bot_id': '', 'bot_name': 'Unnamed Bot', 'platform': 'discord', 'enabled': True,
@@ -115,54 +119,59 @@ def _set_defaults_recursive(default: dict, config: dict) -> None:
 
 def load_config() -> Dict[str, Any]:
     global _cache, _cache_mtime
-    try:
-        mtime = os.path.getmtime(CONFIG_FILE)
-    except OSError:
-        mtime = 0.0
+    with _cache_lock:
+        try:
+            mtime = os.path.getmtime(CONFIG_FILE)
+        except OSError:
+            mtime = 0.0
 
-    if _cache is not None and mtime == _cache_mtime:
-        return _cache
+        if _cache is not None and mtime == _cache_mtime:
+            return _cache
 
-    if not os.path.exists(CONFIG_FILE):
-        logger.warning(f"Config file not found at {CONFIG_FILE}. Creating a default one.")
-        save_config(DEFAULT_CONFIG)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = os.path.getmtime(CONFIG_FILE)
-        return _cache
+        if not os.path.exists(CONFIG_FILE):
+            logger.warning(f"Config file not found at {CONFIG_FILE}. Creating a default one.")
+            save_config(DEFAULT_CONFIG)
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = os.path.getmtime(CONFIG_FILE)
+            return _cache
 
-    try:
-        with open(CONFIG_FILE, "r", encoding='utf-8') as f:
-            data = json.load(f)
-        _set_defaults_recursive(DEFAULT_CONFIG, data)
-        if not data.get("api_secret_key"):
-            data["api_secret_key"] = secrets.token_hex(32)
-            logger.warning("api_secret_key was empty in config.json, generated a new one")
-        save_config(data)
-        return data
-    except json.JSONDecodeError as e:
-        logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
-    except Exception as e:
-        logger.error(f"FATAL: Unexpected error loading config.json: {e}", exc_info=True)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
+        try:
+            with open(CONFIG_FILE, "r", encoding='utf-8') as f:
+                data = json.load(f)
+            data = _secrets_manager.decrypt_dict(data)
+            _set_defaults_recursive(DEFAULT_CONFIG, data)
+            if not data.get("api_secret_key"):
+                data["api_secret_key"] = secrets.token_hex(32)
+                logger.warning("api_secret_key was empty in config.json, generated a new one")
+            save_config(data)
+            return data
+        except json.JSONDecodeError as e:
+            logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
+        except Exception as e:
+            logger.error(f"FATAL: Unexpected error loading config.json: {e}", exc_info=True)
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
 
 
 def save_config(config_data: Dict[str, Any]) -> None:
     global _cache, _cache_mtime
-    with open(CONFIG_FILE, "w", encoding='utf-8') as f:
-        json.dump(config_data, f, indent=2, ensure_ascii=False)
-    _cache = config_data
-    _cache_mtime = os.path.getmtime(CONFIG_FILE)
+    with _cache_lock:
+        encrypted_data = _secrets_manager.encrypt_dict(config_data)
+        with open(CONFIG_FILE, "w", encoding='utf-8') as f:
+            json.dump(encrypted_data, f, indent=2, ensure_ascii=False)
+        _cache = config_data
+        _cache_mtime = os.path.getmtime(CONFIG_FILE)
 
 
 def invalidate_cache() -> None:
     global _cache, _cache_mtime
-    _cache = None
-    _cache_mtime = 0.0
+    with _cache_lock:
+        _cache = None
+        _cache_mtime = 0.0
 
 
 def get_bot_dir(bot_id: str) -> Path:

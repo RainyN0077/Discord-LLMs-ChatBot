@@ -13,6 +13,7 @@ if str(_backend_dir) not in sys.path:
     sys.path.insert(0, str(_backend_dir))
 
 os.environ.setdefault("FAIL_ON_REDIS_ERROR", "false")
+os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-for-pytest")
 
 from app.utils import Stub, _async_stub
 from app.config_cache import DEFAULT_CONFIG, invalidate_cache
@@ -192,13 +193,20 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     bots_dir = data_dir / "bots"
     bots_dir.mkdir(exist_ok=True)
     config_file = data_dir / "config.json"
-    config_file.write_text(json.dumps(test_config_dict, indent=2), encoding="utf-8")
+
+    # Write encrypted config so that config_cache.load_config can read it.
+    from app.security.secrets_manager import SecretsManager
+    sm = SecretsManager()
+    encrypted_config = sm.encrypt_dict(test_config_dict)
+    config_file.write_text(json.dumps(encrypted_config, indent=2), encoding="utf-8")
 
     import app.config_cache as cc
     monkeypatch.setattr(cc, "DATA_DIR", data_dir)
     monkeypatch.setattr(cc, "CONFIG_FILE", config_file)
     monkeypatch.setattr(cc, "BOTS_DIR", bots_dir)
 
+    import app.routers.config as config_mod
+    monkeypatch.setattr(config_mod, "CONFIG_FILE", config_file)
     import app.routers.usage as usage_mod
     monkeypatch.setattr(usage_mod, "DATA_DIR", data_dir)
     import app.routers.logs as logs_mod
