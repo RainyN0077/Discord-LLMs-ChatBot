@@ -1,9 +1,10 @@
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from .. import state
+from ..dependencies import get_api_key
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ router = APIRouter(prefix="/api/state", tags=["state"])
 
 
 @router.get("/driver")
-async def get_driver_state() -> Dict[str, Any]:
+async def get_driver_state(api_key: str = Depends(get_api_key)) -> Dict[str, Any]:
     driver = state.nonebot_driver
     if driver is None:
         raise HTTPException(status_code=503, detail="NoneBot driver not initialized")

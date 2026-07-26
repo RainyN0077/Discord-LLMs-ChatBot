@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, TextIO
 
 import redis
 
+from .paths import DataPaths
 from .security.log_sanitizer import SanitizingFilter
 from .utils import TokenCalculator
 
@@ -260,9 +261,8 @@ def setup_logging():
 
     # ---- Rotating file handler ----
     try:
-        data_dir = Path.cwd() / 'data'
-        log_dir = data_dir / 'logs'
-        log_dir.mkdir(exist_ok=True, parents=True)
+        log_dir = DataPaths.LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
         log_file = log_dir / 'bot.log'
 
         file_handler = RotatingFileHandler(
