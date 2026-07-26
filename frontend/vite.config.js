@@ -5,6 +5,9 @@ const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://localhost:80
 
 export default defineConfig({
   plugins: [svelte()],
+  esbuild: {
+    drop: process.env.NODE_ENV === 'production' ? ['debugger'] : [],
+  },
   server: {
     proxy: {
       '/api': {
@@ -17,6 +20,7 @@ export default defineConfig({
     target: 'es2020',
     minify: 'esbuild',
     cssCodeSplit: true,
+    sourcemap: 'hidden',
     reportCompressedSize: false,
     rollupOptions: {
       output: {
