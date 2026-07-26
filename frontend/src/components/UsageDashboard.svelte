@@ -13,6 +13,12 @@
     let showPricingModal = false;
     let editingPricing = [];
     let expandedItems = new Set();
+    let fetchController = null;
+    let isFetchingPricing = false;
+    const PAGE_SIZE = 20;
+    let currentPage = 1;
+    let pricingTriggerRef = null;
+    let pricingModalRef = null;
     
     const periodOptions = [
         { value: 'today', label: 'usage.periods.today' },
@@ -41,30 +47,50 @@
     }
     
     async function fetchStats() {
+        // 取消未完成的旧请求
+        if (fetchController) fetchController.abort();
+        const controller = new AbortController();
+        fetchController = controller;
+
         isLoading = true;
         try {
-            stats = await fetchUsageStats(period, view);
+            stats = await fetchUsageStats(period, view, controller.signal);
             // 每次获取新数据时，不清空展开项，以保持用户状态
             // expandedItems.clear(); 
         } catch (e) {
+            if (e.name === 'AbortError') return; // 静默处理中止
             console.error('Failed to fetch usage stats:', e);
             stats = null; // 出错时清空数据
         } finally {
-            isLoading = false;
+            if (fetchController === controller) {
+                isLoading = false;
+            }
         }
     }
     
     async function fetchPricing() {
+        if (isFetchingPricing) return;
+        isFetchingPricing = true;
         try {
             const data = await fetchPricingConfig();
             pricing = data.pricing || {};
         } catch (e) {
             console.error('Failed to fetch pricing:', e);
             pricing = {};
+        } finally {
+            isFetchingPricing = false;
         }
     }
 
-    function openPricingModal() {
+    function getFocusableElements(el) {
+        if (!el) return [];
+        return Array.from(el.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]):not([disabled])'
+        ));
+    }
+
+    function openPricingModal(e) {
+        pricingTriggerRef = e.currentTarget;
         editingPricing = Object.entries(pricing).map(([key, value]) => {
             // 确保即使后端数据不规范也能正确解析
             const [providerFromKey, modelFromKey] = key.split(/:(.*)/s);
@@ -77,6 +103,42 @@
             };
         });
         showPricingModal = true;
+        // After DOM update, focus first element inside modal
+        setTimeout(() => {
+            const focusable = getFocusableElements(pricingModalRef);
+            if (focusable.length > 0) focusable[0].focus();
+        }, 50);
+    }
+
+    function closePricingModal() {
+        showPricingModal = false;
+        setTimeout(() => {
+            if (pricingTriggerRef) pricingTriggerRef.focus();
+        }, 50);
+    }
+
+    function handleModalKeydown(e) {
+        if (e.key === 'Escape') {
+            closePricingModal();
+            e.stopPropagation();
+            return;
+        }
+        if (e.key === 'Tab') {
+            const focusable = getFocusableElements(pricingModalRef);
+            if (focusable.length === 0) {
+                e.preventDefault();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
     }
     
     async function savePricing() {
@@ -96,7 +158,7 @@
         try {
             await savePricingConfig(pricingObj);
             
-            showPricingModal = false;
+            closePricingModal();
             // 核心修复：保存成功后，先获取最新的价格，再获取最新的统计数据
             await fetchPricing(); 
             await fetchStats();
@@ -151,6 +213,13 @@
     // 派生计算，确保它们是响应式的
     $: detailedData = stats?.stats?.[`detailed_by_${view}`] || {};
     $: overallCost = Object.values(detailedData).reduce((total, data) => total + calculateItemTotalCost(data.models), 0);
+    $: entriesArray = Object.entries(detailedData);
+    $: totalPages = Math.max(1, Math.ceil(entriesArray.length / PAGE_SIZE));
+    $: paginatedEntries = entriesArray.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+    // Reset to page 1 when the data set changes (new fetch or view switch)
+    $: if (entriesArray.length > 0) {
+        currentPage = Math.min(currentPage, totalPages);
+    }
     
     function formatNumber(num) {
         if (typeof num !== 'number') return '0';
@@ -173,25 +242,18 @@
 
     function handleOverlayClick(event) {
         if (event.target === event.currentTarget) {
-            showPricingModal = false;
-        }
-    }
-
-    function handleKeydown(event) {
-        if (showPricingModal && event.key === 'Escape') {
-            showPricingModal = false;
+            closePricingModal();
         }
     }
 
     onMount(() => {
         fetchData();
         refreshInterval = setInterval(fetchData, 30000);
-        window.addEventListener('keydown', handleKeydown);
     });
     
     onDestroy(() => {
+        if (fetchController) fetchController.abort();
         if (refreshInterval) clearInterval(refreshInterval);
-        window.removeEventListener('keydown', handleKeydown);
     });
 </script>
 
@@ -258,8 +320,8 @@
                     <div>{$t('usage.totalCost')}</div>
                 </div>
                 
-                {#if Object.keys(detailedData).length > 0}
-                    {#each Object.entries(detailedData) as [key, data] (key)}
+                {#if entriesArray.length > 0}
+                    {#each paginatedEntries as [key, data] (key)}
                         <div class="main-row">
                             <button class="expand-btn" on:click={() => toggleExpand(key)}>
                                 {expandedItems.has(key) ? '▼' : '▶'}
@@ -294,6 +356,13 @@
                             </div>
                         {/if}
                     {/each}
+                    {#if totalPages > 1}
+                        <div class="pagination">
+                            <button class="page-btn" disabled={currentPage <= 1} on:click={() => currentPage--}>&laquo; Prev</button>
+                            <span class="page-info">{$t('usage.pageInfo', { current: currentPage, total: totalPages })}</span>
+                            <button class="page-btn" disabled={currentPage >= totalPages} on:click={() => currentPage++}>Next &raquo;</button>
+                        </div>
+                    {/if}
                 {:else}
                     <div class="no-data">No detailed data found for this view.</div>
                 {/if}
@@ -303,8 +372,9 @@
 </div>
 
 {#if showPricingModal}
-<div class="modal-overlay" on:click={handleOverlayClick} on:keydown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { showPricingModal = false; } }} role="button" tabindex="0">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pricing-modal-title">
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<div class="modal-overlay" on:click={handleOverlayClick} bind:this={pricingModalRef}>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="pricing-modal-title" on:keydown={handleModalKeydown}>
         <h3 id="pricing-modal-title">{$t('usage.pricingConfig')}</h3>
         <p class="modal-info">{$t('usage.pricingInfo')}</p>
         <div class="pricing-table">
@@ -330,7 +400,7 @@
         <button class="add-row-btn" on:click={addPricingRow}>{$t('usage.addModel')}</button>
         <div class="modal-actions">
             <button on:click={savePricing}>{$t('usage.save')}</button>
-            <button class="secondary" on:click={() => showPricingModal = false}>{$t('usage.cancel')}</button>
+            <button class="secondary" on:click={closePricingModal}>{$t('usage.cancel')}</button>
         </div>
     </div>
 </div>
@@ -608,4 +678,33 @@
     .modal-actions button.secondary:hover {
         background-color: var(--panel-muted-bg);
     }
+    .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 0.5rem;
+        border-top: 1px solid var(--border-color);
+    }
+    .page-btn {
+        background: var(--panel-soft-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .page-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+    .page-btn:hover:not(:disabled) {
+        background: var(--panel-hover-bg);
+    }
+    .page-info {
+        font-size: 0.8rem;
+        color: var(--text-light);
+    }
+
 </style>

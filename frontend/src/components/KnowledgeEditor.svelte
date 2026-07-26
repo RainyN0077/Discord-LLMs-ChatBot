@@ -30,25 +30,49 @@
   let editingMemoryContent = '';
   let intervalId = null;
   let includePromotedCandidates = false;
+  let searchTimeout;
+  let debouncedSearchQuery = '';
+  let isPollingMemory = false;
 
   onMount(async () => {
     loadMemoryItems();
     loadMemoryCandidates();
     loadWorldBookItems();
-    intervalId = setInterval(loadMemoryItems, 5000); // Poll for new memories
   });
 
   onDestroy(() => {
     if (intervalId) {
       clearInterval(intervalId);
+      intervalId = null;
+    }
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
     }
   });
 
+  // Only poll for new memories when the memory tab is active
+  // Uses guard to prevent overlapping requests when fetch takes longer than interval
+  $: if (activeTab === 'memory') {
+    if (!intervalId) {
+      loadMemoryItems();
+      intervalId = setInterval(loadMemoryItems, 5000);
+    }
+  } else {
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+  }
+
   async function loadMemoryItems() {
+    if (isPollingMemory) return;
+    isPollingMemory = true;
     try {
       memoryItems = await fetchMemoryItems();
     } catch (e) {
       alert(`${$t('knowledge.error.loadMemory')}: ${e.message}`);
+    } finally {
+      isPollingMemory = false;
     }
   }
 
@@ -71,7 +95,7 @@
         // Only include timestamp if it's been set by the user
         timestamp: newMemoryTimestamp || null,
         timezone: newMemoryTimestamp ? timezone : null,
-        source: '手动添加'
+        source: $t('knowledge.memory.sourceManual')
       };
       
       await addMemoryItem(itemData);
@@ -202,8 +226,16 @@
     return persona.nickname || `ID: ${userId}`;
   }
  
+  function handleSearchInput(e) {
+    searchQuery = e.target.value;
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+      debouncedSearchQuery = searchQuery;
+    }, 200);
+  }
+
   $: filteredMemoryItems = memoryItems.filter(item =>
-    item.user_name && item.user_name.toLowerCase().includes(searchQuery.toLowerCase())
+    item.user_name && item.user_name.toLowerCase().includes(debouncedSearchQuery.toLowerCase())
   );
 
   $: filteredWorldBookItems = worldBookItems.filter(item =>
@@ -450,7 +482,7 @@
     <div class="memory-section">
       <h3>{$t('knowledge.memory.title')}</h3>
       <div class="search-bar">
-        <input type="text" bind:value={searchQuery} placeholder={$t('knowledge.memory.searchPlaceholder')}>
+        <input type="text" on:input={handleSearchInput} placeholder={$t('knowledge.memory.searchPlaceholder')}>
       </div>
       <div class="item-list">
         {#if filteredMemoryItems.length === 0}
