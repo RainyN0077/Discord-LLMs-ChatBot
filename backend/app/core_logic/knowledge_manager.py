@@ -10,6 +10,7 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Set, Tuple
 
 import aiosqlite
 
+from ..paths import DataPaths
 from .sqlite_pool import SQLiteConnectionPool
 
 
@@ -32,11 +33,8 @@ class KnowledgeManager:
 
     def __init__(self, db_path: Optional[str] = None, pool_max_connections: int = 10, pool_idle_timeout: float = 300.0):
         if db_path is None:
-            db_dir = "data"
-            os.makedirs(db_dir, exist_ok=True)
-            self.db_path = os.path.join(db_dir, "knowledge_base.sqlite")
-        else:
-            self.db_path = db_path
+            db_path = str(DataPaths.KNOWLEDGE_DB)
+        self.db_path = db_path
         self._pool = SQLiteConnectionPool(
             self.db_path,
             max_connections=pool_max_connections,
@@ -55,10 +53,7 @@ class KnowledgeManager:
         Uses a one-off ``sqlite3`` connection so that ``__init__`` can
         remain a plain (non-async) constructor.
         """
-        scripts_dir = "/app/scripts"
-        if not os.path.isdir(scripts_dir):
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-            scripts_dir = os.path.join(base_dir, "scripts")
+        scripts_dir = str(DataPaths.SCRIPTS_DIR)
         init_script_path = os.path.join(scripts_dir, "1_initialize_schema.sql")
         if not os.path.exists(init_script_path):
             print(f"CRITICAL: Database initialization script not found at {init_script_path}")
@@ -824,10 +819,14 @@ _knowledge_manager: Optional[KnowledgeManager] = None
 
 
 def get_knowledge_manager(bot_id: str = None) -> KnowledgeManager:
+    """Backward-compatible accessor — prefer ``Depends(get_knowledge_manager_dep)``.
+
+    Resolves via ``AppContext`` instead of ``state`` to avoid circular imports (G4).
+    """
     global _knowledge_manager
     try:
-        from .. import state
-        mgr = state.bot_manager
+        from ..app_context import AppContext
+        mgr = AppContext.get().bot_manager
         if bot_id and mgr:
             inst = mgr.get(bot_id)
             if inst and inst._knowledge_manager:

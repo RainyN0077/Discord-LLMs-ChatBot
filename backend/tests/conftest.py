@@ -15,6 +15,7 @@ if str(_backend_dir) not in sys.path:
 os.environ.setdefault("FAIL_ON_REDIS_ERROR", "false")
 os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key-for-pytest")
 
+from app.app_context import AppContext
 from app.utils import Stub, _async_stub
 from app.config_cache import DEFAULT_CONFIG, invalidate_cache
 from app.state import MEMORY_CUTOFFS
@@ -44,9 +45,15 @@ def _create_mock_core_shared(tmp_path):
 
 @pytest.fixture(autouse=True)
 def _reset_global_state(monkeypatch, tmp_path):
+    AppContext.reset()
+    ctx = AppContext.get()
+    # After reset, the first AppContext.get() creates a fresh singleton;
+    # state proxy accesses then delegate to it.
     MEMORY_CUTOFFS.clear()
     invalidate_cache()
+    ctx.bot_manager = None
     state.bot_manager = None
+    ctx.bot_tasks = {}
     state.bot_task = None
 
     data_dir = tmp_path / "data"
@@ -73,8 +80,6 @@ def _reset_global_state(monkeypatch, tmp_path):
     monkeypatch.setattr(km_mod, "get_knowledge_manager", lambda: test_km)
     import app.core_logic.context_builder as cb_mod
     monkeypatch.setattr(cb_mod, "get_knowledge_manager", lambda: test_km)
-    import app.routers.memory as mem_mod
-    monkeypatch.setattr(mem_mod, "get_knowledge_manager", lambda: test_km)
     import app.handlers.context_assembler as ca_mod
     try:
         monkeypatch.setattr(ca_mod, "get_knowledge_manager", lambda: test_km)
@@ -219,18 +224,23 @@ async def app_client(tmp_path, test_config_dict, monkeypatch):
     test_km = KnowledgeManager(db_path=str(test_db_path))
     import app.core_logic.knowledge_manager as km_mod
     monkeypatch.setattr(km_mod, "get_knowledge_manager", lambda: test_km)
-    import app.routers.memory as mem_mod
-    monkeypatch.setattr(mem_mod, "get_knowledge_manager", lambda: test_km)
 
     from app.bot_manager import BotManager
+    from app.bot_instance import BotInstance
     mock_manager = MagicMock(spec=BotManager)
-    mock_manager._instances = {}
+    mock_instance = MagicMock(spec=BotInstance)
+    mock_instance._knowledge_manager = test_km
+    mock_instance.config = test_config_dict
+    mock_instance.status = "running"
+    mock_instance.bot_id = "test-bot"
+    mock_manager._instances = {"test-bot": mock_instance}
     mock_manager.list = MagicMock(return_value=[])
     mock_manager.get = MagicMock(return_value=None)
     mock_manager.load_all = AsyncMock(return_value=None)
     mock_manager.shutdown = AsyncMock(return_value=None)
     mock_manager.create = AsyncMock(return_value="test-bot")
     monkeypatch.setattr(state, "bot_manager", mock_manager)
+    AppContext.get().bot_manager = mock_manager
 
     from app.main import app
     transport = ASGITransport(app=app)

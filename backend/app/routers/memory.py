@@ -4,8 +4,8 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, Response, Depends
 
-from ..core_logic.knowledge_manager import get_knowledge_manager
-from ..dependencies import get_api_key
+from ..core_logic.knowledge_manager import KnowledgeManager
+from ..dependencies import get_api_key, get_knowledge_manager_dep
 from ..models import (
     ClearMemoryRequest, MemoryItem, WorldBookItem, UpdateMemoryRequest,
     MemoryCandidateItem, PromoteCandidateResponse,
@@ -26,12 +26,17 @@ async def clear_channel_memory(request: ClearMemoryRequest):
 
 
 @router.get("/api/memory", response_model=List[MemoryItem], dependencies=[Depends(get_api_key)])
-async def get_all_memory_items():
-    return await get_knowledge_manager().get_all_memories()
+async def get_all_memory_items(
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    return await km.get_all_memories()
 
 
 @router.post("/api/memory", response_model=MemoryItem, dependencies=[Depends(get_api_key)])
-async def add_memory_item(item: MemoryItem):
+async def add_memory_item(
+    item: MemoryItem,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
     try:
         utc_timestamp_str: str
         if item.timestamp and item.timezone:
@@ -52,7 +57,7 @@ async def add_memory_item(item: MemoryItem):
         user_name = item.user_name or "WebUI"
         source = item.source or "manual_add"
 
-        item_id = await get_knowledge_manager().add_memory(
+        item_id = await km.add_memory(
             content=item.content,
             timestamp=utc_timestamp_str,
             user_id=user_id,
@@ -80,51 +85,73 @@ async def add_memory_item(item: MemoryItem):
 
 
 @router.delete("/api/memory/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
-async def delete_memory_item(item_id: int):
-    success = await get_knowledge_manager().delete_memory(item_id)
+async def delete_memory_item(
+    item_id: int,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    success = await km.delete_memory(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Memory item not found")
     return Response(status_code=204)
 
 
 @router.put("/api/memory/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
-async def update_memory_item(item_id: int, item: UpdateMemoryRequest):
-    success = await get_knowledge_manager().update_memory(item_id, item.content)
+async def update_memory_item(
+    item_id: int,
+    item: UpdateMemoryRequest,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    success = await km.update_memory(item_id, item.content)
     if not success:
         raise HTTPException(status_code=404, detail="Memory item not found or failed to update")
     return Response(status_code=204)
 
 
 @router.get("/api/memory/candidates", response_model=List[MemoryCandidateItem], dependencies=[Depends(get_api_key)])
-async def get_memory_candidates(include_promoted: bool = False, limit: int = 200):
-    return await get_knowledge_manager().get_memory_candidates(include_promoted=include_promoted, limit=limit)
+async def get_memory_candidates(
+    include_promoted: bool = False,
+    limit: int = 200,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    return await km.get_memory_candidates(include_promoted=include_promoted, limit=limit)
 
 
 @router.post("/api/memory/candidates/{candidate_id}/promote", response_model=PromoteCandidateResponse, dependencies=[Depends(get_api_key)])
-async def promote_memory_candidate(candidate_id: int):
-    memory_id = await get_knowledge_manager().promote_memory_candidate(candidate_id)
+async def promote_memory_candidate(
+    candidate_id: int,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    memory_id = await km.promote_memory_candidate(candidate_id)
     if not memory_id:
         raise HTTPException(status_code=404, detail="Memory candidate not found or failed to promote")
     return {"candidate_id": candidate_id, "memory_id": memory_id}
 
 
 @router.delete("/api/memory/candidates/{candidate_id}", status_code=204, dependencies=[Depends(get_api_key)])
-async def delete_memory_candidate(candidate_id: int):
-    success = await get_knowledge_manager().delete_memory_candidate(candidate_id)
+async def delete_memory_candidate(
+    candidate_id: int,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    success = await km.delete_memory_candidate(candidate_id)
     if not success:
         raise HTTPException(status_code=404, detail="Memory candidate not found")
     return Response(status_code=204)
 
 
 @router.get("/api/worldbook", response_model=List[WorldBookItem], dependencies=[Depends(get_api_key)])
-async def get_all_worldbook_items():
-    return await get_knowledge_manager().get_all_world_book_entries()
+async def get_all_worldbook_items(
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    return await km.get_all_world_book_entries()
 
 
 @router.post("/api/worldbook", response_model=WorldBookItem, dependencies=[Depends(get_api_key)])
-async def add_worldbook_item(item: WorldBookItem):
+async def add_worldbook_item(
+    item: WorldBookItem,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
     try:
-        item_id = await get_knowledge_manager().add_world_book_entry(
+        item_id = await km.add_world_book_entry(
             keywords=item.keywords,
             content=item.content,
             linked_user_id=item.linked_user_id,
@@ -138,9 +165,13 @@ async def add_worldbook_item(item: WorldBookItem):
 
 
 @router.put("/api/worldbook/{item_id}", response_model=WorldBookItem, dependencies=[Depends(get_api_key)])
-async def update_worldbook_item(item_id: int, item: WorldBookItem):
+async def update_worldbook_item(
+    item_id: int,
+    item: WorldBookItem,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
     try:
-        success = await get_knowledge_manager().update_world_book_entry(
+        success = await km.update_world_book_entry(
             entry_id=item_id,
             keywords=item.keywords,
             content=item.content,
@@ -158,8 +189,11 @@ async def update_worldbook_item(item_id: int, item: WorldBookItem):
 
 
 @router.delete("/api/worldbook/{item_id}", status_code=204, dependencies=[Depends(get_api_key)])
-async def delete_worldbook_item(item_id: int):
-    success = await get_knowledge_manager().delete_world_book_entry(item_id)
+async def delete_worldbook_item(
+    item_id: int,
+    km: KnowledgeManager = Depends(get_knowledge_manager_dep),
+):
+    success = await km.delete_world_book_entry(item_id)
     if not success:
         raise HTTPException(status_code=404, detail="World book item not found")
     return Response(status_code=204)

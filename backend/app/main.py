@@ -6,24 +6,29 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .app_context import AppContext
 from .bot_manager import BotManager
 from .config_bridge import generate_env_file
 from .middleware.rate_limit import register_rate_limit_middleware
+from .usage_tracker import UsageTracker
 from .utils import setup_logging
-from . import state
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ctx = AppContext.get()
+
+    from .paths import DataPaths
+    DataPaths.ensure_dirs()
     setup_logging()
 
     generate_env_file()
 
     import nonebot
     nonebot.init()
-    state.nonebot_driver = nonebot.get_driver()
+    ctx.nonebot_driver = nonebot.get_driver()
 
     from .discord_patch import apply_component_emoji_fix
     apply_component_emoji_fix()
@@ -34,8 +39,11 @@ async def lifespan(app: FastAPI):
 
     nonebot.load_plugins("nb_plugins")
 
-    state.bot_manager = BotManager()
-    await state.bot_manager.load_all()
+    ctx.bot_manager = BotManager()
+    await ctx.bot_manager.load_all()
+
+    ctx.usage_tracker = UsageTracker()
+    await ctx.usage_tracker.initialize()
 
     generate_env_file()
 
@@ -46,7 +54,9 @@ async def lifespan(app: FastAPI):
     yield
     if hasattr(driver, '_shutdown'):
         await driver._shutdown()
-    await state.bot_manager.shutdown()
+    if ctx.usage_tracker:
+        await ctx.usage_tracker.close()
+    await ctx.bot_manager.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)

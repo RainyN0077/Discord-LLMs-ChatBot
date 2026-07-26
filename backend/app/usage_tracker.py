@@ -8,70 +8,88 @@ import asyncio
 from collections import defaultdict
 import pytz
 
+from .paths import DataPaths
+
 logger = logging.getLogger(__name__)
 
+_DEFAULT_USAGE_FILE = str(DataPaths.USAGE_FILE)
+
+
+def _default_usage_data() -> Dict[str, Any]:
+    """Return the default in-memory usage data structure."""
+    return {
+        "daily": defaultdict(lambda: {
+            "requests": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "detailed": {
+                "by_user": {},
+                "by_role": {},
+                "by_channel": {},
+                "by_guild": {}
+            }
+        }),
+        "metadata": {
+            "users": {},
+            "roles": {},
+            "channels": {},
+            "guilds": {},
+            "channel_users": {}
+        }
+    }
+
+
 class UsageTracker:
-    def __init__(self, data_file="data/usage_data.json"):
+    def __init__(self, data_file=_DEFAULT_USAGE_FILE):
         self.data_file = data_file
         data_dir = os.path.dirname(data_file)
         if data_dir:
             os.makedirs(data_dir, exist_ok=True)
-        self.usage_data = self._load_data()
+        # Start with defaults; actual file data is loaded later via initialize().
+        self.usage_data = _default_usage_data()
         self.lock = asyncio.Lock()
         self._save_pending = False
         self._save_dirty = False
         self._save_task = None
-        
-    def _load_data(self) -> Dict[str, Any]:
-        if os.path.exists(self.data_file):
-            try:
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    metadata = data.get("metadata", {})
-                    if "channel_users" not in metadata:
-                        metadata["channel_users"] = {}
-                    return {
-                        "daily": defaultdict(lambda: {
-                            "requests": 0, 
-                            "input_tokens": 0, 
-                            "output_tokens": 0, 
-                            "total_tokens": 0,
-                            "detailed": {
-                                "by_user": {},
-                                "by_role": {},
-                                "by_channel": {},
-                                "by_guild": {}
-                            }
-                        }, data.get("daily", {})),
-                        "metadata": metadata
-                    }
-            except (json.JSONDecodeError, OSError) as e:
-                logger.error("Error loading usage data from %s: %s. Backing up corrupt file.", self.data_file, e)
-                try:
-                    os.replace(self.data_file, self.data_file + ".corrupt")
-                except OSError:
-                    pass
-        return {
-            "daily": defaultdict(lambda: {
-                "requests": 0, 
-                "input_tokens": 0, 
-                "output_tokens": 0, 
-                "total_tokens": 0,
-                "detailed": {
-                    "by_user": {},
-                    "by_role": {},
-                    "by_channel": {},
-                    "by_guild": {}
+
+    async def initialize(self) -> None:
+        """Load persisted usage data from disk (runs sync I/O in a thread)."""
+        data = await asyncio.to_thread(self._load_data_sync)
+        self.usage_data = data
+
+    def _load_data_sync(self) -> Dict[str, Any]:
+        """Synchronous JSON load — designed to run inside asyncio.to_thread()."""
+        if not os.path.exists(self.data_file):
+            return _default_usage_data()
+        try:
+            with open(self.data_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                metadata = data.get("metadata", {})
+                if "channel_users" not in metadata:
+                    metadata["channel_users"] = {}
+                return {
+                    "daily": defaultdict(lambda: {
+                        "requests": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "detailed": {
+                            "by_user": {},
+                            "by_role": {},
+                            "by_channel": {},
+                            "by_guild": {}
+                        }
+                    }, data.get("daily", {})),
+                    "metadata": metadata
                 }
-            }),
-            "metadata": {
-                "users": {},
-                "roles": {},
-                "channels": {},
-                "guilds": {},
-                "channel_users": {}
-            }
-        }
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("Error loading usage data from %s: %s. Backing up corrupt file.", self.data_file, e)
+            try:
+                os.replace(self.data_file, self.data_file + ".corrupt")
+            except OSError:
+                pass
+            return _default_usage_data()
     
     async def save_data(self):
         async with self.lock:
@@ -349,5 +367,5 @@ class UsageTracker:
                 "metadata": self.usage_data["metadata"]
             }
 
-# 全局实例
-usage_tracker = UsageTracker()
+# Module-level singleton removed (G3).
+# Use AppContext.get().usage_tracker or Depends(get_usage_tracker_dep) instead.
