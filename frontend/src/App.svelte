@@ -4,7 +4,7 @@
     import { fade, fly } from 'svelte/transition';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang, get as t_get } from './i18n.js';
-    import { customFontName, activePage } from './lib/stores.js';
+    import { customFontName, activePage } from './lib/commonStores.js';
     import { setApiSecretKey } from './lib/api.js';
     import { initTheme, startThemeSync, stopThemeSync, animationsEnabled } from './lib/themeStore.js';
     import './styles/typography.css';
@@ -18,12 +18,14 @@
         appearance: () => import('./pages/AppearanceSettings.svelte'),
         debug: () => import('./pages/Debugger.svelte'),
         userOptions: () => import('./pages/UserOptions.svelte'),
+        promptStudio: () => import('./pages/PromptStudio.svelte'),
     };
     let configPromise;
     let modelsPromise;
     let appearancePromise;
     let debugPromise;
     let userOptionsPromise;
+    let promptStudioPromise;
 
     const pageCache = {};
 
@@ -48,6 +50,7 @@
                 case 'appearance': appearancePromise = promise; break;
                 case 'debug': debugPromise = promise; break;
                 case 'userOptions': userOptionsPromise = promise; break;
+                case 'promptStudio': promptStudioPromise = promise; break;
             }
         }
     }
@@ -61,6 +64,11 @@
     }
 
     function applyFont(fontDataUrl, fontName) {
+        // Validate font URL: must be a data:, blob:, https:, or http: URL
+        if (typeof fontDataUrl !== 'string' || !/^(data:|blob:|https?:)\/\//i.test(fontDataUrl)) {
+            console.error('Invalid font URL: rejected for security.');
+            return;
+        }
         const styleId = 'custom-font-style';
         let styleElement = document.getElementById(styleId);
         if (!styleElement) {
@@ -68,7 +76,7 @@
             styleElement.id = styleId;
             document.head.appendChild(styleElement);
         }
-        styleElement.innerHTML = `
+        styleElement.textContent = `
             @font-face {
                 font-family: 'CustomUserFont';
                 src: url(${fontDataUrl});
@@ -78,6 +86,11 @@
             }
         `;
         customFontName.set(fontName);
+    }
+
+    // Sync <html lang> attribute with current language
+    $: if (typeof document !== 'undefined') {
+        document.documentElement.lang = $lang === 'zh' ? 'zh-CN' : 'en';
     }
 
     onMount(async () => {
@@ -148,6 +161,15 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     {$t('appNav.userOptions')}
                 </button>
+                <button class:active={$activePage === 'promptStudio'} on:click={() => activePage.set('promptStudio')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    {$t('appNav.promptStudio')}
+                </button>
             </nav>
             <div class="lang-switcher">
                 <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
@@ -205,6 +227,16 @@
                 {:else if $activePage === 'userOptions'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
                         {#await userOptionsPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
+                    </div>
+                {:else if $activePage === 'promptStudio'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        {#await promptStudioPromise}
                             <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
                         {:then Module}
                             <svelte:component this={Module.default} botId={selectedBotId} />

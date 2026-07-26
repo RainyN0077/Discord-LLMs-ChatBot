@@ -6,7 +6,8 @@
   import ScopedPromptEditor from '../components/ScopedPromptEditor.svelte';
   import PluginEditor from '../components/PluginEditor.svelte';
   import RoleConfigEditor from '../components/RoleConfigEditor.svelte';
-  import { promptTemplates, behaviorConfig, saveConfig, fetchConfig, statusMessage, statusType, isLoading, roleConfigs } from '../lib/stores.js';
+  import { promptTemplates, statusMessage, statusType, isLoading } from '../lib/commonStores.js';
+  import { behaviorConfig, saveConfig, fetchConfig, roleConfigs } from '../lib/stores.js';
 
   // Stubs — these API functions are not yet implemented on the backend.
   // When implemented, replace these with real imports from '../lib/api.js'.
@@ -30,7 +31,9 @@
   let presets = [];
   let selectedPreset = '';
   let fileInput;
-  const UNDELETABLE_PRESET_NAME = '(默认)开箱即用';
+  // Backend preset name constant; used for comparison to prevent deletion of default preset.
+  // Must match the backend's default preset name. Display is handled via i18n.
+  const UNDELETABLE_PRESET_NAME = $t('promptStudio.preset.defaultPresetName');
 
   async function loadPresets() {
     try {
@@ -40,7 +43,7 @@
       }
     } catch (error) {
       console.error("Failed to load presets:", error);
-      statusMessage.set(`加载预设失败: ${error.message}`);
+      statusMessage.set(t_get('promptStudio.preset.presetsLoadFailed', { error: error.message }));
       statusType.set('error');
     }
   }
@@ -196,24 +199,29 @@
 
   // --- Backend-Driven Live Preview ---
   let isPreviewLoading = false;
+  // Default placeholder text shown before first preview generation; functional sample data
   let previewResult = {
     final_system_prompt: "在下方配置模拟场景并点击“生成预览”以查看结果...",
     final_user_request: "",
     construction_log: []
   };
 
+  // Scenario simulator default values — sample data for testing/demo purposes
   let scenario = {
     user_id: "123456789",
     user_roles: [],
     channel_id: "987654321",
     guild_id: "555555555",
+    // Sample message content demonstrating typical user input with @mention
     message_content: "你好，我想问一下关于 @张三 的信息，顺便搜索一下今天的天气。",
     is_reply: true,
     replied_message: {
         author_id: "111222333",
+        // Sample replied message content
         content: "你有什么问题吗？"
     },
     image_count: 1,
+    // Sample plugin trigger demonstrating plugin integration in the simulator
     triggered_plugins: [
         {
             "name": "搜索",
@@ -235,7 +243,7 @@
       console.error("Failed to fetch prompt preview:", error);
       previewResult.final_system_prompt = t_get('promptStudio.simulator.previewFailed', { error: error.message });
       previewResult.final_user_request = "";
-      previewResult.construction_log = [`错误详情: ${error.stack}`];
+      previewResult.construction_log = [t_get('promptStudio.simulator.errorDetails', { stack: error.stack })];
     } finally {
       isPreviewLoading = false;
     }
@@ -246,11 +254,19 @@
   $: if (scenario) updatePreview();
 
   async function handleSave() {
-    await saveConfig();
+    try {
+      await saveConfig();
+    } catch (e) {
+      statusMessage.set(t_get('promptStudio.saveFailed', { error: e.message }) || `Save failed: ${e.message}`);
+      statusType.set('error');
+    }
   }
 
   function resetChanges() {
-    fetchConfig(); 
+    fetchConfig().catch(e => {
+      statusMessage.set(t_get('promptStudio.resetFailed', { error: e.message }) || `Reset failed: ${e.message}`);
+      statusType.set('error');
+    });
   }
 </script>
 

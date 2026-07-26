@@ -1,9 +1,10 @@
 <script>
   export let title;
   export let theme = 'light'; // light 或 dark-theme
+  export let extraClass = '';
 </script>
 
-<div class="card {theme}">
+<div class="card {theme} {extraClass}">
   {#if title}
     <h2>{title}</h2>
   {/if}

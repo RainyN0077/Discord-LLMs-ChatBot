@@ -1,24 +1,19 @@
 <!-- src/pages/ModelSettings.svelte -->
 <script>
     import { t } from '../i18n.js';
+    import { activePage, showStatus } from '../lib/commonStores.js';
+    import { createConfigLoader, createSaveHandler } from '../lib/botConfigActions.js';
+    import ThreeState from '../components/ThreeState.svelte';
     import {
         coreConfig,
         behaviorConfig,
-        activePage,
-        customParameters,
-        showStatus,
-        saveConfig,
-        loadBotConfigToStores
+        customParameters
     } from '../lib/stores.js';
     import { fetchAvailableModels, testModel } from '../lib/api.js';
     import { PROVIDER_DEFAULTS, KNOWN_PROVIDERS, getProviderBaseUrl, providerForPlaceholder } from '../lib/providerDefaults.js';
     import Card from '../components/Card.svelte';
 
     export let botId = null;
-
-    let loadingConfig = false;
-    let configError = '';
-    let isSaving = false;
 
     let availableModels = [];
     let isLoadingModels = false;
@@ -29,49 +24,25 @@
     let prevLlmProvider = null;
     let prevApiKey = null;
 
-    let configLoadSeq = 0;
-
-    async function loadInstanceConfig(seq) {
-        if (seq !== configLoadSeq) return;
-        if (!botId) return;
-        loadingConfig = true;
-        configError = '';
-        try {
-            await loadBotConfigToStores(botId);
-        } catch (e) {
-            configError = String(e.message || e);
-        } finally {
-            loadingConfig = false;
-        }
-    }
-
-    $: if (botId) { const seq = ++configLoadSeq; loadInstanceConfig(seq); }
-
-    async function handleSave() {
-        isSaving = true;
-        showStatus('Saving...', 'info');
-        try {
-            await saveConfig(botId);
-            showStatus('Configuration saved and bot restarted!', 'success');
-        } catch (e) {
-            showStatus('Save failed: ' + e.message, 'error');
-        } finally {
-            isSaving = false;
-        }
-    }
+    const { isLoading, error, trigger } = createConfigLoader(() => botId);
+    const { isSaving, save } = createSaveHandler(() => botId);
+    $: if (botId) trigger();
 
     $: knownModels = PROVIDER_DEFAULTS[$coreConfig.llm_provider]?.models || [];
 
-    $: if (KNOWN_PROVIDERS.has($coreConfig.llm_provider)) {
-        const defaults = PROVIDER_DEFAULTS[$coreConfig.llm_provider];
-        if ($coreConfig.openai_base_url !== defaults.baseUrl) {
-            coreConfig.update(c => ({ ...c, openai_base_url: defaults.baseUrl }));
+    function handleProviderChange() {
+        const provider = $coreConfig.llm_provider;
+        if (KNOWN_PROVIDERS.has(provider)) {
+            const defaults = PROVIDER_DEFAULTS[provider];
+            if (!$coreConfig.openai_base_url) {
+                coreConfig.update(c => ({ ...c, openai_base_url: defaults.baseUrl }));
+            }
         }
     }
 
     async function loadModels() {
         if (!$coreConfig.api_key) {
-            showStatus('Please enter API key first', 'error');
+            showStatus(t('llmProvider.noApiKey'), 'error');
             return;
         }
         isLoadingModels = true;
@@ -83,9 +54,9 @@
             );
             availableModels = result.models;
             useManualInput = false;
-            showStatus('Model list loaded successfully', 'success');
+            showStatus(t('llmProvider.modelsLoaded'), 'success');
         } catch (e) {
-            showStatus('Failed to load model list: ' + e.message, 'error');
+            showStatus(t('llmProvider.modelsLoadFailed') + e.message, 'error');
             availableModels = [];
             useManualInput = true;
         } finally {
@@ -95,7 +66,7 @@
 
     async function handleTestModel() {
         if (!$coreConfig.model_name) {
-            showStatus('Please select a model first', 'error');
+            showStatus(t('llmProvider.selectModelFirst'), 'error');
             return;
         }
         isTesting = true;
@@ -109,12 +80,12 @@
             );
             testResult = result;
             if (result.success) {
-                showStatus('Connection test successful!', 'success');
+                showStatus(t('llmProvider.testSuccess'), 'success');
             } else {
-                showStatus('Connection test failed: ' + result.error, 'error');
+                showStatus(t('llmProvider.testFailed') + result.error, 'error');
             }
         } catch (e) {
-            showStatus('Test error: ' + e.message, 'error');
+            showStatus(t('llmProvider.testError') + e.message, 'error');
         } finally {
             isTesting = false;
         }
@@ -157,31 +128,27 @@
 
 <div class="config-panel">
     <div class="config-header">
-        <h2>{botId ? 'Model Settings — ' + botId : 'Select a bot first'}</h2>
+        <h2>{botId ? $t('modelSettings.title', { botId }) : $t('modelSettings.selectBotFirst')}</h2>
         <div class="header-actions">
             <button class="export-btn" on:click={() => activePage.set('config')}>
                 &larr; {$t('modelSettings.backToConfig')}
             </button>
-            <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
-                {isSaving ? 'Saving...' : $t('modelSettings.saveAndRestart')}
+            <button class="save-btn" on:click={save} disabled={$isSaving || !botId}>
+                {$isSaving ? $t('status.saving') : $t('modelSettings.saveAndRestart')}
             </button>
         </div>
     </div>
 
-    {#if loadingConfig}
-        <div class="loading-state">{botId ? 'Loading configuration for ' + botId + '...' : 'Loading...'}</div>
-    {:else if configError}
-        <div class="error-state">{configError}</div>
-    {:else if !botId}
-        <div class="empty-state">{$t('configPanel.selectBot')}</div>
-    {:else if $coreConfig}
+    <ThreeState loading={$isLoading} error={$error} empty={!botId} emptyMessage={$t('configPanel.selectBot')}>
+        <span slot="loading-text">{botId ? $t('modelSettings.loadingConfig', { botId }) : $t('modelSettings.loading')}</span>
+        {#if $coreConfig}
         <div class="tab-content">
 
             <Card title={$t('llmProvider.title')}>
                 <div class="provider-top-grid">
                     <div>
                         <label for="llm-provider">{$t('llmProvider.select')}</label>
-                        <select id="llm-provider" bind:value={$coreConfig.llm_provider}>
+                        <select id="llm-provider" bind:value={$coreConfig.llm_provider} on:change={handleProviderChange}>
                             <option value="openai">{$t('llmProvider.providers.openai')}</option>
                             <option value="grok">{$t('llmProvider.providers.grok')}</option>
                             <option value="google">{$t('llmProvider.providers.google')}</option>
@@ -324,7 +291,7 @@
                             <input id="temperature" type="number" min="0" max="2" step="0.1"
                                    bind:value={$coreConfig.temperature}
                                    placeholder={$t(`inferenceParams.placeholders.${$coreConfig.llm_provider}`) || $t('inferenceParams.placeholders.default')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, temperature: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, temperature: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                     <div class="param-field">
@@ -333,7 +300,7 @@
                             <input id="top-p" type="number" min="0" max="1" step="0.05"
                                    bind:value={$coreConfig.top_p}
                                    placeholder={$t('inferenceParams.placeholders.topP')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, top_p: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, top_p: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                     <div class="param-field">
@@ -342,7 +309,7 @@
                             <input id="max-tokens" type="number" min="1" step="1"
                                    bind:value={$coreConfig.max_tokens}
                                    placeholder={$t('inferenceParams.maxTokensHint')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, max_tokens: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, max_tokens: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                     <div class="param-field">
@@ -351,7 +318,7 @@
                             <input id="top-k" type="number" min="1" step="1"
                                    bind:value={$coreConfig.top_k}
                                    placeholder={$t('inferenceParams.placeholders.topK')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, top_k: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, top_k: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                     <div class="param-field">
@@ -360,7 +327,7 @@
                             <input id="frequency-penalty" type="number" min="-2" max="2" step="0.1"
                                    bind:value={$coreConfig.frequency_penalty}
                                    placeholder={$t('inferenceParams.placeholders.frequencyPenalty')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, frequency_penalty: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, frequency_penalty: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                     <div class="param-field">
@@ -369,7 +336,7 @@
                             <input id="presence-penalty" type="number" min="-2" max="2" step="0.1"
                                    bind:value={$coreConfig.presence_penalty}
                                    placeholder={$t('inferenceParams.placeholders.presencePenalty')}>
-                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, presence_penalty: null }))} title="Clear">&times;</button>
+                            <button class="clear-btn" on:click={() => coreConfig.update(c => ({ ...c, presence_penalty: null }))} title={$t('inferenceParams.clear')}>&times;</button>
                         </div>
                     </div>
                 </div>
@@ -407,6 +374,7 @@
             </Card>
         </div>
     {/if}
+    </ThreeState>
 </div>
 
 <style>
@@ -479,17 +447,6 @@
     .export-btn:disabled {
         opacity: .6;
         cursor: not-allowed;
-    }
-
-    .loading-state, .error-state, .empty-state {
-        text-align: center;
-        padding: 3rem 1rem;
-        color: var(--text-light);
-        font-size: 1rem;
-    }
-
-    .error-state {
-        color: var(--error-text);
     }
 
     .tab-content {

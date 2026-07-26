@@ -2,8 +2,9 @@
 <script>
     import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { t } from '../i18n.js';
-    import { rawLogs, timezoneStore } from '../lib/stores.js';
+    import { rawLogs, timezoneStore } from '../lib/commonStores.js';
     import { fetchLogs } from '../lib/api.js';
+    import { parseLogs, LEVEL_REGEX_DEFAULT, LogPoller } from '../lib/logParser.js';
     import UsageDashboard from './UsageDashboard.svelte';
 
     let logLevelFilter = 'ALL';
@@ -11,59 +12,17 @@
     const LOG_LINE_LIMIT_OPTIONS = [200, 500, 1000, 2000];
     let autoScroll = true;
     let logOutputElement;
-    let logInterval;
+    let logPoller;
     let renderedLogLimit = 1000;
     let hiddenLogCount = 0;
-    
-    // The 'sv-SE' locale is a trick to get the YYYY-MM-DD format easily.
-    const formatTimestamp = (utcString, timeZone) => {
-        if (!utcString) return '...';
-        try {
-            return new Intl.DateTimeFormat('sv-SE', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZone: timeZone
-            }).format(new Date(utcString));
-        } catch (e) {
-            console.error(`Invalid timezone: ${timeZone}`, e);
-            // Fallback to plain UTC string if timezone is invalid
-            return utcString.replace('T', ' ').substring(0, 19);
-        }
-    };
-    
-    $: parsedLogs = (($rawLogs, $timezoneStore), () => {
-        const allLines = ($rawLogs || '').split('\n').filter(line => line.trim() !== '');
-        hiddenLogCount = Math.max(0, allLines.length - renderedLogLimit);
-        const visibleLines = hiddenLogCount > 0 ? allLines.slice(-renderedLogLimit) : allLines;
 
-        return visibleLines.map(line => {
-            // Regex for ISO 8601 format: 2025-07-21T06:46:12.067Z
-            const timestampMatch = line.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/);
-            const levelMatch = line.match(/ - (INFO|WARNING|ERROR|CRITICAL) - /);
-
-            const originalTimestamp = timestampMatch ? timestampMatch[1] : null;
-            const level = levelMatch ? levelMatch[1] : 'UNKNOWN';
-
-            let messageText = line;
-            // Extract the actual message content, removing timestamp, module, and level.
-            if (levelMatch) {
-                messageText = line.substring(levelMatch.index + levelMatch[0].length);
-            } else if (timestampMatch) {
-                messageText = line.substring(timestampMatch[0].length).trim();
-            }
-
-            return {
-                level: level,
-                message: messageText,
-                originalLine: line, // Use a different name to avoid confusion and for keys
-                formattedTimestamp: formatTimestamp(originalTimestamp, $timezoneStore)
-            };
+    $: parsedLogs = (() => {
+        const result = parseLogs($rawLogs, $timezoneStore, {
+            limit: renderedLogLimit,
+            levelRegex: LEVEL_REGEX_DEFAULT
         });
+        hiddenLogCount = result.hiddenLogCount;
+        return result.parsedLogs;
     })();
 
     $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
@@ -78,17 +37,16 @@
             console.warn('Failed to restore logViewer.maxLines from localStorage', e);
         }
 
-        const getLogs = async () => {
-            try {
-                const logsText = await fetchLogs();
-                rawLogs.set(logsText);
-            } catch(e) {
+        logPoller = new LogPoller(async () => {
+            const logsText = await fetchLogs();
+            rawLogs.set(logsText);
+        }, {
+            onError(e, consecutiveErrors) {
                 rawLogs.set(`Error fetching logs: ${e.message}`);
-                console.error(e);
+                if (consecutiveErrors % 5 === 0) console.error('LogPoller:', e);
             }
-        };
-        getLogs();
-        logInterval = setInterval(getLogs, 5000);
+        });
+        logPoller.start();
     });
 
     $: if (typeof window !== 'undefined' && LOG_LINE_LIMIT_OPTIONS.includes(renderedLogLimit)) {
@@ -96,7 +54,7 @@
     }
 
     onDestroy(() => {
-        if (logInterval) clearInterval(logInterval);
+        if (logPoller) logPoller.stop();
     });
     
     afterUpdate(() => {

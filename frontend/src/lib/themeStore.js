@@ -1,5 +1,8 @@
 import { writable, get } from 'svelte/store';
 
+// Maximum length for custom CSS to prevent DoS (50KB)
+const MAX_CUSTOM_CSS_LENGTH = 50000;
+
 // --- Lazy theme loader ---
 let _STYLES = null;
 let _stylesPromise = null;
@@ -249,13 +252,17 @@ animationsEnabled.subscribe(enabled => {
 
 customCSS.subscribe(css => {
   if (typeof document === 'undefined') return;
+  if (css && css.length > MAX_CUSTOM_CSS_LENGTH) {
+    console.warn('Custom CSS exceeds maximum length, truncated');
+    css = css.substring(0, MAX_CUSTOM_CSS_LENGTH);
+  }
   let el = document.getElementById('custom-css');
   if (!el) {
     el = document.createElement('style');
     el.id = 'custom-css';
     document.head.appendChild(el);
   }
-  el.innerHTML = css;
+  el.textContent = css;
 });
 
 function ensureStyleElement() {
@@ -341,7 +348,7 @@ export function initTheme() {
       el.id = 'custom-css';
       document.head.appendChild(el);
     }
-    el.innerHTML = css;
+    el.textContent = css;
   }
 }
 

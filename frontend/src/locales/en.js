@@ -8,7 +8,8 @@ export default {
     themeDark: 'Switch to dark mode',
     themeLight: 'Switch to light mode',
     appearance: 'Appearance',
-    userOptions: 'User Options'
+    userOptions: 'User Options',
+    promptStudio: 'Prompt Studio'
   },
   promptStudio: {
     title: 'Bot Behavior Configuration Center',
@@ -62,8 +63,11 @@ export default {
       userRequestPreview: 'User Request Preview',
       buildLog: 'Build Log',
       previewFailed: 'Preview failed: {error}',
+      errorDetails: 'Error details: {stack}',
     },
     preset: {
+      defaultPresetName: '(Default) Ready-to-Use',
+      presetsLoadFailed: 'Failed to load presets: {error}',
       selectPlaceholder: 'Select preset',
       load: 'Load',
       saveAs: 'Save As...',
@@ -90,6 +94,9 @@ export default {
     loading: 'Loading...',
     scopeServerOverride: 'Server (Guild) Override',
     scopeChannelOverride: 'Channel Override',
+  },
+  generic: {
+    loading: 'Loading…'
   },
   title: 'BOT Manager',
   tabs: {
@@ -121,6 +128,8 @@ export default {
     apiKeyUnavailable: 'API key unavailable',
     copy: 'Copy',
     apiKeyInfo: 'This is your unique API key for external services to call plugin endpoints. Keep it safe and do not share with others.',
+    copied: 'Copied',
+    copyFailed: 'Copy failed',
     intents: {
       title: 'Gateway Intents',
       info: 'Controls which event types the Bot subscribes to when connecting to Discord. Changes require redeployment. SERVER MEMBERS INTENT and MESSAGE CONTENT INTENT must also be enabled in Developer Portal → Bot → Privileged Gateway Intents.',
@@ -516,6 +525,19 @@ export default {
     clearFailed: 'Clear failed: ',
     errorNoId: 'Please enter channel ID'
   },
+  sidebar: {
+    renameError: 'Only lowercase letters, digits, hyphens, underscores.',
+    createIdError: 'Bot ID must contain only lowercase letters, numbers, hyphens, and underscores.',
+    saveTitle: 'Save',
+    cancelTitle: 'Cancel',
+    renameTitle: 'Double-click to rename',
+    disabled: 'DISABLED',
+    botIdPlaceholder: 'bot-id (a-z, 0-9, -, _)',
+    botNamePlaceholder: 'Bot name',
+    discordTokenPlaceholder: 'Discord token',
+    llmApiKeyPlaceholder: 'LLM API key',
+    modelNamePlaceholder: 'Model name (gpt-4o)',
+  },
   uiSettings: {
     title: 'UI Settings',
     font: {
@@ -523,6 +545,7 @@ export default {
       resetButton: 'Reset to Default',
       currentFont: 'Current font: {fontName}',
       defaultFont: 'Using system default font',
+      invalidType: 'Invalid font file type. Please select TTF, OTF, WOFF, or WOFF2 format.',
       loadError: 'Failed to load font file',
       localStorageError: 'Cannot save font to local storage',
       resetSuccess: 'Font reset to default',
@@ -691,8 +714,9 @@ export default {
     outputPrice: 'Output Price',
     addModel: 'Add Model',
     save: 'Save',
-    cancel: 'Cancel'
-},
+    cancel: 'Cancel',
+    pageInfo: 'Page {current} of {total}'
+  },
 "searchSettings": {
     "title": "Search Settings",
     "enable": "Enable Search",
@@ -801,7 +825,8 @@ export default {
      delete: 'Delete',
      by: 'By',
      at: 'At',
-     source: 'Source',
+      source: 'Source',
+      sourceManual: 'Manual Entry',
      contentLabel: 'Content',
      userIdLabel: 'User ID',
      timestampLabel: 'Timestamp (optional, your local time)',
@@ -890,7 +915,11 @@ export default {
     backToConfig: 'Back to Config',
     saveAndRestart: 'Save & Restart Bot',
     goToModelSettings: 'LLM model configuration has been moved to the dedicated "Model Settings" page.',
-    openSettings: 'Open Model Settings'
+    openSettings: 'Open Model Settings',
+    title: 'Model Settings — {botId}',
+    selectBotFirst: 'Select a bot first',
+    loadingConfig: 'Loading configuration for {botId}...',
+    loading: 'Loading...',
   },
   inferenceParams: {
     title: 'Inference Parameters (Optional)',
@@ -902,6 +931,7 @@ export default {
     topK: 'Top K',
     frequencyPenalty: 'Frequency Penalty',
     presencePenalty: 'Presence Penalty',
+    clear: 'Clear',
     placeholders: {
       default: 'Leave blank for default',
       openai: 'Leave blank for default',
@@ -950,5 +980,22 @@ export default {
     cyberpunkWipBody: 'The Cyberpunk 2077 style is currently under active development. Visual quality is poor and many effects are incomplete. If you have suggestions, please submit an issue or PR on GitHub.',
     cyberpunkWipConfirm: 'Enable Anyway',
     cyberpunkWipCancel: 'Cancel',
-  }
+  },
+  astrBotMigration: {
+    title: 'Bot Framework',
+    info: 'Switch the bot runtime framework. AstrBot mode is currently in beta.',
+    switchToAstrbot: 'AstrBot (Beta)',
+    switchToNonebot: 'NoneBot (Current)',
+    modalTitle: '\u26a1 Switch Framework to AstrBot',
+    warningBeta: '\u26a0\ufe0f This feature is currently in Beta',
+    warningInfo1: 'Switching to AstrBot will restart the bot process. The bot will be briefly offline.',
+    warningInfo2: 'If you encounter issues, you can switch back to NoneBot mode at any time.',
+    countdownText: 'Please read the above. {countdown}s before switch is available...',
+    countdownReady: 'Understood. Ready to switch.',
+    confirmButton: 'Confirm Switch to AstrBot',
+    confirmButtonWait: 'Wait {countdown}s',
+    cancelButton: 'Cancel',
+    switchBackSuccess: 'Switched back to NoneBot mode. Save to apply.',
+    switchSuccess: 'Switched to AstrBot mode (Beta). Save configuration to restart the bot.',
+  },
 };
