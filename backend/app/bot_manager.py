@@ -22,11 +22,11 @@ class BotManager:
 
     def _get_astrbot_manager(self):
         if self._astrbot_manager is None:
+            from .app_context import AppContext
             from .astrbot_manager import AstrBotProcessManager
             self._astrbot_manager = AstrBotProcessManager()
-            # Store in state module so bot_instance can access it
-            from . import state
-            state.astrbot_process_manager = self._astrbot_manager
+            # Store in AppContext so bot_instance can access it
+            AppContext.get().astrbot_process_manager = self._astrbot_manager
         return self._astrbot_manager
 
     def get(self, bot_id: str) -> Optional[BotInstance]:
@@ -142,6 +142,10 @@ class BotManager:
             instance = self._instances.get(bot_id)
             if not instance:
                 raise ValueError(f"Bot '{bot_id}' not found")
+            # Ensure AstrBotProcessManager is initialized for astrbot bots.
+            # This covers API-created bots where load_all() did not run.
+            if instance.provider_mode == "astrbot":
+                self._get_astrbot_manager()
             await instance.start()
 
     async def stop(self, bot_id: str) -> None:

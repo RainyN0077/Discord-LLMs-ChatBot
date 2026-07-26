@@ -427,3 +427,31 @@ h2 {
 - **避免使用 `!important`**——除非确有必要覆盖内联样式，否则应依赖选择器特异性
 - **选择器特异性建议**——使用类选择器（`.card`）而非标签选择器，避免与组件内部样式冲突
 - **不建议在自定义 CSS 中覆盖 `:root` 变量**——外观设置页面的配色方案已经提供了完整的变量管理。请使用 UI 风格 + 配色方案矩阵来修改主题色，仅在需要细粒度调整时使用自定义 CSS
+
+---
+
+## 部署说明 / Deployment
+
+### 多 Worker 限制 / Multi-worker Restriction
+
+⚠️ **本应用不支持多 Worker 模式。请始终使用单 Worker（`gunicorn -w 1`）启动。**
+
+**原因**：
+
+- `config_cache`（位于 `backend/app/config_cache.py`）使用进程内内存缓存（`_cache` / `_cache_mtime` 模块级全局变量）。多 Worker 下每个 Worker 进程拥有独立的缓存副本，配置修改后各 Worker 间的缓存完全不一致。
+- Redis 降级模式（Redis 不可用时）同样存在各 Worker 状态无法共享的问题。
+
+**推荐启动命令**：
+
+```bash
+# 进入 backend 目录
+cd backend
+
+# 使用 gunicorn + uvicorn worker（生产环境）
+gunicorn -c gunicorn.conf.py app.main:app
+
+# 或直接使用 uvicorn（开发环境）
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+> 完整的 gunicorn 配置参数见 `backend/gunicorn.conf.py`。
