@@ -59,7 +59,30 @@ async def lifespan(app: FastAPI):
     await ctx.bot_manager.shutdown()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Discord LLM ChatBot API",
+    description=(
+        "REST API for the Discord LLM ChatBot — a multi-bot Discord/QQ chatbot "
+        "powered by NoneBot2, supporting 12 LLM providers with a web control panel, "
+        "persistent knowledge engine, OCR image recognition, plugin system, and "
+        "multi-instance management.\n\n"
+        "## Authentication\n"
+        "Most endpoints require an `X-API-Key` header matching the configured "
+        "`api_secret_key`.  The `/health` and `/metrics` endpoints are "
+        "unauthenticated for load-balancer / orchestrator access.\n\n"
+        "## Internal Endpoints\n"
+        "Endpoints under `/internal` are for inter-process communication between "
+        "AstrBot subprocesses and the management server.  They require an "
+        "`X-Internal-Token` header.\n\n"
+        "## Rate Limiting\n"
+        "Global rate limiting is applied (default: 60 requests/minute).  "
+        "Configured via the `RATE_LIMIT_PER_MINUTE` environment variable."
+    ),
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
 
 _cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:8094,http://127.0.0.1:8094")
 _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
@@ -72,6 +95,15 @@ app.add_middleware(
 )
 
 register_rate_limit_middleware(app)
+
+# ---------------------------------------------------------------------------
+# Observability middleware
+# ---------------------------------------------------------------------------
+from .middleware.request_id import RequestIDMiddleware
+from .middleware.metrics import MetricsMiddleware
+
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(MetricsMiddleware)
 
 from .routers.config import router as config_router
 from .routers.chat import router as chat_router
@@ -100,3 +132,10 @@ app.include_router(state_router)
 app.include_router(user_options_router)
 app.include_router(interactions_router)
 app.include_router(internal_router)
+
+# ---------------------------------------------------------------------------
+# Observability routes (unauthenticated)
+# ---------------------------------------------------------------------------
+from .routers.health import router as health_router
+
+app.include_router(health_router)

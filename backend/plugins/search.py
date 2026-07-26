@@ -124,13 +124,16 @@ class SearchPlugin(BasePlugin):
 
         try:
             logger.info(f"Performing Tavily search for query: '{final_query}'")
-            search_result = await asyncio.to_thread(
-                self.client.search,
-                query=final_query,
-                search_depth=self.search_depth,
-                max_results=self.max_results,
-                include_domains=self.include_domains,
-                exclude_domains=self.exclude_domains,
+            search_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.client.search,
+                    query=final_query,
+                    search_depth=self.search_depth,
+                    max_results=self.max_results,
+                    include_domains=self.include_domains,
+                    exclude_domains=self.exclude_domains,
+                ),
+                timeout=30,
             )
         except Exception as e:
             logger.error(f"Tavily API error: {e}", exc_info=True)

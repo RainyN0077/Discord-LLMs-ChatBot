@@ -59,6 +59,10 @@ class OpenAIProvider(LLMProvider):
         
         llm_messages = self._prepare_messages(messages, images)
         api_kwargs = self._build_api_kwargs(self.model, llm_messages, self.stream)
+        if self.stream:
+            # Include usage data in the final streamed chunk so it is reliably
+            # available without depending on chunk.usage being set separately.
+            api_kwargs["stream_options"] = {"include_usage": True}
         if tools:
             api_kwargs["tools"] = tools
             api_kwargs["tool_choice"] = "auto"

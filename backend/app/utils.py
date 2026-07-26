@@ -357,7 +357,7 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
                 logger.error(f"Plugin '{plugin_name}' DNS rebinding detected: {validated_ips} -> {current_ips}")
                 return error_msg
 
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as session:
             request_kwargs = {}
             if method in ['POST', 'PUT', 'PATCH']:
                 try:

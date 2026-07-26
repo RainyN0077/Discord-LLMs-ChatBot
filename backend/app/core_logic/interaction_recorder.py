@@ -354,12 +354,16 @@ class InteractionRecorder:
 
         date_dirs = await asyncio.to_thread(_collect_date_dirs_sorted, str(bot_path))
 
+        # Optimisation: track disk usage incrementally instead of re-scanning
+        # the entire tree on every iteration (O(n²) -> O(n log n)).
         for _mtime, date_dir in date_dirs:
-            current_usage = await self.get_disk_usage(bot_id)
             if current_usage <= target:
                 break
             try:
+                # Measure the size of this single date directory before deletion
+                dir_size = await asyncio.to_thread(_calc_disk_usage, str(date_dir))
                 await asyncio.to_thread(shutil.rmtree, str(date_dir))
+                current_usage -= dir_size
                 pruned += 1
             except OSError as e:
                 logger.error(f"Failed to prune {date_dir}: {e}")

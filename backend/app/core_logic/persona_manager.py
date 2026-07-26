@@ -5,8 +5,6 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import discord
 
-from .user_options_manager import get_negative_portrait
-
 
 def _get_bot_user_id(client: Any) -> int:
     user = getattr(client, 'user', None)
@@ -288,6 +286,7 @@ async def build_system_prompt(
     if user_options_config.get("enabled"):
         guild_id = str(message.guild.id) if message.guild else None
         channel_id = str(message.channel.id)
+        from .user_options_manager import get_negative_portrait
         negative_portrait = get_negative_portrait(bot_config, guild_id, channel_id, str(message.author.id))
         if negative_portrait:
             final_parts.append(f"[Negative Impression for Current User]\n{negative_portrait}")

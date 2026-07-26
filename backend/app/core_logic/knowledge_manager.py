@@ -68,11 +68,25 @@ class KnowledgeManager:
                 conn.executescript(f.read())
             self._ensure_runtime_schema(conn.cursor())
             conn.commit()
+
+            # Warm up FTS5 indexes: execute a lightweight query so that SQLite
+            # loads the FTS5 index pages into its page cache. This avoids a
+            # cold-start penalty on the first real FTS5 query.
+            self._warmup_fts5(conn.cursor())
         except sqlite3.Error:
             conn.rollback()
             raise
         finally:
             conn.close()
+
+    def _warmup_fts5(self, cursor: sqlite3.Cursor) -> None:
+        """Execute lightweight FTS5 queries to prime the page cache."""
+        for table in ("memory_fts", "world_book_fts"):
+            try:
+                cursor.execute(f"SELECT count(*) FROM {table}")
+                cursor.fetchone()
+            except sqlite3.OperationalError:
+                pass  # table may not exist yet
 
     def _ensure_runtime_schema(self, cursor: sqlite3.Cursor) -> None:
         cursor.execute("PRAGMA table_info(memory_candidates)")

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -157,16 +158,25 @@ async def extract_ocr_text(
     final_response = ""
     usage_data: Optional[Dict[str, int]] = None
     image_bytes = [item["bytes"] for item in valid_images]
-    async for response_type, data in llm_provider.get_response_stream(
-        messages,
-        images=image_bytes,
-        tools=[],
-        tool_functions={},
-    ):
-        if response_type == "final":
-            final_response = str(data or "")
-        elif response_type == "usage" and isinstance(data, dict):
-            usage_data = data
+    ocr_timeout = get_ocr_timeout_seconds(config)
+
+    async def _consume_ocr_stream() -> None:
+        nonlocal final_response, usage_data
+        async for response_type, data in llm_provider.get_response_stream(
+            messages,
+            images=image_bytes,
+            tools=[],
+            tool_functions={},
+        ):
+            if response_type == "final":
+                final_response = str(data or "")
+            elif response_type == "usage" and isinstance(data, dict):
+                usage_data = data
+
+    if ocr_timeout is not None:
+        await asyncio.wait_for(_consume_ocr_stream(), timeout=ocr_timeout)
+    else:
+        await _consume_ocr_stream()
 
     sanitized_response = _sanitize_ocr_text(final_response)
     if sanitized_response.startswith("LLM_PROVIDER_ERROR:"):

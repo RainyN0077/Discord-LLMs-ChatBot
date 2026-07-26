@@ -97,10 +97,8 @@ def get_redis():
 
 token_calculator = TokenCalculator()
 
-from .config_cache import DATA_DIR
-
-
 def _get_bot_lock_path(bot_id: str):
+    from .config_cache import DATA_DIR
     return DATA_DIR / f"discord_bot_{bot_id}.lock"
 
 
