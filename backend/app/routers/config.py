@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -59,22 +60,26 @@ async def bootstrap_api_secret(request: Request, body: BootstrapRequest):
         raise HTTPException(status_code=422, detail="api_secret_key must not be empty.")
 
     # Read the raw config file directly to bypass load_config()'s auto-generation of api_secret_key.
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                raw_config = json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.error(f"Bootstrap: failed to read config file: {e}")
-            raise HTTPException(status_code=500, detail="Failed to read configuration.")
-    else:
-        raw_config = {}
+    def _read_raw_config():
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                logger.error(f"Bootstrap: failed to read config file: {e}")
+                return None  # sentinel for failure
+        return {}
+
+    raw_config = await asyncio.to_thread(_read_raw_config)
+    if raw_config is None:
+        raise HTTPException(status_code=500, detail="Failed to read configuration.")
 
     existing_key = raw_config.get("api_secret_key")
     if existing_key:
         raise HTTPException(status_code=403, detail="API secret key is already configured. Bootstrap is disabled.")
 
     raw_config["api_secret_key"] = body.api_secret_key
-    save_config(raw_config)
+    await asyncio.to_thread(save_config, raw_config)
     # Invalidate cache so subsequent load_config() calls pick up the new key.
     from ..config_cache import invalidate_cache as invalidate_config_cache
     invalidate_config_cache()
