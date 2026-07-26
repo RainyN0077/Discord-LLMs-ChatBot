@@ -171,7 +171,7 @@ async def _augment_direct_chat_user_content(
     }
 
 
-@router.post("/api/chat/direct", dependencies=[Depends(get_api_key)], response_model=DirectChatResponse)
+@router.post("/api/chat/direct", summary="直接聊天", description="向 LLM 发送消息并获取回复。支持多轮对话上下文、附件（图片 OCR / 文本文件）、调试模式（含人设注入和格式化详情）。图片附件会自动进行 OCR 识别或作为多模态输入。", dependencies=[Depends(get_api_key)], response_model=DirectChatResponse)
 async def direct_chat(request: DirectChatRequest):
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages cannot be empty.")

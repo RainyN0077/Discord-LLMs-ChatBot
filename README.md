@@ -39,6 +39,62 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 
 ---
 
+## 架构概览 / Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Web UI (Svelte 4)                     │
+│              http://localhost:8094                        │
+└────────────────────┬─────────────────────────────────────┘
+                     │ REST API (X-API-Key auth)
+                     ▼
+┌──────────────────────────────────────────────────────────┐
+│               FastAPI 路由层 (routers/)                    │
+│  config · bots · chat · memory · usage · plugins · logs   │
+│  debug · health · metrics · interactions · internal       │
+└────────┬──────────┬──────────┬──────────┬────────────────┘
+         │          │          │          │
+         ▼          ▼          ▼          ▼
+┌───────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐
+│ 配置缓存   │ │ Bot 管理器│ │ 中间件  │ │  NoneBot2     │
+│ config_   │ │bot_      │ │ 限速    │ │  Driver +     │
+│ cache.py  │ │manager.py│ │ 请求ID  │ │  Discord Adapter
+└───────────┘ └──────────┘ │ 指标    │ └──────────────┘
+                           └────────┘
+         │          │          │
+         ▼          ▼          ▼
+┌──────────────────────────────────────────────────────────┐
+│                   核心逻辑层 (core_logic/)                  │
+│  上下文构建   ·   人设管理   ·   知识引擎                    │
+│  记忆召回     ·   世界书     ·   OCR 服务                   │
+│  安全过滤     ·   交互记录    ·   自动化                     │
+└────────┬──────────────────┬───────────────────────────────┘
+         │                  │
+         ▼                  ▼
+┌─────────────────┐  ┌──────────────────────────┐
+│ LLM 提供商适配层  │  │   插件系统 (plugins/)    │
+│ (llm_providers/) │  │   HTTP 触发器 · 工具调用   │
+│ OpenAI · Gemini  │  │   外部 REST 接口          │
+│ Claude · Grok    │  └──────────────────────────┘
+│ DeepSeek · 硅基   │
+│ 火山引擎 · 百炼    │
+│ Moonshot · 智谱   │
+│ 阶跃星辰          │
+└─────────────────┘
+```
+
+**分层说明**：
+
+| 层级 | 职责 | 关键模块 |
+|------|------|---------|
+| **路由层** | API 端点定义、请求/响应序列化、鉴权 | `routers/*.py`, `dependencies.py` |
+| **管理层** | Bot 生命周期、配置缓存、中间件 | `bot_manager.py`, `config_cache.py`, `middleware/` |
+| **核心逻辑层** | 对话上下文构建、人设管理、知识库、OCR | `core_logic/`, `ocr_service.py`, `security/` |
+| **提供商适配层** | LLM API 统一接口、流式响应 | `llm_providers/factory.py`, `llm_providers/*.py` |
+| **插件系统** | 可扩展工具链、HTTP 触发器 | `plugins/`, `nb_plugins/` |
+
+---
+
 ## 快速开始 / Quick Start
 
 ```bash
@@ -133,26 +189,44 @@ API Key     →  Fetch Models 拉取可用模型  |  切换手动输入  |  Test
 
 ## 配置参考 / Configuration
 
-### 核心字段
+### 环境变量 / Environment Variables
 
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `discord_token` | Discord Bot Token | `MTA...` |
-| `llm_provider` | LLM 提供商 | `deepseek` |
-| `api_key` | 提供商 API Key | `sk-...` |
-| `model_name` | 模型标识符 | `deepseek-v4-pro` |
-| `openai_base_url` | OpenAI 兼容端点 | 自动填入 |
-| `temperature` | 推理温度 0–2 | `0.7`（留空=默认） |
-| `max_tokens` | 最大输出 token 数 | `4096`（留空=默认） |
-| `api_secret_key` | 内部 API 鉴权密钥 | 自动生成 |
+| 变量 | 说明 | 默认值 | 敏感 |
+|------|------|--------|------|
+| `ENCRYPTION_KEY` | 凭据加密密钥（用于加密存储的 API Key 等敏感字段） | — | 🔴 **是** |
+| `DISABLE_ENCRYPTION` | 设为 `1` 启用只读迁移模式（不解密存储的凭据） | `0` | |
+| `RATE_LIMIT_PER_MINUTE` | API 全局速率限制（请求/分钟） | `60` | |
+| `REDIS_URL` | Redis 连接字符串（为空则使用本地降级 mock） | `""` | |
+| `DATA_DIR` | 数据存储根目录 | `./data` | |
+| `LOG_DIR` | 日志文件输出目录 | `./data/logs` | |
+| `KNOWLEDGE_DB` | SQLite 知识库文件路径 | `./data/knowledge.db` | |
+| `USAGE_FILE` | 用量统计数据文件 | `./data/usage_data.json` | |
+| `SCRIPTS_DIR` | 自定义脚本目录 | `./scripts` | |
+| `LLM_BASE_URL_<NAME>` | 指定 LLM 提供商的 Base URL 覆盖（如 `LLM_BASE_URL_OPENAI`） | 提供商默认值 | |
+| `CORS_ORIGINS` | 允许的 CORS 来源（逗号分隔） | `http://localhost:8094,http://127.0.0.1:8094` | |
+
+> **敏感字段**：标注 🔴 的变量包含敏感信息，不应提交到版本控制或暴露在日志中。
+
+### Bot 配置核心字段 / Core Config Fields
+
+| 字段 | 说明 | 示例 | 敏感 |
+|------|------|------|------|
+| `discord_token` | Discord Bot Token | `MTA...` | 🔴 **是** |
+| `llm_provider` | LLM 提供商标识 | `deepseek` | |
+| `api_key` | 提供商 API Key | `sk-...` | 🔴 **是** |
+| `model_name` | 模型标识符 | `deepseek-v4-pro` | |
+| `openai_base_url` | OpenAI 兼容端点 URL | 自动填入 | |
+| `temperature` | 推理温度 0–2 | `0.7`（留空=默认） | |
+| `max_tokens` | 最大输出 token 数 | `4096`（留空=默认） | |
+| `api_secret_key` | API 鉴权密钥（用于 `X-API-Key` 请求头） | 自动生成 | 🔴 **是** |
 
 ### 数据持久化 / Data
 
 | 路径 | 内容 |
 |------|------|
-| `data/config.json` | 全局配置 |
-| `data/bots/<id>/config.json` | Bot 独立配置 |
-| `data/bots/<id>/knowledge.sqlite` | Bot 知识库 |
+| `data/config.json` | 全局配置（含 `api_secret_key` 🔴） |
+| `data/bots/<id>/config.json` | Bot 独立配置（含 `discord_token` 🔴、`api_key` 🔴） |
+| `data/bots/<id>/knowledge.sqlite` | Bot 知识库（记忆 + 世界书） |
 | `data/bots/<id>/usage_data.json` | Bot 用量统计 |
 | `data/logs/` | 应用日志（`/api/logs` 可查） |
 

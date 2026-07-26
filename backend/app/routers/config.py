@@ -30,7 +30,7 @@ def _get_first_bot_config():
     return global_config
 
 
-@router.get("/api/config")
+@router.get("/api/config", summary="获取配置", description="返回第一个 Bot 实例的完整配置（或全局配置）。配置文件会在保存时自动验证结构。")
 async def get_config_endpoint(api_key: str = Depends(get_api_key)):
     config_data = _get_first_bot_config()
     try:
@@ -52,7 +52,7 @@ def _is_localhost(request: Request) -> bool:
     return host in ("127.0.0.1", "::1", "localhost")
 
 
-@router.post("/api/auth/bootstrap")
+@router.post("/api/auth/bootstrap", summary="初始化 API 密钥", description="仅在 localhost 可用。用于首次部署时通过 Web UI 设置 api_secret_key。一旦密钥已配置，此端点将被禁用。")
 async def bootstrap_api_secret(request: Request, body: BootstrapRequest):
     if not _is_localhost(request):
         raise HTTPException(status_code=403, detail="Bootstrap is only allowed from localhost.")
@@ -88,7 +88,7 @@ async def bootstrap_api_secret(request: Request, body: BootstrapRequest):
     return {"message": "API secret key has been set.", "api_secret_key": body.api_secret_key}
 
 
-@router.post("/api/config", dependencies=[Depends(get_api_key)])
+@router.post("/api/config", summary="更新配置", description="更新全局或指定 Bot 的配置。如果 Bot 正在运行，会触发自动重启以应用新配置。", dependencies=[Depends(get_api_key)])
 async def update_config_endpoint(config_data: Config):
     mgr = state.bot_manager
     if not mgr:

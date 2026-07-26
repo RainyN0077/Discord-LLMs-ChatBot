@@ -32,13 +32,13 @@ def _resolve_bot_id(bot_id: str):
     return mgr, instance
 
 
-@router.get("/")
+@router.get("/", summary="获取 Bot 列表", description="返回所有已注册 Bot 实例的列表，包含每个 Bot 的运行状态和基本信息。")
 async def list_bots() -> List[Dict[str, Any]]:
     mgr = _get_manager()
     return mgr.list()
 
 
-@router.post("/")
+@router.post("/", summary="创建 Bot", description="创建一个新的 Bot 实例。需要提供配置数据，bot_id 会自动生成或从配置中读取。")
 async def create_bot(request: CreateBotRequest) -> Dict[str, Any]:
     mgr = _get_manager()
     config = request.model_dump(by_alias=True)
@@ -49,14 +49,14 @@ async def create_bot(request: CreateBotRequest) -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.delete("/{bot_id}")
+@router.delete("/{bot_id}", summary="删除 Bot", description="删除指定 Bot 实例及其配置文件和知识库数据。此操作不可撤销。")
 async def delete_bot(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     await mgr.delete(bot_id)
     return {"message": f"Bot '{bot_id}' deleted."}
 
 
-@router.post("/{bot_id}/start")
+@router.post("/{bot_id}/start", summary="启动 Bot", description="启动指定 Bot 实例，建立 Discord/QQ 适配器连接。")
 async def start_bot(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     if instance.is_running():
@@ -65,7 +65,7 @@ async def start_bot(bot_id: str) -> Dict[str, Any]:
     return {"message": f"Bot '{bot_id}' started.", "status": instance.status}
 
 
-@router.post("/{bot_id}/stop")
+@router.post("/{bot_id}/stop", summary="停止 Bot", description="停止指定 Bot 实例，断开适配器连接。")
 async def stop_bot(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     if not instance.is_running():
@@ -74,14 +74,14 @@ async def stop_bot(bot_id: str) -> Dict[str, Any]:
     return {"message": f"Bot '{bot_id}' stopped.", "status": instance.status}
 
 
-@router.post("/{bot_id}/restart")
+@router.post("/{bot_id}/restart", summary="重启 Bot", description="重启指定 Bot 实例（停止后重新启动）。")
 async def restart_bot(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     await mgr.restart(bot_id)
     return {"message": f"Bot '{bot_id}' restarted.", "status": instance.status}
 
 
-@router.put("/{bot_id}/rename")
+@router.put("/{bot_id}/rename", summary="重命名 Bot", description="修改 Bot 的唯一标识符（bot_id）。新 ID 只能包含小写字母、数字、连字符和下划线。")
 async def rename_bot(bot_id: str, body: Dict[str, str]) -> Dict[str, Any]:
     new_id = body.get("new_id", "").strip()
     if not new_id:
@@ -94,13 +94,13 @@ async def rename_bot(bot_id: str, body: Dict[str, str]) -> Dict[str, Any]:
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.get("/{bot_id}/config")
+@router.get("/{bot_id}/config", summary="获取 Bot 配置", description="返回指定 Bot 实例的完整配置对象。")
 async def get_bot_config(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     return instance.config
 
 
-@router.put("/{bot_id}/config")
+@router.put("/{bot_id}/config", summary="更新 Bot 配置", description="更新指定 Bot 的配置字段。如果 Bot 已启用，会自动重启以应用新配置。")
 async def update_bot_config(bot_id: str, config_data: Dict[str, Any]) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     try:
@@ -118,7 +118,7 @@ async def update_bot_config(bot_id: str, config_data: Dict[str, Any]) -> Dict[st
         raise HTTPException(status_code=500, detail="An internal error occurred while updating the configuration.")
 
 
-@router.get("/{bot_id}/adapter/status")
+@router.get("/{bot_id}/adapter/status", summary="获取适配器状态", description="返回 Bot 的 Discord/QQ 适配器连接状态。")
 async def get_adapter_status(bot_id: str) -> Dict[str, Any]:
     driver = state.nonebot_driver
     if driver is None:
@@ -138,7 +138,7 @@ async def get_adapter_status(bot_id: str) -> Dict[str, Any]:
     raise HTTPException(status_code=404, detail=f"No adapter found for bot '{bot_id}'")
 
 
-@router.get("/{bot_id}/logs")
+@router.get("/{bot_id}/logs", summary="获取 Bot 日志", description="返回指定 Bot 日志文件的最后 200 行。")
 async def get_bot_logs(bot_id: str) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
     log_file = DATA_DIR / "logs" / "bot.log"
@@ -154,7 +154,7 @@ async def get_bot_logs(bot_id: str) -> Dict[str, Any]:
         raise HTTPException(status_code=500, detail=f"Failed to read logs: {e}")
 
 
-@router.get("/{bot_id}/export")
+@router.get("/{bot_id}/export", summary="导出 Bot 配置", description="以 JSON 文件的形式导出指定 Bot 的完整配置，用于备份或迁移。")
 async def export_bot_config(bot_id: str):
     mgr, instance = _resolve_bot_id(bot_id)
     config = instance.config or {}
@@ -167,7 +167,7 @@ async def export_bot_config(bot_id: str):
     )
 
 
-@router.post("/import")
+@router.post("/import", summary="导入 Bot 配置", description="通过 JSON 文件上传或 JSON 字符串导入 Bot 配置。支持覆盖已有 Bot 或创建新 Bot。")
 async def import_bot_config(
     file: Optional[UploadFile] = None,
     config_json: Optional[str] = Form(None),
