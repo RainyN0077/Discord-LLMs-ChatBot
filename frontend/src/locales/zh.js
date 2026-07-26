@@ -1,6 +1,9 @@
 // src/locales/zh.js
 export default {
   title: 'BOT Manager',
+  generic: {
+    loading: '加载中…'
+  },
   tabs: {
     core: '核心设置',
     directives: '行为与身份',
@@ -13,7 +16,8 @@ export default {
     themeDark: '切换到深色模式',
     themeLight: '切换到浅色模式',
     userOptions: '用户选项',
-    appearance: '外观设置'
+    appearance: '外观设置',
+    promptStudio: '提示词工坊'
   },
   buttons: {
     save: '保存配置并重启 Bot',
@@ -37,6 +41,8 @@ export default {
     apiKeyUnavailable: 'API Key 不可用',
     copy: '复制',
     apiKeyInfo: '这是给外部服务调用插件接口使用的唯一 API Key。请妥善保管，不要泄露。',
+    copied: '已复制',
+    copyFailed: '复制失败',
     intents: {
       title: 'Gateway Intents',
       info: '控制 Bot 连接 Discord 时订阅的事件类型。修改后需重新部署生效。SERVER MEMBERS INTENT 和 MESSAGE CONTENT INTENT 需在 Developer Portal → Bot → Privileged Gateway Intents 开启。',
@@ -350,6 +356,19 @@ export default {
     clearFailed: '清除失败：',
     errorNoId: '请输入频道 ID'
   },
+  sidebar: {
+    renameError: '只允许使用小写字母、数字、连字符和下划线。',
+    createIdError: 'Bot ID 只能包含小写字母、数字、连字符和下划线。',
+    saveTitle: '保存',
+    cancelTitle: '取消',
+    renameTitle: '双击重命名',
+    disabled: '已禁用',
+    botIdPlaceholder: 'bot-id (a-z, 0-9, -, _)',
+    botNamePlaceholder: 'Bot 名称',
+    discordTokenPlaceholder: 'Discord Token',
+    llmApiKeyPlaceholder: 'LLM API Key',
+    modelNamePlaceholder: '模型名称 (gpt-4o)',
+  },
   uiSettings: {
     title: '界面设置',
     font: {
@@ -357,6 +376,7 @@ export default {
       resetButton: '恢复默认字体',
       currentFont: '当前字体：{fontName}',
       defaultFont: '使用系统默认字体',
+      invalidType: '无效的字体文件类型。请选择 TTF、OTF、WOFF 或 WOFF2 格式。',
       loadError: '字体文件加载失败',
       localStorageError: '无法将字体保存到本地存储',
       resetSuccess: '字体已恢复默认',
@@ -457,7 +477,8 @@ export default {
     outputPrice: '输出价格',
     addModel: '添加模型',
     save: '保存',
-    cancel: '取消'
+    cancel: '取消',
+    pageInfo: '第 {current} / {total} 页'
   },
   searchSettings: {
     title: '搜索设置',
@@ -531,6 +552,7 @@ export default {
       by: '记录者',
       at: '时间',
       source: '来源',
+      sourceManual: '手动添加',
       contentLabel: '内容',
       userIdLabel: '用户 ID',
       timestampLabel: '时间戳（可选，按你的本地时间）',
@@ -603,7 +625,11 @@ export default {
     backToConfig: '返回配置面板',
     saveAndRestart: '保存并重启 Bot',
     goToModelSettings: 'LLM 模型配置已移至独立的"模型设置"页面。',
-    openSettings: '打开模型设置'
+    openSettings: '打开模型设置',
+    title: '模型设置 — {botId}',
+    selectBotFirst: '请先选择一个 Bot',
+    loadingConfig: '正在加载 {botId} 的配置...',
+    loading: '加载中...',
   },
   inferenceParams: {
     title: '推理参数（可选）',
@@ -615,6 +641,7 @@ export default {
     topK: 'Top K',
     frequencyPenalty: '频率惩罚 (Frequency Penalty)',
     presencePenalty: '存在惩罚 (Presence Penalty)',
+    clear: '清除',
     placeholders: {
       default: '留空使用默认值',
       openai: '留空使用默认值',
@@ -663,5 +690,22 @@ export default {
     cyberpunkWipBody: 'Cyberpunk 2077 风格目前仍在积极开发中，视觉效果极差，大量特效尚未完成。如有改进建议，欢迎前往 GitHub 提交 Issue 或 PR。',
     cyberpunkWipConfirm: '仍然启用',
     cyberpunkWipCancel: '取消',
-  }
+  },
+  astrBotMigration: {
+    title: 'Bot 底层框架',
+    info: '切换 Bot 的底层运行框架。AstrBot 模式目前处于测试阶段。',
+    switchToAstrbot: 'AstrBot (测试中)',
+    switchToNonebot: 'NoneBot (当前)',
+    modalTitle: '⚡ 切换底层框架到 AstrBot',
+    warningBeta: '⚠️ 此功能目前处于测试阶段 (Beta)',
+    warningInfo1: '切换到 AstrBot 将会重启 Bot 进程，Bot 将短暂离线。',
+    warningInfo2: '如遇到问题，可随时在设置中切换回 NoneBot 模式。',
+    countdownText: '请阅读以上提示，{countdown} 秒后可确认切换...',
+    countdownReady: '已了解风险，可以确认切换',
+    confirmButton: '确认切换到 AstrBot',
+    confirmButtonWait: '请等待 {countdown}s',
+    cancelButton: '取消',
+    switchBackSuccess: '已切换回 NoneBot 模式。保存后生效。',
+    switchSuccess: '已切换到 AstrBot 模式（测试中）。保存配置后 Bot 将重启。',
+  },
 };

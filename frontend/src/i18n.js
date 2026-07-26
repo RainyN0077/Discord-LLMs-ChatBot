@@ -93,8 +93,11 @@ const zhOverrides = {
             userRequestPreview: '用户请求预览',
             buildLog: '构建日志',
             previewFailed: '预览生成失败: {error}',
+            errorDetails: '错误详情: {stack}',
         },
         preset: {
+            defaultPresetName: '(默认)开箱即用',
+            presetsLoadFailed: '加载预设列表失败: {error}',
             selectPlaceholder: '选择预设',
             load: '加载',
             saveAs: '另存为...',
