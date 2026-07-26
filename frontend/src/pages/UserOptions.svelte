@@ -3,6 +3,9 @@
     import '../styles/lists.css';
     import { onMount } from 'svelte';
     import { t, get as t_get } from '../i18n.js';
+    import { showStatus } from '../lib/commonStores.js';
+    import { createConfigLoader, createSaveHandler } from '../lib/botConfigActions.js';
+    import ThreeState from '../components/ThreeState.svelte';
     import {
         userPersonas,
         userPersonasArray,
@@ -10,10 +13,7 @@
         scopedPromptsObject,
         roleConfigs,
         roleBasedConfigArray,
-        userOptionsConfig,
-        showStatus,
-        saveConfig,
-        loadBotConfigToStores
+        userOptionsConfig
     } from '../lib/stores.js';
     import { fetchBotGuilds, fetchGuildChannels, fetchGuildRoles, searchGuildMembers, fetchBotDiagnostics } from '../lib/api.js';
     import Card from '../components/Card.svelte';
@@ -21,40 +21,10 @@
     export let botId = null;
 
     let activeTab = 'portrait';
-    let loadingConfig = false;
-    let configError = '';
-    let isSaving = false;
 
-    let configLoadSeq = 0;
-
-    async function loadInstanceConfig(seq) {
-        if (seq !== configLoadSeq) return;
-        if (!botId) return;
-        loadingConfig = true;
-        configError = '';
-        try {
-            await loadBotConfigToStores(botId);
-        } catch (e) {
-            configError = String(e.message || e);
-        } finally {
-            loadingConfig = false;
-        }
-    }
-
-    $: if (botId) { const seq = ++configLoadSeq; loadInstanceConfig(seq); }
-
-    async function handleSave() {
-        isSaving = true;
-        showStatus('Saving...', 'info');
-        try {
-            await saveConfig(botId);
-            showStatus('Configuration saved and bot restarted!', 'success');
-        } catch (e) {
-            showStatus('Save failed: ' + e.message, 'error');
-        } finally {
-            isSaving = false;
-        }
-    }
+    const { isLoading, error, trigger } = createConfigLoader(() => botId);
+    const { isSaving, save } = createSaveHandler(() => botId);
+    $: if (botId) trigger();
 
     function _makeKey(scopeType, scopeId) {
         if (scopeType === 'global' || !scopeId) return '*';
@@ -195,7 +165,7 @@
         searchError[ruleKey] = '';
         searchResults[ruleKey] = [];
         try {
-            const data = await searchGuildMembers(botId, guildId, query, $userOptionsConfig.memberSearchTimeoutMs || 5000);
+            const data = await searchGuildMembers(botId, guildId, query, $userOptionsConfig.member_search_timeout_ms || 5000);
             if (data.error) {
                 searchError[ruleKey] = data.message;
             } else {
@@ -389,19 +359,14 @@
     <div class="config-header">
         <h2>{botId ? $t('userOptions.titleFor', { botId }) : $t('userOptions.title')}</h2>
         <div class="header-actions">
-            <button class="save-btn" on:click={handleSave} disabled={isSaving || !botId}>
-                {isSaving ? $t('configPanel.saving') : $t('configPanel.saveAndRestart')}
+            <button class="save-btn" on:click={save} disabled={$isSaving || !botId}>
+                {$isSaving ? $t('configPanel.saving') : $t('configPanel.saveAndRestart')}
             </button>
         </div>
     </div>
 
-    {#if loadingConfig}
-        <div class="loading-state">{botId ? $t('configPanel.loadingConfig', { botId }) : 'Loading...'}</div>
-    {:else if configError}
-        <div class="error-state">{configError}</div>
-    {:else if !botId}
-        <div class="empty-state">{$t('configPanel.selectBot')}</div>
-    {:else}
+    <ThreeState loading={$isLoading} error={$error} empty={!botId} emptyMessage={$t('configPanel.selectBot')}>
+        <span slot="loading-text">{botId ? $t('configPanel.loadingConfig', { botId }) : $t('status.loading')}</span>
         <div class="tabs">
             <button class:active={activeTab === 'portrait'} on:click={() => activeTab = 'portrait'}>{$t('userOptions.tabs.portrait')}</button>
             <button class:active={activeTab === 'blocklist'} on:click={() => activeTab = 'blocklist'}>{$t('userOptions.tabs.blocklist')}</button>
@@ -440,7 +405,7 @@
                         </label>
                         <div class="uo-timeout-row">
                             <label for="member-search-timeout">{$t('userOptions.blocklist.memberSearchTimeout')}</label>
-                            <input id="member-search-timeout" type="number" min="1000" max="30000" step="500" value={$userOptionsConfig.memberSearchTimeoutMs} on:input={(e) => { userOptionsConfig.update(u => ({ ...u, member_search_timeout_ms: Number(e.target.value) || 5000 })); }}>
+                            <input id="member-search-timeout" type="number" min="1000" max="30000" step="500" value={$userOptionsConfig.member_search_timeout_ms} on:input={(e) => { userOptionsConfig.update(u => ({ ...u, member_search_timeout_ms: Number(e.target.value) || 5000 })); }}>
                             <span class="unit-label">ms</span>
                         </div>
                     </div>
@@ -544,7 +509,7 @@
                                         </select>
                                         <input class="uo-scope-input" type="text" placeholder={$t('userOptions.blocklist.channelIdPlaceholder')} value={rule.scope_id} on:input={(e) => updateRuleField(rk, 'scope_id', e.target.value)}>
                                     {:else if rule.scope_type === 'dm'}
-                                        <input class="uo-scope-input" type="text" placeholder="User ID" value={rule.scope_id} on:input={(e) => updateRuleField(rk, 'scope_id', e.target.value)}>
+                                        <input class="uo-scope-input" type="text" placeholder={$t('userPortrait.userId')} value={rule.scope_id} on:input={(e) => updateRuleField(rk, 'scope_id', e.target.value)}>
                                     {/if}
                                 </div>
                             </div>
@@ -744,7 +709,7 @@
                 </Card>
             {/if}
         </div>
-    {/if}
+    </ThreeState>
 </div>
 
 {#if showDiagnostics && diagnosticsData}
@@ -1020,8 +985,6 @@
     .limit-group .group-label { margin:0; font-size:.78rem; }
     .limit-group input { width:60px; padding:.2rem .3rem; font-size:.78rem; }
     .limit-group .unit { font-size:.75rem; color:var(--text-light); }
-    .loading-state, .error-state, .empty-state { padding:2rem; text-align:center; color:var(--text-light); }
-
     .uo-guild-warning {
         background: rgba(234,179,8,.1); border: 1px solid rgba(234,179,8,.3);
         border-radius: 6px; padding: .55rem .75rem; margin-bottom: .75rem;

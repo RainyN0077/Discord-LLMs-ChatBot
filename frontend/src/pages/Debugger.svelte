@@ -3,7 +3,8 @@
     import { t } from '../i18n.js';
     import { simulateDebug } from '../lib/api.js';
     import Card from '../components/Card.svelte';
-    import { roleBasedConfigArray, showStatus } from '../lib/stores.js';
+    import { showStatus } from '../lib/commonStores.js';
+    import { roleBasedConfigArray } from '../lib/stores.js';
     import {
         fetchInteractionTree,
         fetchInteractionMessages,
@@ -61,6 +62,7 @@
     let guildListLoading = false;
     let botList = [];
     let botListLoaded = false;
+    let requestSeq = 0;
 
     let channelIds = [];
     let memberIds = [];
@@ -72,6 +74,7 @@
 
     async function handleShowRawContext() {
         if (!selectedHistoryBot || !selectedGuild || !selectedChannel || !selectedMember || !selectedDate) return;
+        const seq = ++requestSeq;
         rawContextLoading = true;
         rawContextError = '';
         rawContext = null;
@@ -81,13 +84,15 @@
                 channel_id: selectedChannel,
                 member_id: selectedMember,
             });
+            if (seq !== requestSeq) return;
             const items = tree.items || [];
             const roleId = items.length > 0 ? items[0].role_id : 'default';
             rawContext = await reconstructContext(selectedHistoryBot, selectedGuild, roleId, selectedChannel, selectedMember, selectedDate);
         } catch(e) {
+            if (seq !== requestSeq) return;
             rawContextError = e.message;
         } finally {
-            rawContextLoading = false;
+            if (seq === requestSeq) rawContextLoading = false;
         }
     }
 
@@ -95,25 +100,28 @@
     $: memberIds = [...new Set(treeItems.filter(t => (!selectedChannel || t.channel_id === selectedChannel) && t.member_id).map(t => t.member_id))];
     $: dateStrings = [...new Set(treeItems.filter(t => (!selectedChannel || t.channel_id === selectedChannel) && (!selectedMember || t.member_id === selectedMember)).map(t => t.date))].sort().reverse();
 
-    async function loadInteractionUsage() {
+    async function loadInteractionUsage(seq) {
         if (!selectedHistoryBot) return;
         try {
-            usage = await fetchInteractionUsage(selectedHistoryBot);
+            const data = await fetchInteractionUsage(selectedHistoryBot);
+            if (seq !== requestSeq) return;
+            usage = data;
         } catch(e) {
             // ignore
         }
     }
 
-    async function loadGuildsForHistory() {
+    async function loadGuildsForHistory(seq) {
         if (!selectedHistoryBot) return;
         guildListLoading = true;
         try {
             const data = await fetchBotGuilds(selectedHistoryBot);
+            if (seq !== requestSeq) return;
             guildList = data.guilds || [];
         } catch(e) {
             guildList = [];
         } finally {
-            guildListLoading = false;
+            if (seq === requestSeq) guildListLoading = false;
         }
     }
 
@@ -128,7 +136,7 @@
         }
     }
 
-    async function loadInteractionTree() {
+    async function loadInteractionTree(seq) {
         if (!selectedHistoryBot) return;
         treeLoading = true;
         try {
@@ -137,16 +145,19 @@
             if (selectedChannel) filters.channel_id = selectedChannel;
             if (selectedMember) filters.member_id = selectedMember;
             const data = await fetchInteractionTree(selectedHistoryBot, filters);
+            if (seq !== requestSeq) return;
             treeItems = data.items || [];
         } catch(e) {
+            if (seq !== requestSeq) return;
             treeItems = [];
         } finally {
-            treeLoading = false;
+            if (seq === requestSeq) treeLoading = false;
         }
     }
 
-    async function loadMessages() {
+    async function loadMessages(seq) {
         if (!selectedHistoryBot || !selectedGuild || !selectedChannel || !selectedMember || !selectedDate) return;
+        if (seq !== requestSeq) return;
         messagesLoading = true;
         try {
             const tree = await fetchInteractionTree(selectedHistoryBot, {
@@ -154,6 +165,7 @@
                 channel_id: selectedChannel,
                 member_id: selectedMember,
             });
+            if (seq !== requestSeq) return;
             const items = tree.items || [];
             if (items.length > 0) {
                 const item = items[0];
@@ -165,14 +177,16 @@
                     selectedMember,
                     selectedDate,
                 );
+                if (seq !== requestSeq) return;
                 messages = data.messages || [];
             } else {
                 messages = [];
             }
         } catch(e) {
+            if (seq !== requestSeq) return;
             messages = [];
         } finally {
-            messagesLoading = false;
+            if (seq === requestSeq) messagesLoading = false;
         }
     }
 
@@ -187,8 +201,9 @@
             if (selectedDate) filters.date = selectedDate;
             await deleteInteractionRecords(selectedHistoryBot, filters);
             showStatus($t('debugger.deleted'), 'success');
-            await loadInteractionTree();
-            await loadInteractionUsage();
+            const seq = ++requestSeq;
+            await loadInteractionTree(seq);
+            await loadInteractionUsage(seq);
             messages = [];
         } catch(e) {
             showStatus($t('debugger.deleteFailed', { error: e.message }), 'error');
@@ -200,8 +215,9 @@
         try {
             await pruneInteractions(selectedHistoryBot);
             showStatus($t('debugger.pruned'), 'success');
-            await loadInteractionTree();
-            await loadInteractionUsage();
+            const seq = ++requestSeq;
+            await loadInteractionTree(seq);
+            await loadInteractionUsage(seq);
         } catch(e) {
             showStatus($t('debugger.pruneFailed', { error: e.message }), 'error');
         }
@@ -216,12 +232,14 @@
     }
 
     $: if (debugTab === 'history' && selectedHistoryBot && selectedGuild) {
-        loadInteractionTree();
-        loadInteractionUsage();
+        const seq = ++requestSeq;
+        loadInteractionTree(seq);
+        loadInteractionUsage(seq);
     }
 
     $: if (selectedChannel && selectedMember && selectedDate) {
-        loadMessages();
+        const seq = ++requestSeq;
+        loadMessages(seq);
     }
 </script>
 
@@ -280,7 +298,7 @@
     {:else if debugTab === 'history'}
         <Card title={$t('debugger.historyTitle')}>
             <div class="ih-filters">
-                <select bind:value={selectedHistoryBot} on:change={() => { resetHistoryFilters(); loadGuildsForHistory(); }} on:focus={loadBotList}>
+                <select bind:value={selectedHistoryBot} on:change={() => { resetHistoryFilters(); const seq = ++requestSeq; loadGuildsForHistory(seq); }} on:focus={loadBotList}>
                     <option value={null}>{$t('debugger.selectBot')}</option>
                     {#each botList as b}
                         <option value={b.bot_id || b.id}>{b.bot_name || b.name || b.bot_id || b.id}</option>
