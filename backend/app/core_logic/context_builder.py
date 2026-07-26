@@ -10,6 +10,7 @@ import discord
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords, _format_author_id
 from .user_options_manager import is_user_blocked_from_context, is_user_whitelisted_for_context, should_filter_history, get_formatted_block_notice, resolve_user_options
 from ..utils import escape_content, matches_trigger_keywords
+from ..security.input_sanitizer import sanitize_user_input
 from .knowledge_manager import get_knowledge_manager
 
 logger = logging.getLogger(__name__)
@@ -392,6 +393,9 @@ async def format_user_message_for_llm(
     # [NEW] Remove custom emoji text, as they are now sent as images.
     final_text_content = re.sub(r'<a?:\w+:\d+>', '', final_text_content).strip()
 
+    # [SECURITY] Sanitize user input to filter prompt injection patterns.
+    final_text_content = sanitize_user_input(final_text_content)
+
     request_block_parts = []
     
     # 处理回复上下文 - 优雅处理已删除消息
@@ -409,6 +413,8 @@ async def format_user_message_for_llm(
         replied_author_info = _format_author_id(replied_msg.author, replied_rich_id)
         
         replied_text_content = escape_content(replied_msg.clean_content)
+        # [SECURITY] Sanitize replied message content to filter prompt injection patterns.
+        replied_text_content = sanitize_user_input(replied_text_content)
         final_replied_description = replied_text_content
         
         if replied_msg.attachments:
