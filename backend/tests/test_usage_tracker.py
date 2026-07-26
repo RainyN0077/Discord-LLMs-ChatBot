@@ -7,50 +7,61 @@ from app.usage_tracker import UsageTracker
 
 
 @pytest.fixture
-def tracker(tmp_path):
+async def tracker(tmp_path):
     data_file = str(tmp_path / "data" / "usage_data.json")
-    return UsageTracker(data_file=data_file)
+    t = UsageTracker(data_file=data_file)
+    await t.initialize()
+    return t
 
 
 class TestUsageTrackerInit:
-    def test_creates_data_dir(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_creates_data_dir(self, tmp_path):
         data_file = str(tmp_path / "sub" / "usage.json")
         t = UsageTracker(data_file=data_file)
+        await t.initialize()
         import os
         assert os.path.isdir(os.path.dirname(data_file))
 
-    def test_initial_structure(self, tracker):
+    @pytest.mark.asyncio
+    async def test_initial_structure(self, tracker):
         assert "daily" in tracker.usage_data
         assert "metadata" in tracker.usage_data
         assert "users" in tracker.usage_data["metadata"]
         assert "channel_users" in tracker.usage_data["metadata"]
 
-    def test_loads_existing_data(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_loads_existing_data(self, tmp_path):
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
         data_file = data_dir / "usage.json"
         existing = {"daily": {}, "metadata": {"users": {"123": {"name": "Alice"}}}}
         data_file.write_text(json.dumps(existing), encoding="utf-8")
         t = UsageTracker(data_file=str(data_file))
+        await t.initialize()
         assert t.usage_data["metadata"]["users"]["123"]["name"] == "Alice"
 
-    def test_corrupted_file_backup(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_corrupted_file_backup(self, tmp_path):
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
         data_file = data_dir / "usage.json"
         data_file.write_text("not json {{{", encoding="utf-8")
         t = UsageTracker(data_file=str(data_file))
+        await t.initialize()
         assert t.usage_data["metadata"]["users"] == {}
         backup = str(data_file) + ".corrupt"
         import os
         assert os.path.exists(backup)
 
-    def test_metadata_defaults_handled(self, tmp_path):
+    @pytest.mark.asyncio
+    async def test_metadata_defaults_handled(self, tmp_path):
         data_dir = tmp_path / "data"
         data_dir.mkdir(exist_ok=True)
         data_file = data_dir / "usage.json"
         data_file.write_text(json.dumps({"daily": {}, "metadata": {}}), encoding="utf-8")
         t = UsageTracker(data_file=str(data_file))
+        await t.initialize()
         assert "channel_users" in t.usage_data["metadata"]
 
 

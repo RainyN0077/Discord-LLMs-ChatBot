@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from collections import deque
@@ -144,8 +145,10 @@ async def get_bot_logs(bot_id: str) -> Dict[str, Any]:
     if not log_file.exists():
         return {"logs": [], "message": "No log file found."}
     try:
-        with open(log_file, "r", encoding="utf-8", errors="replace") as f:
-            lines = list(deque(f, 200))
+        def _read_log():
+            with open(log_file, "r", encoding="utf-8", errors="replace") as f:
+                return list(deque(f, 200))
+        lines = await asyncio.to_thread(_read_log)
         return {"logs": [line.rstrip() for line in lines]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to read logs: {e}")

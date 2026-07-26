@@ -12,8 +12,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-recorder = get_interaction_recorder()
-
 
 @router.get("/api/interactions/{bot_id}/tree", dependencies=[Depends(get_api_key)])
 async def get_interaction_tree(
@@ -23,13 +21,15 @@ async def get_interaction_tree(
     channel_id: Optional[str] = None,
     member_id: Optional[str] = None,
 ):
-    results = recorder.list_tree(bot_id, guild_id=guild_id, role_id=role_id, channel_id=channel_id, member_id=member_id)
+    recorder = get_interaction_recorder()
+    results = await recorder.list_tree(bot_id, guild_id=guild_id, role_id=role_id, channel_id=channel_id, member_id=member_id)
     return {"items": results}
 
 
 @router.get("/api/interactions/{bot_id}/members", dependencies=[Depends(get_api_key)])
 async def get_recorded_members(bot_id: str, guild_id: str = Query(...)):
-    members = recorder.list_members(bot_id, guild_id)
+    recorder = get_interaction_recorder()
+    members = await recorder.list_members(bot_id, guild_id)
     return {"members": members}
 
 
@@ -42,7 +42,8 @@ async def get_interaction_messages(
     member_id: str = Query(...),
     date: str = Query(...),
 ):
-    messages = recorder.read_messages(bot_id, guild_id, role_id, channel_id, member_id, date)
+    recorder = get_interaction_recorder()
+    messages = await recorder.read_messages(bot_id, guild_id, role_id, channel_id, member_id, date)
     return {"messages": messages}
 
 
@@ -92,7 +93,8 @@ async def get_interaction_usage(bot_id: str):
     config = load_config()
     ih_config = config.get("interaction_history", {})
     max_bytes = ih_config.get("max_storage_bytes", 524288000)
-    used_bytes = recorder.get_disk_usage(bot_id)
+    recorder = get_interaction_recorder()
+    used_bytes = await recorder.get_disk_usage(bot_id)
     return {
         "used_bytes": used_bytes,
         "max_bytes": max_bytes,
@@ -108,7 +110,8 @@ async def delete_interaction_records(
     member_id: Optional[str] = None,
     date: Optional[str] = None,
 ):
-    deleted = recorder.delete_records(bot_id, guild_id=guild_id, channel_id=channel_id, member_id=member_id, date_str=date)
+    recorder = get_interaction_recorder()
+    deleted = await recorder.delete_records(bot_id, guild_id=guild_id, channel_id=channel_id, member_id=member_id, date_str=date)
     return {"deleted": deleted}
 
 
@@ -118,7 +121,8 @@ async def prune_interaction_records(bot_id: str):
     config = load_config()
     ih_config = config.get("interaction_history", {})
     max_bytes = ih_config.get("max_storage_bytes", 524288000)
-    pruned = recorder.prune_oldest(bot_id, max_bytes)
+    recorder = get_interaction_recorder()
+    pruned = await recorder.prune_oldest(bot_id, max_bytes)
     return {"pruned": pruned}
 
 
@@ -149,7 +153,8 @@ async def reconstruct_context(
     if not bot_config:
         bot_config = config
 
-    messages = recorder.read_messages(bot_id, guild_id, role_id, channel_id, member_id, date)
+    recorder = get_interaction_recorder()
+    messages = await recorder.read_messages(bot_id, guild_id, role_id, channel_id, member_id, date)
     if not messages:
         return {"context": None, "message": "No messages found for the specified parameters"}
 
@@ -165,6 +170,8 @@ async def reconstruct_context(
     mock_guild = Stub()
     mock_guild.id = int(guild_id) if guild_id.lstrip('-').isdigit() else 1
     mock_channel.guild = mock_guild
+
+    mock_client = Stub()
 
     mock_message = Stub()
     mock_message.author = mock_author
@@ -188,12 +195,29 @@ async def reconstruct_context(
     formatted_messages = []
     for msg in messages:
         try:
+            msg_author = Stub(
+                id=int(msg.get("author_id", 0)) if str(msg.get("author_id", "0")).lstrip('-').isdigit() else 0,
+                name=msg.get("author_name", "") or "",
+                display_name=msg.get("author_name", "") or "",
+                bot=False,
+            )
+            msg_attachments = []
+            for att in (msg.get("attachments") or []):
+                mock_att = Stub()
+                mock_att.content_type = att.get("content_type", "") if isinstance(att, dict) else ""
+                msg_attachments.append(mock_att)
+
+            mock_msg = Stub(
+                author=msg_author,
+                channel=mock_channel,
+                guild=mock_guild,
+                content=msg.get("content", ""),
+                mentions=[],
+                attachments=msg_attachments,
+                reference=None,
+            )
             formatted_content = await format_user_message_for_llm(
-                mock_channel, mock_guild,
-                Stub(id=msg.get("author_id"), name=msg.get("author_name", ""), display_name=msg.get("author_name", "")),
-                msg.get("content", ""),
-                bot_config,
-                msg.get("attachments") or [],
+                mock_msg, mock_client, bot_config, None,
             )
         except Exception:
             formatted_content = msg.get("content", "")

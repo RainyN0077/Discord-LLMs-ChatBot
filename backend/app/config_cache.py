@@ -8,15 +8,14 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .ocr_service import DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS
+from .paths import DataPaths
 from .security.secrets_manager import SecretsManager
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.cwd() / "data"
-DATA_DIR.mkdir(exist_ok=True)
-CONFIG_FILE = DATA_DIR / "config.json"
-BOTS_DIR = DATA_DIR / "bots"
-BOTS_DIR.mkdir(exist_ok=True)
+DATA_DIR = DataPaths.DATA_DIR
+CONFIG_FILE = DataPaths.CONFIG_FILE
+BOTS_DIR = DataPaths.BOTS_DIR
 DEFAULT_BOT_ID = "main"
 
 _cache: Optional[Dict[str, Any]] = None
