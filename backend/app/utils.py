@@ -57,73 +57,16 @@ def _safe_dict_list(value) -> list:
     return safe_items
 import tiktoken
 import anthropic
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# --- 日志系统设置 (最终优化版) ---
-import time
+# Lazy re-export of setup_logging from core_shared for backward compatibility.
+# A function wrapper avoids the circular import (core_shared needs TokenCalculator
+# from this module, so we cannot import from core_shared at module level).
 def setup_logging():
-    root_logger = logging.getLogger()
-    if root_logger.hasHandlers():
-        root_logger.handlers.clear()
-        
-    log_formatter = logging.Formatter(
-        fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%dT%H:%M:%S'
-    )
-    log_formatter.converter = time.gmtime
-
-    root_logger.setLevel(logging.INFO)
-    
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(log_formatter)
-    root_logger.addHandler(stream_handler)
-
-    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        uvicorn_logger = logging.getLogger(logger_name)
-        uvicorn_logger.handlers.clear()
-        uvicorn_logger.propagate = True
-        uvicorn_logger.setLevel(logging.INFO)
-    
-    try:
-        data_dir = Path.cwd() / 'data'
-        log_dir = data_dir / 'logs'
-        log_dir.mkdir(exist_ok=True, parents=True)
-        log_file = log_dir / 'bot.log'
-
-        file_handler = RotatingFileHandler(
-            log_file, 
-            maxBytes=5*1024*1024,
-            backupCount=5, 
-            encoding='utf-8'
-        )
-        file_handler.setFormatter(log_formatter)
-        root_logger.addHandler(file_handler)
-        
-        root_logger.info(f"File logging configured successfully to: {log_file}")
-        
-    except (PermissionError, IOError) as e:
-        root_logger.error(f"FATAL: Could not configure file logging due to a permission or I/O error: {e}", exc_info=True)
-    except Exception as e:
-        root_logger.error(f"FATAL: An unexpected error occurred during file logging setup: {e}", exc_info=True)
-
-    noisy_loggers = {
-        "httpx": logging.WARNING,
-        "httpcore": logging.WARNING,
-        "discord.client": logging.WARNING,
-        "discord.gateway": logging.WARNING,
-        "discord.http": logging.WARNING,
-        "discord.state": logging.WARNING,
-        "urllib3": logging.WARNING,
-        "asyncio": logging.WARNING,
-    }
-    for name, level in noisy_loggers.items():
-        logging.getLogger(name).setLevel(level)
-
-    os.environ.setdefault("LOGURU_LEVEL", "WARNING")
-    os.environ.setdefault("LOGURU_AUTOINIT", "0")
+    from .core_shared import setup_logging as _real_setup_logging
+    _real_setup_logging()
 
 
 # --- Token 计算器 ---

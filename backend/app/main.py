@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -9,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .bot_manager import BotManager
 from .config_bridge import generate_env_file
+from .middleware.rate_limit import register_rate_limit_middleware
 from .utils import setup_logging
 from . import state
 
@@ -24,15 +24,6 @@ async def lifespan(app: FastAPI):
     import nonebot
     nonebot.init()
     state.nonebot_driver = nonebot.get_driver()
-
-    from loguru import logger as loguru_logger
-    loguru_logger.remove()
-    loguru_logger.add(
-        sys.stderr,
-        level="WARNING",
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-        colorize=True,
-    )
 
     from .discord_patch import apply_component_emoji_fix
     apply_component_emoji_fix()
@@ -69,6 +60,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-API-Key", "X-Timezone"],
 )
+
+register_rate_limit_middleware(app)
 
 from .routers.config import router as config_router
 from .routers.chat import router as chat_router
