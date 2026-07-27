@@ -11,13 +11,12 @@ from app.core_shared import (
     contains_dsml_tool_blocks,
 )
 from app.debug_capture_store import add_capture
-from app.feature_flags import is_flag_enabled
 from app.llm_providers.factory import get_llm_provider
 from app.ocr_service import is_multimodal_llm
 from app.utils import split_message, transform_memories_for_prompt
 from app.core_logic.usage_manager import UsageManager
 
-from ._compat import MessageContext
+from app.ports.platform_message import PlatformMessage
 from .context import build_full_context
 from .rendering import render_streaming_response, _render_streaming_response_old
 from .automation import reset_channel_automation_state
@@ -28,7 +27,7 @@ logger = logging.getLogger(__name__)
 async def execute_llm_pipeline(
     bot: Bot,
     event: MessageEvent,
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     trigger_sources: List[str],
     injected_data: Optional[str],
     plugin_append_blocks: List[str],
@@ -52,13 +51,7 @@ async def execute_llm_pipeline(
 
     logger.info(f"Processing message {message_ctx.id} for bot '{instance.bot_id}'.")
 
-    # --- Feature Flag: USE_NEW_MAIN_PIPELINE / USE_NEW_PIPELINE_SEND ---
-    use_new_main = is_flag_enabled("USE_NEW_MAIN_PIPELINE")
-    use_new_send = is_flag_enabled("USE_NEW_PIPELINE_SEND")
-    runtime = getattr(instance, '_runtime', None) if (use_new_main or use_new_send) else None
-    if (use_new_main or use_new_send) and runtime is None:
-        logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
-    # --- branch end ---
+    runtime = getattr(instance, '_runtime', None)
 
     try:
         if runtime is not None:
@@ -137,17 +130,13 @@ async def execute_llm_pipeline(
         tool_functions = plugin_manager.get_all_tool_functions(message_ctx, config) if plugin_manager else {}
         used_tools_in_attempt = False
 
-        # --- Feature Flag: ProviderPool 集成 ---
-        use_provider_pool = is_flag_enabled("USE_PROVIDER_POOL")
         pool = None
-        if use_provider_pool:
-            from app.app_context import AppContext
-            pool = AppContext.get().provider_pool
-        # --- branch end ---
+        from app.app_context import AppContext
+        pool = AppContext.get().provider_pool
 
         try:
             logger.info(f"Attempting LLM call for message {message_ctx.id} with {len(tools)} tools.")
-            if use_provider_pool and pool is not None:
+            if pool is not None:
                 response_gen_with_tools = await pool.execute(
                     config, llm_messages, llm_images if is_multimodal_llm(config) else None,
                     tools=tools, tool_functions=tool_functions,
@@ -170,7 +159,7 @@ async def execute_llm_pipeline(
             error_str = str(e).lower()
             if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
                 logger.warning(f"Malformed tool call for message {message_ctx.id}. Retrying without tools. Error: {e}")
-                if use_provider_pool and pool is not None:
+                if pool is not None:
                     response_gen_no_tools = await pool.execute(
                         config, llm_messages, llm_images if is_multimodal_llm(config) else None,
                         tools=[], tool_functions={},
@@ -192,7 +181,7 @@ async def execute_llm_pipeline(
 
         if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
             logger.warning(f"Detected leaked DSML tool blocks in message {message_ctx.id}. Retrying without tools.")
-            if use_provider_pool and pool is not None:
+            if pool is not None:
                 response_gen_no_tools = await pool.execute(
                     config, llm_messages, llm_images if is_multimodal_llm(config) else None,
                     tools=[], tool_functions={},
@@ -259,7 +248,7 @@ async def execute_llm_pipeline(
             "model": str(config.get("model_name", "")),
         })
 
-        # NOTE: runtime is already acquired earlier via USE_NEW_MAIN_PIPELINE / USE_NEW_PIPELINE_SEND
+        # NOTE: runtime is already acquired earlier
 
         final_chunks = split_message(cleaned_response, 2000)
         for i, chunk in enumerate(final_chunks):
@@ -377,7 +366,7 @@ def _resolve_role_config(bot: Bot, event: MessageEvent, config: Dict[str, Any]) 
 async def _process_knowledge_tags_adapted(
     bot: Bot,
     event: MessageEvent,
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     text: str,
     bot_config: Dict[str, Any],
 ) -> str:
@@ -385,7 +374,7 @@ async def _process_knowledge_tags_adapted(
 
 
 async def process_knowledge_tags_from_context(
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     text: str,
     bot_config: Dict[str, Any],
 ) -> str:
@@ -459,7 +448,7 @@ async def process_knowledge_tags_from_context(
 async def _record_bot_interaction(
     bot: Bot,
     config: Dict[str, Any],
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     bot_response: str,
     trigger_sources: List[str],
     downloaded_images: List[Dict[str, Any]],
@@ -478,9 +467,9 @@ async def _record_bot_interaction(
         role_id = "default"
         if message_ctx.guild and hasattr(message_ctx, 'author'):
             if hasattr(message_ctx.author, 'roles'):
-                for r in reversed(list(getattr(message_ctx.author, 'roles', []))):
-                    role_id = str(r.id)
-                    break
+                roles_list = getattr(message_ctx.author, 'roles', [])
+                if roles_list:
+                    role_id = str(roles_list[0])
 
         trigger_source_str = ",".join(trigger_sources) if trigger_sources else "unknown"
 

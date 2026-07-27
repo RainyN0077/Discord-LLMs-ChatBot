@@ -7,7 +7,6 @@ import asyncio
 import logging
 from typing import Any, Dict, Optional
 
-from ..feature_flags import is_flag_enabled
 from ..ports.bot_runtime import BotRuntime, BotStatus
 
 logger = logging.getLogger(__name__)
@@ -123,15 +122,10 @@ class NoneBotRuntime(BotRuntime):
     # --- BotRuntime ---
 
     async def start(self) -> None:
-        """启动 Bot 运行时.
-
-        仅在 USE_NEW_MAIN_PIPELINE 启用时启动重连循环（P0-1 修复），
-        否则由 BotInstance 的旧重连逻辑负责。
-        """
+        """启动 Bot 运行时."""
         self._status = BotStatus.RUNNING
-        if is_flag_enabled("USE_NEW_MAIN_PIPELINE"):
-            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
-        logger.info("NoneBotRuntime '%s' started (reconnect=%s)", self._bot_id, is_flag_enabled("USE_NEW_MAIN_PIPELINE"))
+        self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        logger.info("NoneBotRuntime '%s' started with reconnect loop", self._bot_id)
 
     async def stop(self) -> None:
         """停止 Bot 运行时."""

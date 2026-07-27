@@ -12,7 +12,6 @@ from datetime import datetime
 from xml.sax.saxutils import escape as _xml_escape
 import pytz # Timezone library
 
-import discord
 import aiohttp
 
 class Stub:
@@ -289,7 +288,7 @@ async def _is_internal_url(url: str) -> Tuple[bool, List[str], str]:
         logger.error(f"Unexpected error during URL validation for '{url}': {e}", exc_info=True)
         return True, [], ""
 
-def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
+def _format_with_placeholders(template_str: str, message: Any, args: str) -> str:
     if not isinstance(template_str, str): return ''
     replacements = {
         "{user_input}": args,
@@ -304,7 +303,7 @@ def _format_with_placeholders(template_str: str, message: discord.Message, args:
         template_str = template_str.replace(placeholder, value)
     return template_str
 
-async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.Message, args: str) -> Optional[str]:
+async def _execute_http_request(plugin_config: Dict[str, Any], message: Any, args: str) -> Optional[str]:
     http_conf = plugin_config.get('http_request_config', {})
     url = _format_with_placeholders(http_conf.get('url', ''), message, args)
     method = http_conf.get('method', 'GET').upper()

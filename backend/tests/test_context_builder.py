@@ -5,7 +5,6 @@ from app.core_logic.context_builder import format_user_message_for_llm
 
 from app.core_logic.context_builder import build_context_history
 from unittest.mock import AsyncMock, MagicMock, patch
-import discord
 
 
 async def _history_iter(items):
@@ -190,8 +189,8 @@ class TestFormatUserMessageForLLM:
 class TestBuildContextHistoryNone:
     @pytest.mark.asyncio
     async def test_context_mode_none_returns_empty(self):
-        client = MagicMock(spec=discord.Client)
-        message = MagicMock(spec=discord.Message)
+        client = MagicMock()
+        message = MagicMock()
         bot_config = {"context_mode": "none"}
         fetched, formatted = await build_context_history(client, bot_config, message, None)
         assert fetched == []
@@ -201,8 +200,8 @@ class TestBuildContextHistoryNone:
 class TestBuildContextHistoryChannel:
     @pytest.mark.asyncio
     async def test_msg_limit_zero_returns_empty(self):
-        client = MagicMock(spec=discord.Client)
-        message = MagicMock(spec=discord.Message)
+        client = MagicMock()
+        message = MagicMock()
         bot_config = {
             "context_mode": "channel",
             "channel_context_settings": {
@@ -216,8 +215,8 @@ class TestBuildContextHistoryChannel:
 
     @pytest.mark.asyncio
     async def test_empty_channel_history_returns_empty(self):
-        client = MagicMock(spec=discord.Client)
-        message = MagicMock(spec=discord.Message)
+        client = MagicMock()
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([]))
         bot_config = {
             "context_mode": "channel",
@@ -232,7 +231,7 @@ class TestBuildContextHistoryChannel:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -254,7 +253,7 @@ class TestBuildContextHistoryChannel:
             content="Hi! How can I help?",
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg1, msg2]))
 
         bot_config = {
@@ -276,7 +275,7 @@ class TestBuildContextHistoryChannel:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -292,7 +291,7 @@ class TestBuildContextHistoryChannel:
                 content=f"Message {i + 1}",
             ))
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter(msgs))
 
         bot_config = {
@@ -315,7 +314,7 @@ class TestBuildContextHistoryChannel:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -331,7 +330,7 @@ class TestBuildContextHistoryChannel:
                 content="A" * 80,
             ))
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter(msgs))
 
         bot_config = {
@@ -354,7 +353,7 @@ class TestBuildContextHistoryChannel:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -376,7 +375,7 @@ class TestBuildContextHistoryChannel:
             content="Real message",
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg_empty, msg_valid]))
 
         bot_config = {
@@ -398,7 +397,7 @@ class TestBuildContextHistoryMemory:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -414,7 +413,7 @@ class TestBuildContextHistoryMemory:
             reference=None,
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg1]))
 
         bot_config = {
@@ -434,7 +433,7 @@ class TestBuildContextHistoryMemory:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         msg_bot = Stub(
@@ -448,7 +447,7 @@ class TestBuildContextHistoryMemory:
             reference=None,
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg_bot]))
 
         bot_config = {
@@ -469,7 +468,7 @@ class TestBuildContextHistoryMemory:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -485,7 +484,7 @@ class TestBuildContextHistoryMemory:
             reference=None,
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg_mentions]))
 
         bot_config = {
@@ -506,7 +505,7 @@ class TestBuildContextHistoryMemory:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -522,7 +521,7 @@ class TestBuildContextHistoryMemory:
             reference=None,
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([msg_keyword]))
 
         bot_config = {
@@ -544,7 +543,7 @@ class TestBuildContextHistoryMemory:
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         msgs = []
@@ -560,7 +559,7 @@ class TestBuildContextHistoryMemory:
                 reference=None,
             ))
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter(msgs))
 
         bot_config = {
@@ -580,22 +579,11 @@ class TestBuildContextHistoryMemory:
         assert len(formatted) == 3
 
     @pytest.mark.asyncio
-    async def test_memory_replied_to_message_included(self, monkeypatch):
-        import builtins
-
-        _orig_isinstance = builtins.isinstance
-
-        def _custom_isinstance(obj, classinfo):
-            if _orig_isinstance(obj, Stub) and classinfo is discord.Message and getattr(obj, "_as_discord_msg", False):
-                return True
-            return _orig_isinstance(obj, classinfo)
-
-        monkeypatch.setattr(builtins, "isinstance", _custom_isinstance)
-
+    async def test_memory_replied_to_message_included(self):
         from datetime import datetime
 
         bot_user = Stub(id=999, name="BotUser", display_name="BotUser", bot=True)
-        client = MagicMock(spec=discord.Client)
+        client = MagicMock()
         client.user = bot_user
 
         user_author = Stub(id=123, name="TestUser", display_name="TestUser", bot=False)
@@ -609,7 +597,6 @@ class TestBuildContextHistoryMemory:
             content="Bot's original message",
             mentions=[],
             reference=None,
-            _as_discord_msg=True,
         )
 
         reference_stub = Stub(resolved=bot_replied_msg)
@@ -625,7 +612,7 @@ class TestBuildContextHistoryMemory:
             reference=reference_stub,
         )
 
-        message = MagicMock(spec=discord.Message)
+        message = MagicMock()
         message.channel.history = MagicMock(return_value=_history_iter([user_reply_msg, bot_replied_msg]))
 
         bot_config = {

@@ -80,12 +80,6 @@ def _reset_global_state(monkeypatch, tmp_path):
     monkeypatch.setattr(km_mod, "get_knowledge_manager", lambda: test_km)
     import app.core_logic.context_builder as cb_mod
     monkeypatch.setattr(cb_mod, "get_knowledge_manager", lambda: test_km)
-    import app.handlers.context_assembler as ca_mod
-    try:
-        monkeypatch.setattr(ca_mod, "get_knowledge_manager", lambda: test_km)
-    except AttributeError:
-        pass
-
     mock_core_shared = _create_mock_core_shared(tmp_path)
     _original_core_shared = sys.modules.get("app.core_shared")
     sys.modules["app.core_shared"] = mock_core_shared

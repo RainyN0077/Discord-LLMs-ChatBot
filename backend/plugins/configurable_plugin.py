@@ -4,7 +4,8 @@ import re
 from typing import Dict, Any, Optional, Tuple, List
 
 from app.utils import _execute_http_request, _format_with_placeholders
-from .base import BasePlugin
+from app.ports.plugin_base import PluginBase
+from app.ports.platform_message import PlatformMessage
 
 logger = logging.getLogger(__name__)
 
@@ -16,14 +17,14 @@ async def _safe_reply(message: Any, text: str) -> None:
         logger.debug("message.reply() not available for this message type, skipping direct reply.")
 
 
-class ConfigurablePlugin(BasePlugin):
+class ConfigurablePlugin(PluginBase):
     """
-    一个通用的、可配置的插件实现，它继承自BasePlugin。
+    一个通用的、可配置的插件实现，它继承自PluginBase。
     这个类处理那些在config.json中定义、没有专门Python代码的插件。
     它封装了检查触发器（命令、关键字）和执行动作（HTTP请求）的逻辑。
     """
     
-    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: PlatformMessage, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """
         检查此可配置插件是否被消息触发，如果是，则执行其动作。
         """
@@ -35,7 +36,7 @@ class ConfigurablePlugin(BasePlugin):
         
         return None
 
-    def _check_trigger(self, message: Any) -> Tuple[bool, str]:
+    def _check_trigger(self, message: PlatformMessage) -> Tuple[bool, str]:
         """根据插件配置检查触发条件。"""
         trigger_type = self.plugin_config.get('trigger_type', 'command')
         triggers = self.plugin_config.get('triggers', [])
@@ -50,7 +51,7 @@ class ConfigurablePlugin(BasePlugin):
                     return True, message.content
         return False, ""
 
-    async def _execute_action(self, message: Any, args: str, bot_config: Dict[str, Any]):
+    async def _execute_action(self, message: PlatformMessage, args: str, bot_config: Dict[str, Any]):
         """执行插件配置中定义的动作。"""
         action_type = self.plugin_config.get('action_type', 'http_request')
         

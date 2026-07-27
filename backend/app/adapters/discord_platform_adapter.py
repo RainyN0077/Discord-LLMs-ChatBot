@@ -59,6 +59,7 @@ class DiscordPlatformAdapter(PlatformAdapter):
                     getattr(event.author, "global_name", None) or event.author.username
                 ),
                 roles=[str(r.id) for r in getattr(event.author, "roles", []) or []],
+                is_bot=getattr(event.author, 'bot', False),
             )
         else:
             author = AuthorInfo(id=author_id or "unknown", name="Unknown")

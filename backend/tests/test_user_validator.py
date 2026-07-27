@@ -1,8 +1,6 @@
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 
-import discord
-
 pytestmark = [pytest.mark.unit]
 
 from app.core_logic.user_validator import validate_user_id, resolve_user_identity
@@ -11,14 +9,14 @@ from app.core_logic.user_validator import validate_user_id, resolve_user_identit
 class TestValidateUserId:
     @pytest.mark.asyncio
     async def test_invalid_user_id_returns_none(self):
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         result = await validate_user_id("not_a_number", guild)
         assert result is None
 
     @pytest.mark.asyncio
     async def test_get_member_finds_member_returns_it(self):
-        member = MagicMock(spec=discord.Member)
-        guild = MagicMock(spec=discord.Guild)
+        member = MagicMock()
+        guild = MagicMock()
         guild.get_member.return_value = member
 
         result = await validate_user_id("123", guild)
@@ -28,8 +26,8 @@ class TestValidateUserId:
 
     @pytest.mark.asyncio
     async def test_get_member_none_fetch_member_succeeds(self):
-        fetched = MagicMock(spec=discord.Member)
-        guild = MagicMock(spec=discord.Guild)
+        fetched = MagicMock()
+        guild = MagicMock()
         guild.get_member.return_value = None
         guild.fetch_member = AsyncMock(return_value=fetched)
 
@@ -41,9 +39,9 @@ class TestValidateUserId:
 
     @pytest.mark.asyncio
     async def test_fetch_member_raises_not_found_returns_none(self):
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         guild.get_member.return_value = None
-        guild.fetch_member = AsyncMock(side_effect=discord.errors.NotFound(MagicMock(), "not found"))
+        guild.fetch_member = AsyncMock(side_effect=Exception('not found'))
 
         result = await validate_user_id("789", guild)
 
@@ -51,9 +49,9 @@ class TestValidateUserId:
 
     @pytest.mark.asyncio
     async def test_fetch_member_raises_http_exception_returns_none(self):
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         guild.get_member.return_value = None
-        guild.fetch_member = AsyncMock(side_effect=discord.errors.HTTPException(MagicMock(), "http error"))
+        guild.fetch_member = AsyncMock(side_effect=Exception('http error'))
 
         result = await validate_user_id("100", guild)
 
@@ -67,9 +65,9 @@ class TestResolveUserIdentity:
         assert result == "Ali"
 
     def test_persona_with_matching_id_no_nickname_falls_through_to_guild(self):
-        member = MagicMock(spec=discord.Member)
+        member = MagicMock()
         member.display_name = "Bob"
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         guild.get_member.return_value = member
 
         personas = {"p1": {"id": "42"}}
@@ -78,9 +76,9 @@ class TestResolveUserIdentity:
         assert result == "Bob"
 
     def test_no_persona_match_guild_has_member_returns_display_name(self):
-        member = MagicMock(spec=discord.Member)
+        member = MagicMock()
         member.display_name = "Charlie"
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         guild.get_member.return_value = member
 
         result = resolve_user_identity("1", personas={}, guild=guild)
@@ -93,14 +91,14 @@ class TestResolveUserIdentity:
         assert result == "User(123)"
 
     def test_invalid_user_id_in_guild_path_returns_user_format(self):
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         result = resolve_user_identity("abc", personas={}, guild=guild)
         assert result == "User(abc)"
 
     def test_persona_nickname_takes_priority_over_guild_display_name(self):
-        member = MagicMock(spec=discord.Member)
+        member = MagicMock()
         member.display_name = "Bob"
-        guild = MagicMock(spec=discord.Guild)
+        guild = MagicMock()
         guild.get_member.return_value = member
 
         personas = {"p1": {"id": "42", "nickname": "Ali"}}

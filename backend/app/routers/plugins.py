@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from ..config_cache import load_config, save_config
 from ..dependencies import get_api_key
-from ..feature_flags import is_flag_enabled
 from ..models import PluginTriggerRequest
 from ..utils import _execute_http_request, Stub
 
@@ -120,8 +119,6 @@ async def update_plugin_config_endpoint(plugin_name: str, plugin_data: dict):
 async def reload_plugin(plugin_name: str, body: Optional[Dict[str, Any]] = None):
     """热加载/重新加载指定插件.
 
-    仅支持 PluginRegistry 模式（USE_ENHANCED_PLUGIN_REGISTRY=True）。
-
     Args:
         plugin_name: 插件名称
         body: 可选请求体，支持 bot_id 和 config 覆盖
@@ -129,12 +126,6 @@ async def reload_plugin(plugin_name: str, body: Optional[Dict[str, Any]] = None)
     Returns:
         加载结果信息
     """
-    if not is_flag_enabled("USE_ENHANCED_PLUGIN_REGISTRY"):
-        raise HTTPException(
-            status_code=501,
-            detail="Plugin hot reload requires USE_ENHANCED_PLUGIN_REGISTRY feature flag.",
-        )
-
     registry = _resolve_plugin_registry((body or {}).get("bot_id"))
 
     # 卸载旧实例
@@ -181,8 +172,6 @@ async def reload_plugin(plugin_name: str, body: Optional[Dict[str, Any]] = None)
 async def unload_plugin(plugin_name: str, body: Optional[Dict[str, Any]] = None):
     """热卸载指定插件.
 
-    仅支持 PluginRegistry 模式（USE_ENHANCED_PLUGIN_REGISTRY=True）。
-
     Args:
         plugin_name: 插件名称
         body: 可选请求体，支持 bot_id
@@ -190,12 +179,6 @@ async def unload_plugin(plugin_name: str, body: Optional[Dict[str, Any]] = None)
     Returns:
         卸载结果信息
     """
-    if not is_flag_enabled("USE_ENHANCED_PLUGIN_REGISTRY"):
-        raise HTTPException(
-            status_code=501,
-            detail="Plugin hot unload requires USE_ENHANCED_PLUGIN_REGISTRY feature flag.",
-        )
-
     registry = _resolve_plugin_registry((body or {}).get("bot_id"))
 
     old = registry.get(plugin_name)

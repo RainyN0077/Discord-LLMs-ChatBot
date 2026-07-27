@@ -2,7 +2,6 @@
 
 pytestmark = [pytest.mark.unit]
 from unittest.mock import MagicMock
-import discord
 from app.utils import Stub
 from app.core_logic.persona_manager import (
     get_highest_configured_role,
@@ -13,61 +12,37 @@ from app.core_logic.persona_manager import (
 
 
 class TestGetHighestConfiguredRole:
-    def test_member_with_no_roles(self):
-        member = MagicMock(spec=discord.Member)
-        member.roles = []
-        member.id = 123
-        result = get_highest_configured_role(member, {"role_a": {"id": "999"}})
+    def test_empty_role_list_returns_none(self):
+        result = get_highest_configured_role([], {"role_a": {"id": "999"}})
         assert result is None
 
     def test_role_not_configured(self):
-        role1 = Stub(id=111, name="Admin")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role1]
-        member.id = 123
-        result = get_highest_configured_role(member, {"role_b": {"id": "222"}})
+        result = get_highest_configured_role(["111"], {"role_b": {"id": "222"}})
         assert result is None
 
     def test_matching_role_returns_config(self):
-        role1 = Stub(id=111, name="Admin")
-        role2 = Stub(id=222, name="Moderator")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role1, role2]
-        member.id = 123
         role_configs = {
             "mod_cfg": {"id": "222", "title": "Mod", "prompt": "You are a mod."},
         }
-        result = get_highest_configured_role(member, role_configs)
+        result = get_highest_configured_role(["111", "222"], role_configs)
         assert result is not None
-        assert result[0] == "Moderator"
         assert result[1]["title"] == "Mod"
 
     def test_highest_role_takes_priority(self):
-        role_low = Stub(id=111, name="Member")
-        role_high = Stub(id=999, name="Owner")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role_low, role_high]
-        member.id = 123
         role_configs = {
             "owner_cfg": {"id": "999", "title": "Owner", "prompt": "Owner prompt"},
             "member_cfg": {"id": "111", "title": "Member", "prompt": "Member prompt"},
         }
-        result = get_highest_configured_role(member, role_configs)
+        result = get_highest_configured_role(["111", "999"], role_configs)
         assert result is not None
-        assert result[0] == "Owner"
         assert result[1]["title"] == "Owner"
 
-    def test_non_member_input_returns_none(self):
-        user = Stub(id=123, name="User")
-        result = get_highest_configured_role(user, {})
+    def test_non_list_input_returns_none(self):
+        result = get_highest_configured_role([], {})
         assert result is None
 
     def test_empty_role_configs(self):
-        role = Stub(id=111, name="Admin")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role]
-        member.id = 123
-        result = get_highest_configured_role(member, {})
+        result = get_highest_configured_role(["111"], {})
         assert result is None
 
 

@@ -1,6 +1,6 @@
 """集中式插件注册表 — 统一管理插件的发现、注册和生命周期.
 
-替代 plugins/manager.py 中的 _load_plugins 逻辑。
+替代旧 PluginManager (已删除的 plugins/manager.py) 中的 _load_plugins 逻辑。
 """
 
 import asyncio
@@ -9,10 +9,9 @@ import importlib
 import inspect
 import logging
 import pkgutil
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
-if TYPE_CHECKING:
-    from plugins.base import BasePlugin
+from app.ports.plugin_base import PluginBase
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +19,17 @@ logger = logging.getLogger(__name__)
 class PluginRegistry:
     """集中式插件注册表.
 
-    替代 plugins/manager.py 中的 _load_plugins 逻辑。
+    替代旧 PluginManager (已删除的 plugins/manager.py) 中的 _load_plugins 逻辑。
     """
 
     def __init__(self) -> None:
         """初始化插件注册表."""
-        self._plugins: Dict[str, "BasePlugin"] = {}
+        self._plugins: Dict[str, "PluginBase"] = {}
         self._search_paths: List[str] = ["plugins"]
         self._loaded_modules: Set[str] = set()
         self._lock = asyncio.Lock()
 
-    def register(self, name: str, plugin: "BasePlugin") -> None:
+    def register(self, name: str, plugin: "PluginBase") -> None:
         """注册一个插件实例.
 
         Args:
@@ -49,7 +48,7 @@ class PluginRegistry:
         self._plugins.pop(name, None)
         self._loaded_modules.discard(name)
 
-    def get_all_snapshot(self) -> List["BasePlugin"]:
+    def get_all_snapshot(self) -> List["PluginBase"]:
         """获取所有插件实例的快照（用于安全遍历）.
 
         Returns:
@@ -57,7 +56,7 @@ class PluginRegistry:
         """
         return list(self._plugins.values())
 
-    def get(self, name: str) -> Optional["BasePlugin"]:
+    def get(self, name: str) -> Optional["PluginBase"]:
         """获取已注册的插件实例.
 
         Args:
@@ -68,7 +67,7 @@ class PluginRegistry:
         """
         return self._plugins.get(name)
 
-    def get_all(self) -> List["BasePlugin"]:
+    def get_all(self) -> List["PluginBase"]:
         """获取所有已注册的插件实例.
 
         Returns:
@@ -133,7 +132,7 @@ class PluginRegistry:
     ) -> None:
         """自动发现并加载插件.
 
-        扫描 plugins/ 目录，自动加载所有 BasePlugin 子类。
+        扫描 plugins/ 目录，自动加载所有 PluginBase 子类。
         未通过自动发现的插件会尝试从配置中实例化 ConfigurablePlugin。
 
         Args:
@@ -150,7 +149,6 @@ class PluginRegistry:
             if name in self._loaded_modules or name in [
                 "manager",
                 "base",
-                "configurable_plugin",
             ]:
                 continue
             try:
@@ -159,8 +157,8 @@ class PluginRegistry:
                     attr = getattr(module, attr_name)
                     if (
                         inspect.isclass(attr)
-                        and issubclass(attr, plugins.base.BasePlugin)
-                        and attr is not plugins.base.BasePlugin
+                        and issubclass(attr, PluginBase)
+                        and attr is not PluginBase
                     ):
                         plugin_cfg = plugins_config.get(name, {})
                         # 强制启用 memory_plugin（与 PluginManager 行为一致）

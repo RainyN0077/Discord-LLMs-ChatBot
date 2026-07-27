@@ -1,15 +1,21 @@
 import asyncio
 import logging
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from nonebot import on_message
 from nonebot.adapters.discord import Bot, MessageEvent
 from nonebot.internal.adapter.bot import Bot as BaseBot
 
-from app.feature_flags import is_flag_enabled
 from app.utils import matches_trigger_keywords
 from app.handlers.message_queue import MessageQueue
-from ._compat import event_to_message_context, MessageContext
+from app.ports.platform_message import (
+    AttachmentInfo,
+    AuthorInfo,
+    ChannelInfo,
+    GuildInfo,
+    PlatformMessage,
+)
 from .automation import track_auto_interject, track_repeat_parrot, reset_channel_automation_state
 from .pipeline import execute_llm_pipeline
 
@@ -23,6 +29,101 @@ _auto_message_counts: Dict[int, int] = {}
 _repeat_streaks: Dict[int, Dict[str, Any]] = {}
 
 _bot_instance_map: Dict[str, Any] = {}
+
+
+def _event_to_message_context(event: Any, bot: Any) -> PlatformMessage:
+    """将 Discord MessageEvent 转换为 PlatformMessage."""
+    has_author = getattr(event, "author", None) is not None
+    if has_author:
+        author = AuthorInfo(
+            id=str(event.author.id),
+            name=event.author.username,
+            display_name=(
+                getattr(event.author, "global_name", None) or event.author.username
+            ),
+            roles=[str(r.id) for r in getattr(event.author, "roles", []) or []],
+            is_bot=getattr(event.author, 'bot', False),
+        )
+    else:
+        author = AuthorInfo(id="unknown", name="Unknown")
+
+    channel = ChannelInfo(id=str(getattr(event, "channel_id", "")))
+
+    guild = None
+    guild_id = getattr(event, "guild_id", None)
+    if guild_id:
+        guild = GuildInfo(id=str(guild_id))
+
+    mentions: List[AuthorInfo] = []
+    for u in getattr(event, "mentions", []) or []:
+        mentions.append(
+            AuthorInfo(
+                id=str(u.id),
+                name=u.username,
+                display_name=getattr(u, "global_name", None) or u.username,
+            )
+        )
+
+    attachments: List[AttachmentInfo] = []
+    for a in getattr(event, "attachments", []) or []:
+        attachments.append(
+            AttachmentInfo(
+                url=str(a.url),
+                filename=getattr(a, "filename", ""),
+                content_type=getattr(a, "content_type", ""),
+            )
+        )
+
+    msg = PlatformMessage(
+        id=str(getattr(event, "id", "")),
+        content=getattr(event, "content", "") or "",
+        author=author,
+        channel=channel,
+        guild=guild,
+        mentions=mentions,
+        attachments=attachments,
+        raw=event,
+    )
+
+    # --- 向后兼容属性 ---
+    msg.embeds: List[Any] = []
+    msg.stickers: List[Any] = []
+
+    reply = getattr(event, "reply", None)
+    if reply is not None:
+        ref_author_id = "0"
+        ref_author_name = "Unknown"
+        if hasattr(reply, "author"):
+            ref_author_id = str(reply.author.id)
+            ref_author_name = reply.author.username
+        ref_author = AuthorInfo(
+            id=ref_author_id,
+            name=ref_author_name,
+            display_name=(
+                getattr(reply.author, "global_name", None) or ref_author_name
+            )
+            if hasattr(reply, "author")
+            else ref_author_name,
+            is_bot=getattr(reply.author, 'bot', False) if hasattr(reply, 'author') else False,
+        )
+        ref_channel = ChannelInfo(id=str(getattr(event, "channel_id", "")))
+
+        ref_platform_msg = PlatformMessage(
+            id=str(reply.id),
+            content=getattr(reply, "content", ""),
+            author=ref_author,
+            channel=ref_channel,
+            raw=reply,
+        )
+        ref_platform_msg.embeds = []
+        ref_platform_msg.stickers = []
+
+        msg.reply_to = ref_platform_msg
+        msg.reference = SimpleNamespace(resolved=ref_platform_msg)
+    else:
+        msg.reference = None
+
+    return msg
 
 
 def get_auto_message_counts() -> Dict[int, int]:
@@ -96,7 +197,7 @@ async def _on_discord_message_old(bot: Bot, event: MessageEvent):
     if event.author and event.author.id == getattr(bot, "self_id", None):
         return
 
-    message_ctx = event_to_message_context(event, bot)
+    message_ctx = _event_to_message_context(event, bot)
     instance = _bot_instance_map.get(_resolve_bot_id(bot))
     if not instance:
         logger.warning(f"No bot instance registered for bot {_get_bot_id(bot)}")
@@ -193,9 +294,7 @@ async def _on_discord_message_old(bot: Bot, event: MessageEvent):
         plugin_append_triggered = bool(plugin_append_blocks)
 
     if not normal_triggered and repeat_parrot_content:
-        runtime = getattr(instance, '_runtime', None) if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) else None
-        if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) and runtime is None:
-            logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
+        runtime = getattr(instance, '_runtime', None)
         if runtime is not None:
             await runtime.send_message(
                 channel_id=str(event.channel_id),
@@ -239,9 +338,7 @@ async def _on_discord_message_old(bot: Bot, event: MessageEvent):
 
     enqueued = await queue.enqueue(channel_id_str, ctx)
     if not enqueued:
-        runtime = getattr(instance, '_runtime', None) if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) else None
-        if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) and runtime is None:
-            logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
+        runtime = getattr(instance, '_runtime', None)
         if runtime is not None:
             await runtime.send_message(
                 channel_id=str(event.channel_id),
@@ -293,11 +390,8 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
 
 @_matcher.handle()
 async def _on_discord_message(bot: Bot, event: MessageEvent):
-    """消息入口 — 根据 Feature Flag 路由到新/旧路径."""
-    if is_flag_enabled("USE_MESSAGE_BUS"):
-        await _on_discord_message_new(bot, event)
-    else:
-        await _on_discord_message_old(bot, event)
+    """消息入口 — 通过 MessageBus 路由."""
+    await _on_discord_message_new(bot, event)
 
 
 def register_main_matcher():

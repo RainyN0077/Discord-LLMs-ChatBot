@@ -1,9 +1,7 @@
 ﻿# backend/app/core_logic/persona_manager.py
 import re
 from datetime import datetime
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
-
-import discord
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 
 def _get_bot_user_id(client: Any) -> int:
@@ -54,23 +52,30 @@ def _collect_other_bots(
 
 
 def get_highest_configured_role(
-    member: discord.Member,
+    role_id_list: list,
     role_configs: Dict[str, Any],
 ) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """Return highest-priority configured role for the member."""
-    if not isinstance(member, discord.Member) or not role_configs:
+    """Return highest-priority configured role for the given role ID list.
+
+    Args:
+        role_id_list: List of role ID strings (e.g. AuthorInfo.roles or Member.roles).
+        role_configs: Dict of role configurations keyed by role name.
+
+    Returns:
+        (role_name, role_config) tuple, or None if no matching role found.
+    """
+    if not role_id_list or not role_configs:
         return None
 
-    # Discord roles are low->high, so reverse to get highest first.
-    for role in reversed(member.roles):
+    for role_id_str in reversed(role_id_list):
         for cfg in role_configs.values():
-            if cfg.get("id") == str(role.id):
-                return role.name, cfg
+            if cfg.get("id") == str(role_id_str):
+                return cfg.get("name", role_id_str), cfg
     return None
 
 
 def get_rich_identity(
-    author: Union[discord.User, discord.Member],
+    author: Any,
     personas: Dict[str, Any],
     role_config: Optional[Dict[str, Any]],
     persona_info: Optional[dict] = None,
@@ -172,11 +177,11 @@ def find_mentioned_users_by_keywords(text: str, personas: Dict[str, Any]) -> Set
 
 
 async def build_system_prompt(
-    bot: discord.Client,
+    bot: Any,
     bot_config: Dict[str, Any],
     specific_persona_prompt: str,
     situational_prompt: str,
-    message: discord.Message,
+    message: Any,
     active_directives_log: list,
 ) -> str:
     """Build final system prompt for this message."""
@@ -212,15 +217,18 @@ async def build_system_prompt(
     if situational_prompt:
         final_parts.append(f"[Situational Context]\n---\n{situational_prompt}\n---")
 
-    is_real_discord_msg = hasattr(message, 'clean_content')
-    message_text = message.clean_content if is_real_discord_msg else getattr(message, 'content', '')
+    # PlatformMessage has attachments but not clean_content; Discord native has both.
+    is_real_discord_msg = hasattr(message, 'clean_content') or hasattr(message, 'attachments')
+    message_text = message.clean_content if hasattr(message, 'clean_content') else getattr(message, 'content', '')
 
     relevant_users: set = {message.author}
     for user in message.mentions:
         relevant_users.add(user)
 
-    if message.reference and isinstance(message.reference.resolved, discord.Message):
-        relevant_users.add(message.reference.resolved.author)
+    if hasattr(message, 'reference') and message.reference is not None:
+        resolved = getattr(message.reference, 'resolved', None)
+        if resolved is not None:
+            relevant_users.add(resolved.author)
 
     mentioned_user_ids = find_mentioned_users_by_keywords(message_text, user_personas)
     author_id_str = str(message.author.id)
@@ -236,13 +244,16 @@ async def build_system_prompt(
 
         try:
             user_id = int(user_id_str)
-            user = message.guild.get_member(user_id) if message.guild else None
+            # GuildInfo (PlatformMessage) does not have get_member; only native Discord guild does.
+            user = None
+            if message.guild is not None and hasattr(message.guild, 'get_member'):
+                user = message.guild.get_member(user_id)
             if user is None:
                 user = await bot.fetch_user(user_id)
             if user:
                 relevant_users.add(user)
                 active_directives_log.append(f"Participant_Context:Keyword_Mention(id:{user_id})")
-        except (ValueError, discord.errors.NotFound):
+        except (ValueError, Exception):
             active_directives_log.append(f"Participant_Context:Keyword_Mention_FAIL(id:{user_id_str})")
 
     participant_blocks = []
@@ -254,12 +265,12 @@ async def build_system_prompt(
             continue
 
         member = user
-        if isinstance(user, discord.User) and message.guild:
+        if not hasattr(user, 'roles') and hasattr(message, 'guild') and message.guild and hasattr(message.guild, 'get_member'):
             member = message.guild.get_member(user.id) or user
 
         user_role_config = None
-        if isinstance(member, discord.Member):
-            _, user_role_config = get_highest_configured_role(member, role_based_configs) or (None, None)
+        if hasattr(member, 'roles'):
+            _, user_role_config = get_highest_configured_role(member.roles, role_based_configs) or (None, None)
 
         rich_id = get_rich_identity(user, user_personas, user_role_config, persona_info=persona_info)
 

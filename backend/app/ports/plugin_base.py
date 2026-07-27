@@ -1,7 +1,7 @@
 """统一插件抽象基类 — 平台无关.
 
 使用 PlatformMessage 替代旧 BasePlugin 的 Any 类型。
-旧 BasePlugin 通过 NBPluginAdapter 包装适配。
+旧 BasePlugin (已删除的 plugins/base.py) 通过 NBPluginAdapter 包装适配。
 """
 
 from abc import ABC, abstractmethod
@@ -13,7 +13,7 @@ from .platform_message import PlatformMessage
 class PluginBase(ABC):
     """统一插件抽象基类 — 平台无关.
 
-    替代 plugins/base.py 中的 BasePlugin，使用 PlatformMessage。
+    替代旧 BasePlugin (已删除的 plugins/base.py)，使用 PlatformMessage。
     旧 BasePlugin 通过 NBPluginAdapter 包装适配。
     """
 

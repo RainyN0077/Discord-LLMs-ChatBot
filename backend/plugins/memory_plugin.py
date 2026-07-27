@@ -6,18 +6,19 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.core_logic.knowledge_manager import get_knowledge_manager
-from .base import BasePlugin
+from app.ports.plugin_base import PluginBase
+from app.ports.platform_message import PlatformMessage
 
 logger = logging.getLogger(__name__)
 
 
-class MemoryPlugin(BasePlugin):
+class MemoryPlugin(PluginBase):
     """
     A plugin that provides tools for the LLM to interact with long-term memory and the world book.
     This plugin does not handle messages directly but provides functions for the LLM to call.
     """
 
-    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: PlatformMessage, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         # This plugin does not get triggered by user messages, it only provides tools.
         return None
 

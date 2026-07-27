@@ -5,8 +5,8 @@ import pytest
 
 pytestmark = [pytest.mark.unit, pytest.mark.nonebug]
 
-from nb_plugins.core_llm_bot._compat import event_to_message_context
-from app.handlers.context_assembler import build_full_context
+from nb_plugins.core_llm_bot.matchers import _event_to_message_context as event_to_message_context
+from nb_plugins.core_llm_bot.context import build_full_context
 from app.core_logic.context_builder import format_user_message_for_llm
 
 

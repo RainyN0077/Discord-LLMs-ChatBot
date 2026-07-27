@@ -7,8 +7,6 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, Set
 
-import discord
-
 from ..utils import TokenCalculator
 
 logger = logging.getLogger(__name__)

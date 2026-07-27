@@ -1,6 +1,6 @@
 """平台无关消息模型 — 统一各平台消息格式.
 
-替代 nb_plugins/core_llm_bot/event_shim.py 中的 MessageContext.
+替代旧 MessageContext (已删除的 event_shim.py).
 所有平台适配器必须将平台原生消息转换为此模型。
 """
 
@@ -17,11 +17,12 @@ class AuthorInfo:
     name: str
     display_name: str
     roles: List[str] = field(default_factory=list)
+    is_bot: bool = False
 
     @property
     def bot(self) -> bool:
         """返回是否为 Bot 账号."""
-        return False
+        return self.is_bot
 
     def __hash__(self) -> int:
         return hash(self.id)
@@ -61,7 +62,7 @@ class AttachmentInfo:
 class PlatformMessage:
     """平台无关的统一消息模型.
 
-    替代 nb_plugins/core_llm_bot/event_shim.py 中的 MessageContext.
+    替代旧 MessageContext (已删除的 event_shim.py).
     所有平台适配器必须将平台原生消息转换为此模型。
     """
 

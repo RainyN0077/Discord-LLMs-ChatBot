@@ -8,7 +8,6 @@ from pathlib import Path
 from enum import Enum
 
 from .config_cache import load_config, get_bot_config_path, get_bot_knowledge_path, get_bot_usage_path, DEFAULT_CONFIG, BOTS_DIR
-from .feature_flags import is_flag_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -165,29 +164,20 @@ class BotInstance:
                 return full_response
             return _inner()
 
-        # --- Feature Flag: PluginRegistry vs PluginManager ---
-        if is_flag_enabled("USE_ENHANCED_PLUGIN_REGISTRY"):
-            from .ports.plugin_registry import PluginRegistry
-            self._plugin_manager = PluginRegistry()
-            self._plugin_manager.discover_and_load(
-                self.config.get("plugins", {}),
-                _get_llm_response,
-            )
-            logger.info("Bot '%s' using PluginRegistry (enhanced)", self.bot_id)
-        else:
-            from plugins.manager import PluginManager
-            self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
-        # --- branch end ---
+        from .ports.plugin_registry import PluginRegistry
+        self._plugin_manager = PluginRegistry()
+        self._plugin_manager.discover_and_load(
+            self.config.get("plugins", {}),
+            _get_llm_response,
+        )
+        logger.info("Bot '%s' using PluginRegistry (enhanced)", self.bot_id)
 
-        # --- Feature Flag: 创建 BotRuntime 抽象 ---
-        if is_flag_enabled("USE_BOT_RUNTIME_ABSTRACTION"):
-            from .adapters.factory import create_bot_runtime
-            try:
-                self._runtime = create_bot_runtime(self.bot_id, self.config)
-                logger.info("BotRuntime created for bot '%s' (type=%s)", self.bot_id, self.config.get("runtime_type", "nonebot"))
-            except Exception as e:
-                logger.warning("Failed to create BotRuntime for '%s': %s", self.bot_id, e)
-        # --- branch end ---
+        from .adapters.factory import create_bot_runtime
+        try:
+            self._runtime = create_bot_runtime(self.bot_id, self.config)
+            logger.info("BotRuntime created for bot '%s' (type=%s)", self.bot_id, self.config.get("runtime_type", "nonebot"))
+        except Exception as e:
+            logger.warning("Failed to create BotRuntime for '%s': %s", self.bot_id, e)
 
         try:
             await self._start_nonebot()
@@ -222,13 +212,10 @@ class BotInstance:
             logger.error("Failed to register bot '%s' with NoneBot adapter: %s", self.bot_id, e)
             raise
 
-        # Start background reconnect monitor; cancel any previous task
-        # 仅在 USE_NEW_MAIN_PIPELINE 未启用时启动旧重连任务（P0-1 修复）
-        # 否则由 NoneBotRuntime 管理重连
-        if not is_flag_enabled("USE_NEW_MAIN_PIPELINE"):
-            if self._task is not None and not self._task.done():
-                self._task.cancel()
-            self._task = asyncio.create_task(self._nonebot_reconnect_loop())
+        # 重连由 BotRuntime（NoneBotRuntime）管理
+        if self._task is not None and not self._task.done():
+            self._task.cancel()
+        self._task = None
 
     async def _nonebot_reconnect_loop(self) -> None:
         """Background task: monitor NoneBot adapter health and reconnect on failure.
