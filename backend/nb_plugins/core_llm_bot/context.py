@@ -1,7 +1,7 @@
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.handlers.context_assembler import build_full_context as _build_full_context
-from .event_shim import MessageContext
+from ._compat import MessageContext
 
 
 async def build_full_context(

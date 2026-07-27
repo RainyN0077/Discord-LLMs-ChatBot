@@ -380,6 +380,59 @@ class PricingConfig(BaseModel):
     output_price_per_1k: float
 
 
+# ---------------------------------------------------------------------------
+# Provider management models (Wave 4, 1.3.6)
+# ---------------------------------------------------------------------------
+
+
+class ProviderInfo(BaseModel):
+    """单个 Provider 信息及健康状态."""
+    name: str
+    model: str
+    healthy: Optional[bool] = None
+    latency_ms: Optional[float] = None
+    configured: bool = False
+    is_current: bool = False
+
+
+class ProviderSwitchRequest(BaseModel):
+    """Provider 切换请求（P1-6 修复：增加约束防注入）."""
+    provider: str = Field(
+        ..., min_length=1, max_length=64,
+        pattern=r'^[a-z][a-z0-9_]*$',
+        description="Provider name, e.g. 'openai', 'anthropic'",
+    )
+    model: str = Field(
+        ..., min_length=1, max_length=128,
+        description="Model name, e.g. 'gpt-4o', 'claude-sonnet-4-20250514'",
+    )
+    api_key: str = Field(
+        ..., min_length=8, max_length=2048,
+        description="API key for the new provider",
+    )
+    base_url: Optional[str] = Field(
+        None, max_length=2048,
+        pattern=r'^https?://[a-zA-Z0-9.-]+(?::\d{1,5})?(?:/.*)?$',
+        description="Optional base URL override for the provider",
+    )
+
+
+class ProviderListResponse(BaseModel):
+    """GET /providers 响应."""
+    current_provider: str
+    current_model: str
+    providers: List[ProviderInfo]
+
+
+class ProviderSwitchResponse(BaseModel):
+    """POST /providers/switch 响应."""
+    message: str
+    previous_provider: str
+    current_provider: str
+    current_model: str
+    status: str
+
+
 TEXT_ATTACHMENT_EXTENSIONS = {
     ".txt", ".md", ".csv", ".log", ".json", ".yaml", ".yml", ".xml", ".html",
     ".htm", ".js", ".ts", ".py", ".java", ".c", ".cpp", ".h", ".hpp", ".rs",

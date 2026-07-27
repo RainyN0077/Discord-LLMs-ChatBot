@@ -41,7 +41,7 @@ def _default_usage_data() -> Dict[str, Any]:
 
 
 class UsageTracker:
-    def __init__(self, data_file=_DEFAULT_USAGE_FILE):
+    def __init__(self, data_file=_DEFAULT_USAGE_FILE, quota_alert_manager=None):
         self.data_file = data_file
         data_dir = os.path.dirname(data_file)
         if data_dir:
@@ -52,6 +52,7 @@ class UsageTracker:
         self._save_pending = False
         self._save_dirty = False
         self._save_task = None
+        self._quota_alert_manager = quota_alert_manager
 
     async def initialize(self) -> None:
         """Load persisted usage data from disk (runs sync I/O in a thread)."""
@@ -119,7 +120,8 @@ class UsageTracker:
         channel_id: Optional[str] = None,
         channel_name: Optional[str] = None,
         guild_id: Optional[str] = None,
-        guild_name: Optional[str] = None
+        guild_name: Optional[str] = None,
+        bot_id: Optional[str] = None
     ):
         async with self.lock:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -250,7 +252,27 @@ class UsageTracker:
                 guild_data["models"][model_key]["requests"] += 1
                 guild_data["models"][model_key]["input_tokens"] += input_tokens
                 guild_data["models"][model_key]["output_tokens"] += output_tokens
-            
+
+            # Capture snapshot for async quota alert (P1-5: 在锁内捕获, 锁外异步执行)
+            _quota_snapshot = (
+                (today, dict(self.usage_data["daily"].get(today, {})))
+                if self._quota_alert_manager and bot_id
+                else None
+            )
+
+        # P1-1/P1-5 修复: 在锁外部异步触发配额告警, 不阻塞关键路径
+        if _quota_snapshot is not None:
+            _today, _daily_usage = _quota_snapshot
+            _daily_quota = self._read_bot_quota_config(bot_id)
+            asyncio.create_task(
+                self._quota_alert_manager.check_and_alert(
+                    bot_id=bot_id,
+                    user_id=user_id,
+                    daily_usage=_daily_usage,
+                    daily_quota=_daily_quota,
+                )
+            )
+
         # 异步保存
         self._schedule_save()
 
@@ -281,6 +303,38 @@ class UsageTracker:
         except Exception as e:
             logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
+    def _read_bot_quota_config(self, bot_id: str) -> Dict[str, Any]:
+        """从 Bot config 读取配额设置.
+
+        Args:
+            bot_id: Bot 标识.
+
+        Returns:
+            dict 包含 token_limit 和 request_limit，如果未配置则使用默认值.
+        """
+        try:
+            from .app_context import AppContext
+            ctx = AppContext.get()
+            if ctx.bot_manager is None:
+                return {}
+            instance = ctx.bot_manager.get(bot_id)
+            if instance is None:
+                return {}
+            config = instance.config
+            if not config:
+                return {}
+            quota_alert = config.get("quota_alert", {})
+            if not quota_alert or not quota_alert.get("enabled", False):
+                # 不存在或未启用 → 使用默认配额限制
+                return {"token_limit": 1000000, "request_limit": 1000}
+            return {
+                "token_limit": quota_alert.get("token_limit", 1000000),
+                "request_limit": quota_alert.get("request_limit", 1000),
+            }
+        except Exception:
+            logger.debug("Failed to read quota config for bot '%s'", bot_id, exc_info=True)
+            return {}
+
     async def close(self) -> None:
         if hasattr(self, '_save_task') and self._save_task and not self._save_task.done():
             self._save_task.cancel()

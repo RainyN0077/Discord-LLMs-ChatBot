@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from .event_shim import MessageContext
+from ._compat import MessageContext
 from app.handlers.image_processor import collect_and_download_images as _collect_and_download_images
 from app.handlers.image_processor import process_ocr_for_images as _process_ocr_for_images
 

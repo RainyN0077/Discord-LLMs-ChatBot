@@ -9,7 +9,7 @@ from nonebot.internal.adapter.bot import Bot as BaseBot
 from app.feature_flags import is_flag_enabled
 from app.utils import matches_trigger_keywords
 from app.handlers.message_queue import MessageQueue
-from .event_shim import event_to_message_context, MessageContext
+from ._compat import event_to_message_context, MessageContext
 from .automation import track_auto_interject, track_repeat_parrot, reset_channel_automation_state
 from .pipeline import execute_llm_pipeline
 
@@ -193,10 +193,19 @@ async def _on_discord_message_old(bot: Bot, event: MessageEvent):
         plugin_append_triggered = bool(plugin_append_blocks)
 
     if not normal_triggered and repeat_parrot_content:
-        await bot.send_to(
-            channel_id=event.channel_id,
-            message=repeat_parrot_content,
-        )
+        runtime = getattr(instance, '_runtime', None) if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) else None
+        if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) and runtime is None:
+            logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
+        if runtime is not None:
+            await runtime.send_message(
+                channel_id=str(event.channel_id),
+                content=repeat_parrot_content,
+            )
+        else:
+            await bot.send_to(
+                channel_id=event.channel_id,
+                message=repeat_parrot_content,
+            )
         logger.info(f"Repeat parrot triggered in channel {event.channel_id}.")
         reset_channel_automation_state(event.channel_id, _auto_message_counts, _repeat_streaks)
         await _record_interaction("parrot")
@@ -230,7 +239,17 @@ async def _on_discord_message_old(bot: Bot, event: MessageEvent):
 
     enqueued = await queue.enqueue(channel_id_str, ctx)
     if not enqueued:
-        await bot.send(event, "Bot is busy, please try later.", reply_message=True)
+        runtime = getattr(instance, '_runtime', None) if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) else None
+        if (is_flag_enabled("USE_NEW_MAIN_PIPELINE") or is_flag_enabled("USE_NEW_PIPELINE_SEND")) and runtime is None:
+            logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
+        if runtime is not None:
+            await runtime.send_message(
+                channel_id=str(event.channel_id),
+                content="Bot is busy, please try later.",
+                reply_to_message_id=str(getattr(event, 'message_id', '')),
+            )
+        else:
+            await bot.send(event, "Bot is busy, please try later.", reply_message=True)
         return
 
     await _ensure_channel_processor(bot, channel_id_str)

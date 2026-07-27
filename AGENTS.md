@@ -17,6 +17,107 @@
 
 ---
 
+## 1.1 子代理（Sub-Agent）使用要求
+
+**强制规则**：所有非平凡任务（多文件修改、跨模块变更、复杂逻辑实现）**必须**通过 `Task()` 委托给专业子代理执行。禁止在主会话中直接编写复杂代码。
+
+**可用子代理类型**：
+- `requirement-triage` — 需求分类与复杂度评估
+- `context-engineer` — 上下文工程（代码库探索、历史分析）
+- `solutions-architect` — 方案设计与架构文档
+- `implementer` — 代码实现（原子化切片）
+- `integrator` — 跨文件集成验证
+- `qa-reviewer` — 质量审查
+- `security-reviewer` — 安全审查
+- `fidelity-reviewer` — 精确性审查
+- `performance-reviewer` — 性能审查
+- `remediator` — 修复审查发现
+- `delivery-manager` — 交付验证
+- `repo-explorer` — 代码库快速探索
+
+**流水线阶段**：每个复杂任务必须按顺序执行以下阶段，每个阶段委托给对应子代理：
+1. Stage 0 — `requirement-triage`（分类复杂度）
+2. Stage 1 — `context-engineer`（上下文简报）
+3. Stage 2 — `solutions-architect`（设计文档）
+4. Stage 3 — `implementer`（原子化实现）
+5. Stage 4 — `integrator`（跨文件集成）
+6. Stage 5 — `qa-reviewer` + 专项审查（质量/安全/性能）
+7. Stage 6 — `remediator`（修复发现）
+8. Stage 7 — `delivery-manager`（交付确认）
+
+---
+
+## 1.2 项目推荐子代理与技能
+
+根据项目技术栈和架构，以下子代理和技能特别适用于本项目开发：
+
+### 推荐子代理（按使用频率排序）
+
+| 子代理 | 适用场景 |
+|--------|----------|
+| `python-development/python-pro` | Python 3.12+ 开发、async/await 优化、Pydantic/FastAPI 模式 |
+| `api-scaffolding/fastapi-pro` | FastAPI 路由、依赖注入、中间件、WebSocket 开发 |
+| `api-scaffolding/backend-architect` | 后端架构设计、微服务拆分、Port/Adapter 模式 |
+| `backend-development/tdd-orchestrator` | TDD 红绿重构、测试策略、CI 集成 |
+| `code-review-ai/architect-review` | 架构审查、设计模式评估、依赖方向检查 |
+| `code-documentation/code-reviewer` | 代码质量审查、安全漏洞、性能热点 |
+| `code-refactoring/legacy-modernizer` | 重构、技术债务清理、框架迁移 |
+| `debugging-toolkit/debugger` | 错误诊断、测试失败分析、性能问题 |
+| `database-design/database-architect__database-design` | PostgreSQL/SQLite  schema 设计、索引策略 |
+| `database-design/sql-pro` | SQL 查询优化、FTS5 全文搜索、BM25 排序 |
+| `async-python-patterns` | asyncio 并发模式、事件循环优化、异步生成器 |
+| `architecture-patterns` | 六边形架构、Clean Architecture、DDD |
+| `error-handling-patterns` | 异常传播、Result 类型、优雅降级 |
+| `python-testing-patterns` | pytest 测试、fixture、mock、async 测试 |
+| `security-reviewer` | 认证授权、输入验证、API 密钥管理 |
+| `performance-reviewer` | 并发瓶颈、内存泄漏、缓存策略 |
+
+### 推荐技能（按使用频率排序）
+
+| 技能 | 适用场景 |
+|------|----------|
+| `fastapi-templates` | 创建 FastAPI 项目结构、路由模板 |
+| `async-python-patterns` | asyncio 最佳实践、并发模式 |
+| `architecture-patterns` | 六边形架构、Clean Architecture 实现 |
+| `python-testing-patterns` | pytest 测试策略、覆盖率配置 |
+| `error-handling-patterns` | 跨语言错误处理模式 |
+| `database-migration` | 数据库迁移、schema 变更 |
+| `sql-optimization-patterns` | SQL 索引、EXPLAIN 分析 |
+| `debugging-strategies` | 系统化调试、根因分析 |
+| `code-review-excellence` | 代码审查最佳实践 |
+| `api-design-principles` | REST/GraphQL API 设计 |
+| `rag-implementation` | 知识引擎、向量检索、embedding |
+| `auth-implementation-patterns` | JWT、OAuth2、会话管理 |
+| `secrets-management` | 密钥轮换、加密管理 |
+| `dependency-upgrade` | 依赖版本升级、兼容性分析 |
+| `uv-package-manager` | Python 包管理、虚拟环境 |
+
+---
+
+## 1.3 Feature Flag 系统
+
+项目使用 Feature Flag 控制架构迁移步骤的开闭。所有 Flag 默认 `False`（旧代码路径），逐个 Wave 切换为 `True`。
+
+**配置文件**：`backend/app/feature_flags.py`
+
+**环境变量覆盖**：`FEATURE_<FLAG_NAME>=1`
+
+| Flag | 默认值 | 说明 |
+|------|--------|------|
+| `USE_BOT_RUNTIME_ABSTRACTION` | False | BotRuntime 抽象层（Wave 1） |
+| `USE_PLATFORM_MESSAGE_MODEL` | False | PlatformMessage 模型（Wave 1） |
+| `USE_PLATFORM_ADAPTER` | False | PlatformAdapter 接口（Wave 1） |
+| `USE_ENHANCED_PLUGIN_REGISTRY` | False | PluginRegistry 迁移（Wave 3） |
+| `USE_NEW_PIPELINE_SEND` | False | 新消息发送路径（Wave 2） |
+| `USE_NEW_CONTEXT_BUILDER` | False | 新上下文构建器（Wave 2） |
+| `USE_MESSAGE_BUS` | False | MessageBus 事件路由（Wave 2） |
+| `USE_PROVIDER_POOL` | False | ProviderPool 集成（Wave 3） |
+| `USE_NEW_MAIN_PIPELINE` | False | Wave 4 总开关 |
+
+**启动时捕获**：`capture_flags()` 在启动时捕获所有 Flag 值，防止运行时切换导致状态不一致。
+
+---
+
 ## 2. 技术栈
 
 | 层级 | 技术 | 版本 |
@@ -50,6 +151,7 @@ Discord-LLMs-ChatBot/
 │   │   ├── discord_patch.py         # Discord ComponentEmoji 修复
 │   │   ├── models.py                # Pydantic 请求/响应模型
 │   │   ├── usage_tracker.py         # 用量追踪器
+│   │   ├── feature_flags.py         # Feature Flag 配置（迁移开关）
 │   │   ├── utils.py                 # 通用工具函数
 │   │   ├── paths.py                 # 数据路径配置
 │   │   ├── core_logic/              # 核心业务逻辑
@@ -64,6 +166,23 @@ Discord-LLMs-ChatBot/
 │   │   │   ├── rerank_service.py        # 重排序服务
 │   │   │   ├── preview_builder.py       # Prompt 预览构建器
 │   │   │   └── sqlite_pool.py           # SQLite 连接池
+│   │   ├── ports/                   # 六边形架构 - 端口接口（抽象）
+│   │   │   ├── bot_runtime.py          # BotRuntime/BotIdentity/MessageSender ABC
+│   │   │   ├── platform_message.py     # PlatformMessage/AuthorInfo/ChannelInfo
+│   │   │   ├── platform_adapter.py     # PlatformAdapter ABC
+│   │   │   ├── message_bus.py          # MessageBus 抽象接口
+│   │   │   ├── plugin_base.py          # 统一 PluginBase ABC
+│   │   │   ├── plugin_registry.py      # PluginRegistry 注册中心
+│   │   │   ├── llm_provider.py         # LLMProvider 接口（ProviderHealth/QuotaInfo）
+│   │   │   └── guild_member_resolver.py # GuildMemberResolver 接口
+│   │   ├── adapters/                # 六边形架构 - 适配器实现
+│   │   │   ├── nonebot_runtime.py     # NoneBotRuntime 适配器
+│   │   │   ├── mock_bot_runtime.py    # MockBotRuntime 测试桩
+│   │   │   ├── discord_platform_adapter.py # Discord → PlatformMessage 转换
+│   │   │   ├── mock_platform_adapter.py    # MockPlatformAdapter 测试桩
+│   │   │   ├── plugin_context_adapter.py   # 插件上下文适配器
+│   │   │   ├── factory.py             # create_bot_runtime() 工厂
+│   │   │   └── message_bus_impl.py    # DefaultMessageBus 实现
 │   │   ├── llm_providers/           # LLM 提供商
 │   │   │   ├── base.py                  # LLMProvider 抽象基类
 │   │   │   ├── factory.py               # LLM 工厂（缓存 + 创建）
@@ -110,7 +229,7 @@ Discord-LLMs-ChatBot/
 │   │       ├── automation.py            # 自动化逻辑
 │   │       ├── image_processor.py       # 图片处理
 │   │       ├── config.py                # 插件配置
-│   │       └── event_shim.py            # Discord 事件转换
+│   │       └── _compat.py               # 向后兼容层（Phase 2 后移除）
 │   ├── tests/                       # 测试
 │   ├── data/                        # 数据目录
 │   │   ├── bots/                        # 每 Bot 独立配置
@@ -630,6 +749,14 @@ main.py → bot_manager.py → bot_instance.py → nonebot_driver
          llm_providers/factory.py → base.py
                 ↓
          security/ ← utils.py
+
+六边形架构（Wave 1-3）:
+  ports/ (接口) ← adapters/ (实现)
+    bot_runtime.py ← nonebot_runtime.py
+    platform_message.py ← discord_platform_adapter.py
+    message_bus.py ← message_bus_impl.py
+    plugin_base.py ← plugin_context_adapter.py
+    llm_provider.py ← llm_providers/base.py
 ```
 
 ### 12.4 调试技巧

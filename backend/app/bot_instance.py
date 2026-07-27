@@ -191,6 +191,9 @@ class BotInstance:
 
         try:
             await self._start_nonebot()
+            # 启动 BotRuntime（如果创建了），连接平台并启动重连
+            if self._runtime is not None:
+                await self._runtime.start()
         except Exception:
             async with self._status_lock:
                 self.status = BotStatus.STOPPED
@@ -220,9 +223,12 @@ class BotInstance:
             raise
 
         # Start background reconnect monitor; cancel any previous task
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-        self._task = asyncio.create_task(self._nonebot_reconnect_loop())
+        # 仅在 USE_NEW_MAIN_PIPELINE 未启用时启动旧重连任务（P0-1 修复）
+        # 否则由 NoneBotRuntime 管理重连
+        if not is_flag_enabled("USE_NEW_MAIN_PIPELINE"):
+            if self._task is not None and not self._task.done():
+                self._task.cancel()
+            self._task = asyncio.create_task(self._nonebot_reconnect_loop())
 
     async def _nonebot_reconnect_loop(self) -> None:
         """Background task: monitor NoneBot adapter health and reconnect on failure.
@@ -318,6 +324,13 @@ class BotInstance:
             await self._stop_nonebot()
         except Exception:
             logger.exception(f"Error during provider stop for bot '{self.bot_id}'")
+
+        # 停止 BotRuntime（如果创建了）
+        if self._runtime is not None:
+            try:
+                await self._runtime.stop()
+            except Exception:
+                logger.exception(f"Error stopping runtime for bot '{self.bot_id}'")
 
         if self._task and not self._task.done():
             self._task.cancel()

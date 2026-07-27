@@ -5,7 +5,7 @@ from app.handlers.automation import (
     track_repeat_parrot as _track_repeat_parrot,
     reset_channel_automation_state as _reset_channel_automation_state,
 )
-from .event_shim import MessageContext
+from ._compat import MessageContext
 
 
 def track_auto_interject(

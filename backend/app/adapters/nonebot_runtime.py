@@ -3,9 +3,11 @@
 封装 NoneBot2 的 Bot 实例，提供统一的 BotRuntime 接口。
 """
 
+import asyncio
 import logging
 from typing import Any, Dict, Optional
 
+from ..feature_flags import is_flag_enabled
 from ..ports.bot_runtime import BotRuntime, BotStatus
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,9 @@ class NoneBotRuntime(BotRuntime):
         self._config = config
         self._bot: Optional[Any] = None
         self._status = BotStatus.STOPPED
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._reconnect_attempt = 0
+        self._MAX_RECONNECT_ATTEMPTS = 10
 
     # --- BotIdentity ---
 
@@ -118,12 +123,20 @@ class NoneBotRuntime(BotRuntime):
     # --- BotRuntime ---
 
     async def start(self) -> None:
-        """启动 Bot 运行时."""
+        """启动 Bot 运行时.
+
+        仅在 USE_NEW_MAIN_PIPELINE 启用时启动重连循环（P0-1 修复），
+        否则由 BotInstance 的旧重连逻辑负责。
+        """
         self._status = BotStatus.RUNNING
-        logger.info("NoneBotRuntime '%s' started", self._bot_id)
+        if is_flag_enabled("USE_NEW_MAIN_PIPELINE"):
+            self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        logger.info("NoneBotRuntime '%s' started (reconnect=%s)", self._bot_id, is_flag_enabled("USE_NEW_MAIN_PIPELINE"))
 
     async def stop(self) -> None:
         """停止 Bot 运行时."""
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
         self._bot = None
         self._status = BotStatus.STOPPED
         logger.info("NoneBotRuntime '%s' stopped", self._bot_id)
@@ -171,3 +184,87 @@ class NoneBotRuntime(BotRuntime):
             bot: NoneBot2 Bot 实例
         """
         self._bot = bot
+
+    # --- Reconnection Logic ---
+
+    async def _reconnect_loop(self) -> None:
+        """重连主循环：主动检测 websocket 连接状态并在断开时触发重连.
+
+        关键修复（P0-3 + P0-5）：
+        - 主动健康检查，检查 ``_ws`` 状态
+        - 不再依赖 ``asyncio.sleep`` 异常
+        """
+        while self._status == BotStatus.RUNNING and self._reconnect_attempt < self._MAX_RECONNECT_ATTEMPTS:
+            try:
+                await asyncio.sleep(5)
+
+                # 主动健康检查（P0-5 修复：不再依赖 sleep 异常）
+                if self._bot is not None:
+                    ws = getattr(self._bot, '_ws', None)
+                    if ws is None or getattr(ws, 'closed', False):
+                        self._reconnect_attempt += 1
+                        logger.warning(
+                            "Bot '%s' connection lost (attempt %d/%d)",
+                            self._bot_id, self._reconnect_attempt, self._MAX_RECONNECT_ATTEMPTS,
+                        )
+                        await self._reconnect(self._reconnect_attempt)
+                        continue
+
+                # 连接正常，重置计数
+                if self._reconnect_attempt > 0:
+                    logger.info("Bot '%s' connection restored", self._bot_id)
+                    self._reconnect_attempt = 0
+
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                self._reconnect_attempt += 1
+                logger.error(
+                    "Bot '%s' reconnect error (attempt %d/%d): %s",
+                    self._bot_id, self._reconnect_attempt, self._MAX_RECONNECT_ATTEMPTS, exc,
+                )
+                await self._reconnect(self._reconnect_attempt)
+
+        if self._reconnect_attempt >= self._MAX_RECONNECT_ATTEMPTS and self._status == BotStatus.RUNNING:
+            logger.error(
+                "Bot '%s' exceeded max reconnect attempts (%d)",
+                self._bot_id, self._MAX_RECONNECT_ATTEMPTS,
+            )
+            self._status = BotStatus.STOPPED
+
+    async def _reconnect(self, attempt: int) -> None:
+        """单次重连，指数退避.
+
+        退避序列: 1s, 2s, 4s, 8s, ... 上限 60s.
+        仅在 ``status == RUNNING`` 时执行。
+
+        Args:
+            attempt: 当前重连尝试次数（1-based）
+        """
+        if self._status != BotStatus.RUNNING:
+            return
+
+        delay = min(1.0 * (2 ** (attempt - 1)), 60.0)
+        logger.warning(
+            "Bot '%s' reconnecting in %.1fs (attempt %d)",
+            self._bot_id, delay, attempt,
+        )
+        await asyncio.sleep(delay)
+
+        if self._status != BotStatus.RUNNING:
+            return
+
+        try:
+            from nb_plugins.core_llm_bot.matchers import (
+                register_bot_instance,
+                unregister_bot_instance,
+            )
+            unregister_bot_instance(self.bot_id)
+            register_bot_instance(self.bot_id, self)
+            logger.info(
+                "Bot '%s' re-registered with NoneBot adapter (attempt %d)",
+                self._bot_id, attempt,
+            )
+        except Exception as e:
+            logger.error("Bot '%s' reconnect failed: %s", self._bot_id, e)
+            # P1-B: 不重新抛出异常避免 _reconnect_loop 中重复递增计数

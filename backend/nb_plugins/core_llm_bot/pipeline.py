@@ -17,9 +17,9 @@ from app.ocr_service import is_multimodal_llm
 from app.utils import split_message, transform_memories_for_prompt
 from app.core_logic.usage_manager import UsageManager
 
-from .event_shim import MessageContext, event_to_message_context
+from ._compat import MessageContext
 from .context import build_full_context
-from .rendering import render_streaming_response
+from .rendering import render_streaming_response, _render_streaming_response_old
 from .automation import reset_channel_automation_state
 
 logger = logging.getLogger(__name__)
@@ -52,8 +52,19 @@ async def execute_llm_pipeline(
 
     logger.info(f"Processing message {message_ctx.id} for bot '{instance.bot_id}'.")
 
+    # --- Feature Flag: USE_NEW_MAIN_PIPELINE / USE_NEW_PIPELINE_SEND ---
+    use_new_main = is_flag_enabled("USE_NEW_MAIN_PIPELINE")
+    use_new_send = is_flag_enabled("USE_NEW_PIPELINE_SEND")
+    runtime = getattr(instance, '_runtime', None) if (use_new_main or use_new_send) else None
+    if (use_new_main or use_new_send) and runtime is None:
+        logger.warning("USE_NEW_MAIN_PIPELINE/USE_NEW_PIPELINE_SEND enabled but _runtime is None, falling back to legacy path")
+    # --- branch end ---
+
     try:
-        await bot.trigger_typing_indicator(channel_id=event.channel_id)
+        if runtime is not None:
+            await runtime.trigger_typing_indicator(channel_id=str(getattr(event, 'channel_id', '')))
+        else:
+            await bot.trigger_typing_indicator(channel_id=event.channel_id)
     except Exception:
         pass
 
@@ -106,7 +117,14 @@ async def execute_llm_pipeline(
         quota_error = await usage_manager.check_pre_request_quota(message_ctx.author.id, role_config, user_usage, estimated_input_tokens)
         if quota_error:
             reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-            await bot.send(event, quota_error, reply_message=True)
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=quota_error,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, quota_error, reply_message=True)
             return
 
     llm_messages = [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}]
@@ -140,7 +158,13 @@ async def execute_llm_pipeline(
                     llm_messages, llm_images if is_multimodal_llm(config) else None,
                     tools=tools, tool_functions=tool_functions
                 )
-            full_response, usage_data = await render_streaming_response(bot, event, response_gen_with_tools)
+            if runtime is not None:
+                full_response, usage_data = await render_streaming_response(
+                    runtime, str(getattr(event, 'channel_id', '')), response_gen_with_tools,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_with_tools)
             used_tools_in_attempt = bool(tools)
         except Exception as e:
             error_str = str(e).lower()
@@ -156,7 +180,13 @@ async def execute_llm_pipeline(
                     response_gen_no_tools = llm_provider.get_response_stream(
                         llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                     )
-                full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
+                if runtime is not None:
+                    full_response, usage_data = await render_streaming_response(
+                        runtime, str(getattr(event, 'channel_id', '')), response_gen_no_tools,
+                        reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                    )
+                else:
+                    full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_no_tools)
             else:
                 raise e
 
@@ -172,7 +202,13 @@ async def execute_llm_pipeline(
                 response_gen_no_tools = llm_provider.get_response_stream(
                     llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
                 )
-            full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
+            if runtime is not None:
+                full_response, usage_data = await render_streaming_response(
+                    runtime, str(getattr(event, 'channel_id', '')), response_gen_no_tools,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_no_tools)
 
         error_reason = None
         if not full_response or not full_response.strip():
@@ -185,7 +221,14 @@ async def execute_llm_pipeline(
             error_msg_template = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
             final_error_msg = error_msg_template.format(reason=error_reason)
             reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-            await bot.send(event, final_error_msg, reply_message=True)
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=final_error_msg,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, final_error_msg, reply_message=True)
             return
 
         cleaned_response = await _process_knowledge_tags_adapted(
@@ -216,10 +259,7 @@ async def execute_llm_pipeline(
             "model": str(config.get("model_name", "")),
         })
 
-        # --- Feature Flag: 新路径使用 BotRuntime 发送 ---
-        use_new_send = is_flag_enabled("USE_NEW_PIPELINE_SEND")
-        runtime = getattr(instance, '_runtime', None) if use_new_send else None
-        # --- branch end ---
+        # NOTE: runtime is already acquired earlier via USE_NEW_MAIN_PIPELINE / USE_NEW_PIPELINE_SEND
 
         final_chunks = split_message(cleaned_response, 2000)
         for i, chunk in enumerate(final_chunks):
