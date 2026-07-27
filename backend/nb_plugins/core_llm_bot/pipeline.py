@@ -115,34 +115,63 @@ async def execute_llm_pipeline(
     try:
         full_response = ""
 
-        llm_provider = get_llm_provider(config)
         tools = plugin_manager.get_all_tools() if plugin_manager else []
         tool_functions = plugin_manager.get_all_tool_functions(message_ctx, config) if plugin_manager else {}
         used_tools_in_attempt = False
+
+        # --- Feature Flag: ProviderPool 集成 ---
+        use_provider_pool = is_flag_enabled("USE_PROVIDER_POOL")
+        pool = None
+        if use_provider_pool:
+            from app.app_context import AppContext
+            pool = AppContext.get().provider_pool
+        # --- branch end ---
+
         try:
             logger.info(f"Attempting LLM call for message {message_ctx.id} with {len(tools)} tools.")
-            response_gen_with_tools = llm_provider.get_response_stream(
-                llm_messages, llm_images if is_multimodal_llm(config) else None,
-                tools=tools, tool_functions=tool_functions
-            )
+            if use_provider_pool and pool is not None:
+                response_gen_with_tools = await pool.execute(
+                    config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=tools, tool_functions=tool_functions,
+                )
+            else:
+                llm_provider = get_llm_provider(config)
+                response_gen_with_tools = llm_provider.get_response_stream(
+                    llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=tools, tool_functions=tool_functions
+                )
             full_response, usage_data = await render_streaming_response(bot, event, response_gen_with_tools)
             used_tools_in_attempt = bool(tools)
         except Exception as e:
             error_str = str(e).lower()
             if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
                 logger.warning(f"Malformed tool call for message {message_ctx.id}. Retrying without tools. Error: {e}")
-                response_gen_no_tools = llm_provider.get_response_stream(
-                    llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-                )
+                if use_provider_pool and pool is not None:
+                    response_gen_no_tools = await pool.execute(
+                        config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                        tools=[], tool_functions={},
+                    )
+                else:
+                    llm_provider = get_llm_provider(config)
+                    response_gen_no_tools = llm_provider.get_response_stream(
+                        llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
+                    )
                 full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
             else:
                 raise e
 
         if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
             logger.warning(f"Detected leaked DSML tool blocks in message {message_ctx.id}. Retrying without tools.")
-            response_gen_no_tools = llm_provider.get_response_stream(
-                llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-            )
+            if use_provider_pool and pool is not None:
+                response_gen_no_tools = await pool.execute(
+                    config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=[], tool_functions={},
+                )
+            else:
+                llm_provider = get_llm_provider(config)
+                response_gen_no_tools = llm_provider.get_response_stream(
+                    llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
+                )
             full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
 
         error_reason = None

@@ -143,3 +143,27 @@ def get_llm_provider(config: Dict[str, Any]) -> LLMProvider:
     _provider_cache[cache_key] = provider
 
     return provider
+
+
+def get_provider_pool() -> "ProviderPool":
+    """获取全局 ProviderPool 单例.
+
+    当 AppContext 中未初始化 ProviderPool 时，自动创建默认实例并记录警告。
+
+    Returns:
+        ProviderPool 实例
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from ..app_context import AppContext
+    pool = AppContext.get().provider_pool
+    if pool is None:
+        from .provider_pool import ProviderPool
+        logger.warning(
+            "ProviderPool not initialized in AppContext, auto-creating with defaults. "
+            "Consider initializing in main.py lifespan for custom configuration."
+        )
+        pool = ProviderPool()
+        AppContext.get().provider_pool = pool
+    return pool

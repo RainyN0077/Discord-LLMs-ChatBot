@@ -144,7 +144,6 @@ class BotInstance:
 
         from .usage_tracker import UsageTracker
         from .core_logic.knowledge_manager import KnowledgeManager
-        from plugins.manager import PluginManager
 
         self._usage_tracker = UsageTracker(data_file=str(self.usage_path))
         await self._usage_tracker.initialize()
@@ -166,7 +165,19 @@ class BotInstance:
                 return full_response
             return _inner()
 
-        self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
+        # --- Feature Flag: PluginRegistry vs PluginManager ---
+        if is_flag_enabled("USE_ENHANCED_PLUGIN_REGISTRY"):
+            from .ports.plugin_registry import PluginRegistry
+            self._plugin_manager = PluginRegistry()
+            self._plugin_manager.discover_and_load(
+                self.config.get("plugins", {}),
+                _get_llm_response,
+            )
+            logger.info("Bot '%s' using PluginRegistry (enhanced)", self.bot_id)
+        else:
+            from plugins.manager import PluginManager
+            self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
+        # --- branch end ---
 
         # --- Feature Flag: 创建 BotRuntime 抽象 ---
         if is_flag_enabled("USE_BOT_RUNTIME_ABSTRACTION"):

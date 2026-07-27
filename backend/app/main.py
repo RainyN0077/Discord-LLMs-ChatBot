@@ -68,6 +68,19 @@ async def lifespan(app: FastAPI):
                 logger.warning("Failed to create BotRuntime for '%s': %s", bot_id, e)
     # --- branch end ---
 
+    # --- Feature Flag: ProviderPool 初始化 ---
+    if is_flag_enabled("USE_PROVIDER_POOL"):
+        logger.info("Using ProviderPool for LLM provider management")
+        from .llm_providers.provider_pool import ProviderPool
+        ctx.provider_pool = ProviderPool(
+            max_concurrent_per_provider=5,
+            circuit_breaker_threshold=3,
+            circuit_breaker_reset_seconds=60.0,
+            health_check_interval_seconds=300.0,
+        )
+        logger.info("ProviderPool initialized")
+    # --- branch end ---
+
     ctx.usage_tracker = UsageTracker()
     await ctx.usage_tracker.initialize()
 

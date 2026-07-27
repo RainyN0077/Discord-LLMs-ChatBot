@@ -15,6 +15,7 @@ class AppContext:
         self.bot_manager: Any = None
         self.nonebot_driver: Any = None
         self.message_bus: Any = None
+        self.provider_pool: Any = None
         self.memory_cutoffs: Dict[int, datetime] = {}
         self.bot_tasks: Dict[str, Any] = {}
         self.usage_tracker: Any = None

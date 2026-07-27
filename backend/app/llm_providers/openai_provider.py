@@ -5,6 +5,7 @@ import base64
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 
 from .base import LLMProvider
@@ -26,6 +27,23 @@ class OpenAIProvider(LLMProvider):
                 value = h.get("value", "")
                 if name and value:
                     self.client.default_headers[name] = value
+
+    async def check_health(self) -> Dict[str, Any]:
+        """轻量健康检查：模型列表 API，0 token 消耗.
+
+        失败时回退到基类 ping 检查。
+        """
+        start = time.monotonic()
+        try:
+            await self.client.models.list()
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": True, "latency_ms": latency_ms,
+                "model": self.model or "unknown", "error": None,
+                "provider": "openai", "check_type": "lightweight",
+            }
+        except Exception:
+            return await super().check_health()
 
     def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Dict[str, Any]]:
         """
