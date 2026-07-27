@@ -1,10 +1,10 @@
 """Internal API Router.
 
-Provides endpoints for AstrBot stars to communicate with the management layer.
+Provides endpoints for NoneBot bots to communicate with the management layer.
 All endpoints are authenticated via a shared internal secret token (X-Internal-Token header).
 
 These are NOT exposed to the frontend — they are for inter-process communication
-between AstrBot subprocesses and the FastAPI management server.
+between NoneBot subprocesses and the FastAPI management server.
 """
 
 import asyncio

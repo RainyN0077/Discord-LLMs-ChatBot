@@ -52,7 +52,7 @@ class TestAppContextSingleton:
         ctx = AppContext.get()
         assert ctx.bot_manager is None
         assert ctx.nonebot_driver is None
-        assert ctx.astrbot_process_manager is None
+        assert not hasattr(ctx, 'astrbot_process_manager')
         assert ctx.memory_cutoffs == {}
         assert ctx.bot_tasks == {}
         assert ctx.usage_tracker is None

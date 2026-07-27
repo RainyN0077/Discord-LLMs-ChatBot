@@ -72,7 +72,7 @@ app = FastAPI(
         "unauthenticated for load-balancer / orchestrator access.\n\n"
         "## Internal Endpoints\n"
         "Endpoints under `/internal` are for inter-process communication between "
-        "AstrBot subprocesses and the management server.  They require an "
+        "NoneBot subprocesses and the management server.  They require an "
         "`X-Internal-Token` header.\n\n"
         "## Rate Limiting\n"
         "Global rate limiting is applied (default: 60 requests/minute).  "

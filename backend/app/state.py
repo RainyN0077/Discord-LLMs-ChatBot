@@ -19,7 +19,6 @@ from .app_context import AppContext
 _ATTR_MAP: dict[str, str] = {
     "bot_manager": "bot_manager",
     "nonebot_driver": "nonebot_driver",
-    "astrbot_process_manager": "astrbot_process_manager",
     "MEMORY_CUTOFFS": "memory_cutoffs",
     "bot_task": "bot_tasks",
 }
