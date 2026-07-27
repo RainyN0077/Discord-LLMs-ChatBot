@@ -29,6 +29,10 @@ import sys
 import time
 from pathlib import Path
 
+# Windows requires ProactorEventLoop for asyncio subprocess support.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 try:
     import httpx
 except ImportError:

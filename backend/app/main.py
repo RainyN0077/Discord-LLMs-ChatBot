@@ -1,7 +1,14 @@
 import asyncio
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
+
+# Windows requires ProactorEventLoop for asyncio subprocess support.
+# SelectorEventLoop (the default on Windows) raises NotImplementedError
+# on create_subprocess_exec, which breaks AstrBotProcessManager.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
