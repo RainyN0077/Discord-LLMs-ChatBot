@@ -502,7 +502,7 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
              "--host", "0.0.0.0", "--port", str(BACKEND_PORT),
              "--reload",
              "--reload-dir", "app",
-             "--reload-dir", "nb_plugins",
+             "--reload-dir", "astrbot_stars",
              "--reload-dir", "plugins",
              "--no-use-colors"],
             BACKEND_DIR,
@@ -588,7 +588,7 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
             "--host", "0.0.0.0", "--port", str(BACKEND_PORT),
             "--reload",
             "--reload-dir", "app",
-            "--reload-dir", "nb_plugins",
+            "--reload-dir", "astrbot_stars",
             "--reload-dir", "plugins",
             "--no-use-colors",
         ], BACKEND_DIR, {
