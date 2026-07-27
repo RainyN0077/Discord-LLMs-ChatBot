@@ -6,6 +6,7 @@ from nonebot import on_message
 from nonebot.adapters.discord import Bot, MessageEvent
 from nonebot.internal.adapter.bot import Bot as BaseBot
 
+from app.feature_flags import is_flag_enabled
 from app.utils import matches_trigger_keywords
 from app.handlers.message_queue import MessageQueue
 from .event_shim import event_to_message_context, MessageContext
@@ -67,8 +68,31 @@ def _resolve_bot_id(bot: BaseBot) -> str:
     return self_id or "unknown"
 
 
-@_matcher.handle()
-async def _on_discord_message(bot: Bot, event: MessageEvent):
+async def _on_discord_message_new(bot: Bot, event: MessageEvent):
+    """新事件处理路径：通过 PlatformAdapter + MessageBus."""
+    from app.app_context import AppContext
+
+    ctx = AppContext.get()
+    if ctx.message_bus is None:
+        logger.warning("MessageBus not initialized, falling back to old path")
+        await _on_discord_message_old(bot, event)
+        return
+
+    # 注入 Bot 实例到 Runtime（NoneBotRuntime 需要 _bot 才能发送消息）
+    instance = _bot_instance_map.get(_resolve_bot_id(bot))
+    runtime = getattr(instance, '_runtime', None) if instance else None
+    if runtime is not None and hasattr(runtime, 'attach_bot'):
+        runtime.attach_bot(bot)
+
+    handled = await ctx.message_bus.publish_event(event, "discord")
+    if not handled:
+        logger.debug("MessageBus could not route event, falling back to old path")
+        await _on_discord_message_old(bot, event)
+
+
+# 保留旧路径函数，供 fallback 使用
+async def _on_discord_message_old(bot: Bot, event: MessageEvent):
+    """旧事件处理路径（原 _on_discord_message 逻辑）."""
     if event.author and event.author.id == getattr(bot, "self_id", None):
         return
 
@@ -246,6 +270,15 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
     _channel_processors[processor_key] = task
     task.add_done_callback(lambda t, k=processor_key: _channel_processors.pop(k, None))
     logger.info(f"Started queue processor for channel {channel_id_str} (bot {resolved_id})")
+
+
+@_matcher.handle()
+async def _on_discord_message(bot: Bot, event: MessageEvent):
+    """消息入口 — 根据 Feature Flag 路由到新/旧路径."""
+    if is_flag_enabled("USE_MESSAGE_BUS"):
+        await _on_discord_message_new(bot, event)
+    else:
+        await _on_discord_message_old(bot, event)
 
 
 def register_main_matcher():

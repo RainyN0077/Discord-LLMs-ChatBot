@@ -1,5 +1,6 @@
 # backend/app/llm_providers/base.py
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 import logging
@@ -70,3 +71,64 @@ class LLMProvider(ABC):
         error_message = f"LLM_PROVIDER_ERROR: {self.__class__.__name__} encountered an error: {str(e)}"
         logger.error(f"LLM API error in {self.__class__.__name__}: {e}", exc_info=True)
         return error_message
+
+    async def check_health(self) -> Dict[str, Any]:
+        """检查 LLM 提供商健康状态.
+
+        默认实现：发送一条简单的测试消息。
+        子类可重写以实现更精确的检查（如轻量级 endpoint 探测）。
+
+        Returns:
+            {
+                "healthy": bool,
+                "latency_ms": Optional[float],
+                "model": str,
+                "error": Optional[str],
+            }
+        """
+        start = time.monotonic()
+        try:
+            test_messages = [{"role": "user", "content": "ping"}]
+            async for response_type, data in self.get_response_stream(
+                messages=test_messages, images=None, tools=[], tool_functions={},
+            ):
+                if response_type == "final":
+                    latency_ms = round((time.monotonic() - start) * 1000, 2)
+                    return {
+                        "healthy": True,
+                        "latency_ms": latency_ms,
+                        "model": self.model or "unknown",
+                        "error": None,
+                    }
+                if response_type == "usage":
+                    continue
+            return {
+                "healthy": False,
+                "latency_ms": None,
+                "model": self.model or "unknown",
+                "error": "No response from provider",
+            }
+        except Exception as e:
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": False,
+                "latency_ms": latency_ms,
+                "model": self.model or "unknown",
+                "error": str(e),
+            }
+
+    async def get_usage_stats(self) -> Dict[str, Any]:
+        """获取提供商用量统计（默认实现）.
+
+        子类可重写以返回实际统计数据。
+
+        Returns:
+            用量统计字典
+        """
+        return {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "last_request_at": None,
+            "errors_last_hour": 0,
+        }

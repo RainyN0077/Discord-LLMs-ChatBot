@@ -22,6 +22,14 @@ class BotManager:
     def get(self, bot_id: str) -> Optional[BotInstance]:
         return self._instances.get(bot_id)
 
+    def get_all_instances(self) -> Dict[str, BotInstance]:
+        """获取所有 Bot 实例的只读视图.
+
+        Returns:
+            bot_id 到 BotInstance 的映射副本
+        """
+        return dict(self._instances)
+
     def list(self) -> List[Dict[str, Any]]:
         return [inst.to_status_dict() for inst in self._instances.values()]
 

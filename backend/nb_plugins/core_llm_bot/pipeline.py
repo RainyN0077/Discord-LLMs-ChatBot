@@ -11,6 +11,7 @@ from app.core_shared import (
     contains_dsml_tool_blocks,
 )
 from app.debug_capture_store import add_capture
+from app.feature_flags import is_flag_enabled
 from app.llm_providers.factory import get_llm_provider
 from app.ocr_service import is_multimodal_llm
 from app.utils import split_message, transform_memories_for_prompt
@@ -186,19 +187,49 @@ async def execute_llm_pipeline(
             "model": str(config.get("model_name", "")),
         })
 
+        # --- Feature Flag: 新路径使用 BotRuntime 发送 ---
+        use_new_send = is_flag_enabled("USE_NEW_PIPELINE_SEND")
+        runtime = getattr(instance, '_runtime', None) if use_new_send else None
+        # --- branch end ---
+
         final_chunks = split_message(cleaned_response, 2000)
         for i, chunk in enumerate(final_chunks):
-            if i == 0 and chunk.strip():
-                try:
-                    await bot.send(event, chunk, reply_message=True)
-                except Exception as reply_err:
-                    if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
-                        logger.warning(f"Original message deleted, sending without reply: {reply_err}")
-                        await bot.send_to(channel_id=event.channel_id, message=chunk)
-                    else:
-                        raise
-            elif i > 0:
-                await bot.send_to(channel_id=event.channel_id, message=chunk)
+            if not chunk.strip():
+                continue
+            if i == 0:
+                if runtime is not None:
+                    try:
+                        await runtime.send_message(
+                            channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                            content=chunk,
+                            reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                        )
+                    except Exception as reply_err:
+                        if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
+                            logger.warning(f"Original message deleted, sending without reply: {reply_err}")
+                            await runtime.send_message(
+                                channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                                content=chunk,
+                            )
+                        else:
+                            raise
+                else:
+                    try:
+                        await bot.send(event, chunk, reply_message=True)
+                    except Exception as reply_err:
+                        if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
+                            logger.warning(f"Original message deleted, sending without reply: {reply_err}")
+                            await bot.send_to(channel_id=event.channel_id, message=chunk)
+                        else:
+                            raise
+            else:
+                if runtime is not None:
+                    await runtime.send_message(
+                        channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                        content=chunk,
+                    )
+                else:
+                    await bot.send_to(channel_id=event.channel_id, message=chunk)
 
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
 
@@ -238,11 +269,24 @@ async def execute_llm_pipeline(
         error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
         try:
-            await bot.send(event, error_msg, reply_message=True)
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=error_msg,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, error_msg, reply_message=True)
         except Exception as send_err:
             logger.warning(f"Failed to send error reply: {send_err}")
             try:
-                await bot.send_to(channel_id=event.channel_id, message=error_msg)
+                if runtime is not None:
+                    await runtime.send_message(
+                        channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                        content=error_msg,
+                    )
+                else:
+                    await bot.send_to(channel_id=event.channel_id, message=error_msg)
             except Exception:
                 logger.error("Failed to send error reply without reply reference, giving up")
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from enum import Enum
 
 from .config_cache import load_config, get_bot_config_path, get_bot_knowledge_path, get_bot_usage_path, DEFAULT_CONFIG, BOTS_DIR
+from .feature_flags import is_flag_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ class BotInstance:
         self._plugin_manager = None
         self._usage_manager = None
         self._bot_process_lock = None
+        self._runtime = None
 
     @property
     def config_dir(self) -> Path:
@@ -165,6 +167,16 @@ class BotInstance:
             return _inner()
 
         self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
+
+        # --- Feature Flag: 创建 BotRuntime 抽象 ---
+        if is_flag_enabled("USE_BOT_RUNTIME_ABSTRACTION"):
+            from .adapters.factory import create_bot_runtime
+            try:
+                self._runtime = create_bot_runtime(self.bot_id, self.config)
+                logger.info("BotRuntime created for bot '%s' (type=%s)", self.bot_id, self.config.get("runtime_type", "nonebot"))
+            except Exception as e:
+                logger.warning("Failed to create BotRuntime for '%s': %s", self.bot_id, e)
+        # --- branch end ---
 
         try:
             await self._start_nonebot()

@@ -103,6 +103,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'custom_parameters': [], 'plugins': {},
+    'runtime_type': 'nonebot',
     'api_secret_key': '',
 }
 

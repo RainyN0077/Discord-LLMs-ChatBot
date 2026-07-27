@@ -16,6 +16,19 @@ from ..ports.bot_runtime import BotRuntime
 class DiscordPlatformAdapter(PlatformAdapter):
     """适配器: Discord → PlatformMessage."""
 
+    # self_id → bot_id 映射表，用于从事件中提取 bot_id
+    _self_id_to_bot_id: Dict[str, str] = {}
+
+    @classmethod
+    def register_self_id_mapping(cls, self_id: str, bot_id: str) -> None:
+        """注册 self_id 到 bot_id 的映射.
+
+        Args:
+            self_id: Bot 的 Discord self_id
+            bot_id: 内部 bot_id
+        """
+        cls._self_id_to_bot_id[self_id] = bot_id
+
     async def event_to_message(
         self,
         event: Any,
@@ -99,13 +112,18 @@ class DiscordPlatformAdapter(PlatformAdapter):
     def get_bot_id_from_event(self, event: Any) -> Optional[str]:
         """从事件中提取 Bot ID.
 
+        通过 event.self_id 查找已注册的 bot_id 映射。
+
         Args:
             event: Discord 事件对象
 
         Returns:
-            当前返回 None，由后续 Wave 实现
+            bot_id，未找到时返回 None
         """
-        return None
+        self_id = getattr(event, "self_id", None)
+        if self_id is None:
+            return None
+        return self._self_id_to_bot_id.get(str(self_id))
 
     def is_triggered(
         self, message: PlatformMessage, config: Dict[str, Any]

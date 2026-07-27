@@ -19,6 +19,7 @@ _FLAGS: Dict[str, bool] = {
     # Wave 2: Feature Flag 替换
     "USE_NEW_PIPELINE_SEND": False,
     "USE_NEW_CONTEXT_BUILDER": False,
+    "USE_MESSAGE_BUS": False,
     # Wave 3: ProviderPool
     "USE_PROVIDER_POOL": False,
     # Wave 4: 主 pipeline 切换
@@ -53,3 +54,32 @@ def set_flag(flag_name: str, value: bool) -> None:
         value: Flag 值
     """
     _FLAGS[flag_name] = value
+
+
+# ---------------------------------------------------------------------------
+# 启动时 Flag 捕获 — 防止运行时切换导致状态不一致
+# ---------------------------------------------------------------------------
+
+_FLAGS_CAPTURED: Dict[str, bool] = {}
+
+
+def capture_flags() -> None:
+    """在启动时捕获所有 Flag 值，防止运行时切换导致状态不一致."""
+    global _FLAGS_CAPTURED
+    _FLAGS_CAPTURED = {k: is_flag_enabled(k) for k in _FLAGS}
+
+
+def get_captured_flag(flag_name: str) -> bool:
+    """返回启动时捕获的 Flag 值.
+
+    如果尚未捕获，则回退到实时查询。
+
+    Args:
+        flag_name: Flag 名称
+
+    Returns:
+        Flag 值
+    """
+    if _FLAGS_CAPTURED:
+        return _FLAGS_CAPTURED.get(flag_name, False)
+    return is_flag_enabled(flag_name)

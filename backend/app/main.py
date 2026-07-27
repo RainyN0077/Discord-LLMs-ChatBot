@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .app_context import AppContext
 from .bot_manager import BotManager
 from .config_bridge import generate_env_file
+from .feature_flags import capture_flags, is_flag_enabled
 from .middleware.rate_limit import register_rate_limit_middleware
 from .usage_tracker import UsageTracker
 from .utils import setup_logging
@@ -26,6 +27,9 @@ async def lifespan(app: FastAPI):
 
     generate_env_file()
 
+    # 启动时捕获所有 Feature Flag 值，防止运行时切换
+    capture_flags()
+
     import nonebot
     nonebot.init()
     ctx.nonebot_driver = nonebot.get_driver()
@@ -39,8 +43,30 @@ async def lifespan(app: FastAPI):
 
     nonebot.load_plugins("nb_plugins")
 
+    # --- Feature Flag: MessageBus 初始化 ---
+    if is_flag_enabled("USE_MESSAGE_BUS"):
+        logger.info("Using new MessageBus event routing path")
+        from .adapters.message_bus_impl import DefaultMessageBus
+        from .adapters.discord_platform_adapter import DiscordPlatformAdapter
+
+        ctx.message_bus = DefaultMessageBus()
+        ctx.message_bus.register_platform_adapter("discord", DiscordPlatformAdapter())
+        logger.info("MessageBus initialized with Discord platform adapter")
+    # --- branch end ---
+
     ctx.bot_manager = BotManager()
     await ctx.bot_manager.load_all()
+
+    # --- Feature Flag: BotRuntime 注册到 MessageBus ---
+    if is_flag_enabled("USE_MESSAGE_BUS") and ctx.message_bus is not None:
+        from .adapters.factory import create_bot_runtime
+        for bot_id, instance in ctx.bot_manager.get_all_instances().items():
+            try:
+                runtime = create_bot_runtime(bot_id, instance.config)
+                ctx.message_bus.register_bot_runtime(bot_id, runtime)
+            except Exception as e:
+                logger.warning("Failed to create BotRuntime for '%s': %s", bot_id, e)
+    # --- branch end ---
 
     ctx.usage_tracker = UsageTracker()
     await ctx.usage_tracker.initialize()

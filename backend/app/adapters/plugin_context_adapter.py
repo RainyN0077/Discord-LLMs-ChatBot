@@ -1,8 +1,9 @@
 """插件上下文适配器 — 使旧插件无需修改即可接收 PlatformMessage."""
 
-from typing import Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..ports.platform_message import PlatformMessage
+from ..ports.plugin_base import PluginBase
 
 
 def adapt_message_for_legacy_plugin(message: Any, legacy: bool = False) -> Any:
@@ -138,3 +139,59 @@ class _GuildWrapper:
     def id(self) -> str:
         """服务器 ID."""
         return self._guild.id
+
+
+class NBPluginAdapter(PluginBase):
+    """适配器：将旧 BasePlugin 包装为新的 PluginBase.
+
+    委托给旧 BasePlugin.handle_message()，
+    传入 PlatformMessage（作为 Any 兼容）。
+    """
+
+    def __init__(
+        self,
+        inner_plugin: Any,
+        plugin_config: Dict[str, Any],
+        llm_caller: Optional[callable] = None,
+    ) -> None:
+        super().__init__(plugin_config, llm_caller)
+        self._inner = inner_plugin
+
+    async def handle_message(
+        self,
+        message: PlatformMessage,
+        bot_config: Dict[str, Any],
+    ) -> Optional[Tuple[str, List[str]] | bool]:
+        """委托给旧插件的 handle_message，使用 Legacy Wrapper 保持兼容."""
+        legacy_message = adapt_message_for_legacy_plugin(message, legacy=True)
+        return await self._inner.handle_message(legacy_message, bot_config)
+
+    def get_tools(self) -> List[Dict[str, Any]]:
+        """委托给旧插件的 get_tools."""
+        return self._inner.get_tools()
+
+    def get_tool_functions(self) -> Dict[str, callable]:
+        """委托给旧插件的 get_tool_functions."""
+        return self._inner.get_tool_functions()
+
+
+def wrap_plugin(
+    plugin_instance: Any,
+    plugin_config: Dict[str, Any],
+    llm_caller: Optional[callable] = None,
+) -> PluginBase:
+    """将旧 BasePlugin 包装为新的 PluginBase.
+
+    如果已经是 PluginBase 则直接返回。
+
+    Args:
+        plugin_instance: 插件实例
+        plugin_config: 插件配置
+        llm_caller: LLM 调用函数
+
+    Returns:
+        PluginBase 实例
+    """
+    if isinstance(plugin_instance, PluginBase):
+        return plugin_instance
+    return NBPluginAdapter(plugin_instance, plugin_config, llm_caller)
