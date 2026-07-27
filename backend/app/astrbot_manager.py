@@ -3,12 +3,17 @@
 Manages AstrBot instances as asyncio subprocesses, one per Discord bot account.
 Handles spawning, health-checking, stopping, and restarting AstrBot processes.
 
-Each AstrBot instance runs as:
-    astrbot run --config data/bots/{bot_id}/astrbot/config.yml
+Each AstrBot instance runs as::
+
+    python -m astrbot.cli.__main__ run
+
+with ``ASTRBOT_ROOT`` and ``DASHBOARD_PORT`` environment variables set for
+instance isolation.
 """
 
 import asyncio
 import logging
+import os
 import signal
 import sys
 from pathlib import Path
@@ -16,7 +21,14 @@ from typing import Any, Dict, Optional, Tuple
 
 import aiohttp
 
-from .astrbot_config_gen import generate_astrbot_config, write_astrbot_config, remove_astrbot_config
+from .astrbot_config_gen import (
+    ensure_astrbot_root,
+    generate_astrbot_config,
+    get_astrbot_root_dir,
+    get_cmd_config_path,
+    remove_astrbot_config,
+    write_astrbot_config,
+)
 from .config_cache import get_bot_dir
 
 logger = logging.getLogger(__name__)
@@ -42,6 +54,7 @@ class AstrBotProcess:
         self.status: str = "starting"
         self.started_at: Optional[float] = None
         self._health_check_task: Optional[asyncio.Task] = None
+        self.root_dir: Optional[Path] = None
 
     @property
     def pid(self) -> Optional[int]:
@@ -51,7 +64,8 @@ class AstrBotProcess:
 class AstrBotProcessManager:
     """Manages the lifecycle of AstrBot subprocesses.
 
-    Usage:
+    Usage::
+
         manager = AstrBotProcessManager()
         await manager.start("bot_01", bot_config)
         await manager.stop("bot_01")
@@ -70,6 +84,11 @@ class AstrBotProcessManager:
     async def start(self, bot_id: str, bot_config: Dict[str, Any]) -> None:
         """Start an AstrBot process for the given bot.
 
+        Steps:
+            1. Write/update ``cmd_config.json`` via ``write_astrbot_config``.
+            2. Ensure AstrBot root directory structure is ready.
+            3. Spawn the subprocess with ``ASTRBOT_ROOT`` and ``DASHBOARD_PORT``.
+
         Raises:
             AstrBotProcessError: If the bot is already running or startup fails.
         """
@@ -86,12 +105,15 @@ class AstrBotProcessManager:
                 # Clean up stale entry
                 del self._processes[bot_id]
 
-            # Generate config before spawning
+            # Generate config and ensure root directory before spawning
             write_astrbot_config(bot_id, bot_config)
+            root_dir = get_astrbot_root_dir(bot_id)
+            ensure_astrbot_root(root_dir)
 
             process = await self._spawn_process(bot_id)
             astrbot_proc = AstrBotProcess(bot_id, process)
             astrbot_proc.started_at = asyncio.get_event_loop().time()
+            astrbot_proc.root_dir = root_dir
             self._processes[bot_id] = astrbot_proc
 
             try:
@@ -177,6 +199,7 @@ class AstrBotProcessManager:
             "pid": proc.pid,
             "started_at": proc.started_at,
             "returncode": proc.process.returncode if proc.process else None,
+            "root_dir": str(proc.root_dir) if proc.root_dir else None,
         }
 
     def list_all(self) -> Dict[str, Dict[str, Any]]:
@@ -186,6 +209,7 @@ class AstrBotProcessManager:
                 "status": proc.status,
                 "pid": proc.pid,
                 "started_at": proc.started_at,
+                "root_dir": str(proc.root_dir) if proc.root_dir else None,
             }
             for bot_id, proc in self._processes.items()
         }
@@ -223,27 +247,81 @@ class AstrBotProcessManager:
     # ------------------------------------------------------------------
 
     async def _spawn_process(self, bot_id: str) -> asyncio.subprocess.Process:
-        """Spawn an AstrBot subprocess."""
-        bot_dir = get_bot_dir(bot_id)
-        config_dir = bot_dir / "astrbot"
-        log_dir = bot_dir / "astrbot" / "logs"
+        """Spawn an AstrBot subprocess with environment isolation."""
+        root_dir = get_astrbot_root_dir(bot_id)
+        config = self._bot_configs.get(bot_id, {})
+
+        # Ensure log directory exists
+        log_dir = root_dir / "data" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
         log_file = open(str(log_dir / "astrbot.log"), "a", encoding="utf-8")
 
-        cmd = [
-            sys.executable, "-m", "astrbot", "run",
-            "--config", str(config_dir / "config.yml"),
-        ]
+        # Launch command: no --config flag; AstrBot discovers config via ASTRBOT_ROOT
+        cmd = [sys.executable, "-m", "astrbot.cli.__main__", "run"]
 
-        logger.info("Spawning AstrBot '%s': %s", bot_id, " ".join(cmd))
+        # Build environment with instance-specific isolation
+        env = os.environ.copy()
+        env["ASTRBOT_ROOT"] = str(root_dir)
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=log_file,
-            stderr=asyncio.subprocess.STDOUT,
+        dashboard_port = config.get("dashboard_port", 6185)
+        env["DASHBOARD_PORT"] = str(dashboard_port)
+
+        logger.info(
+            "Spawning AstrBot '%s': %s (ASTRBOT_ROOT=%s, DASHBOARD_PORT=%s)",
+            bot_id, " ".join(cmd), root_dir, dashboard_port,
         )
+
+        # On Windows, uvicorn --reload uses SelectorEventLoop which does not
+        # support asyncio subprocesses.  Fall back to a ProactorEventLoop in
+        # a dedicated thread when the running loop cannot spawn subprocesses.
+        loop = asyncio.get_event_loop()
+        if sys.platform == "win32" and not isinstance(
+            loop, asyncio.ProactorEventLoop
+        ):
+            process = await self._spawn_in_proactor_thread(cmd, log_file, env, root_dir)
+        else:
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=log_file,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+                cwd=str(root_dir),
+            )
         return process
+
+    async def _spawn_in_proactor_thread(
+        self,
+        cmd: list,
+        log_file,
+        env: Optional[Dict[str, str]] = None,
+        cwd: Optional[Path] = None,
+    ) -> asyncio.subprocess.Process:
+        """Spawn a subprocess via a ProactorEventLoop in a worker thread.
+
+        This is a Windows fallback for when the main event loop is a
+        SelectorEventLoop (e.g. uvicorn ``--reload`` mode).
+        """
+        import concurrent.futures
+
+        def _do_spawn() -> asyncio.subprocess.Process:
+            proactor_loop = asyncio.ProactorEventLoop()
+            try:
+                return proactor_loop.run_until_complete(
+                    asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=log_file,
+                        stderr=asyncio.subprocess.STDOUT,
+                        env=env,
+                        cwd=str(cwd) if cwd else None,
+                    )
+                )
+            finally:
+                # Close the temporary loop but do NOT terminate the process.
+                proactor_loop.close()
+
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _do_spawn)
 
     async def _wait_for_ready(self, bot_id: str, astrbot_proc: AstrBotProcess) -> None:
         """Wait for the AstrBot process to report readiness.
@@ -252,21 +330,26 @@ class AstrBotProcessManager:
         we check process liveness (not exited) plus log-based readiness markers.
         """
         import time
-        log_path = get_bot_dir(bot_id) / "astrbot" / "logs" / "astrbot.log"
+        root_dir = get_astrbot_root_dir(bot_id)
+        log_path = root_dir / "data" / "logs" / "astrbot.log"
 
         for attempt in range(1, HEALTH_CHECK_MAX_RETRIES + 1):
             # Check if process crashed
             if astrbot_proc.process.returncode is not None:
                 raise AstrBotProcessError(
-                    f"AstrBot '{bot_id}' exited prematurely with code {astrbot_proc.process.returncode}"
+                    f"AstrBot '{bot_id}' exited prematurely with code "
+                    f"{astrbot_proc.process.returncode}"
                 )
 
-            # Check log file for a "ready" marker (AstrBot outputs when initialized)
+            # Check log file for a "ready" marker (AstrBot outputs when initialised)
             try:
                 if log_path.exists():
                     log_content = log_path.read_text(encoding="utf-8", errors="replace")
                     if "AstrBot is running" in log_content or "started" in log_content.lower():
-                        logger.debug("AstrBot '%s' ready (detected via log marker, attempt %d)", bot_id, attempt)
+                        logger.debug(
+                            "AstrBot '%s' ready (detected via log marker, attempt %d)",
+                            bot_id, attempt,
+                        )
                         return
             except Exception:
                 pass
@@ -299,6 +382,7 @@ class AstrBotProcessManager:
 
         Performs the monitoring loop *outside* ``self._lock`` so that concurrent
         ``stop()`` calls are not blocked.  The loop exits when:
+
         * the process is explicitly stopped (status != "running"), or
         * the max reconnect attempts are exhausted.
         """
@@ -405,9 +489,13 @@ class AstrBotProcessManager:
 
             try:
                 write_astrbot_config(bot_id, bot_config)
+                root_dir = get_astrbot_root_dir(bot_id)
+                ensure_astrbot_root(root_dir)
+
                 process = await self._spawn_process(bot_id)
                 new_proc = AstrBotProcess(bot_id, process)
                 new_proc.started_at = asyncio.get_event_loop().time()
+                new_proc.root_dir = root_dir
                 self._processes[bot_id] = new_proc
                 await self._wait_for_ready(bot_id, new_proc)
                 new_proc.status = "running"
