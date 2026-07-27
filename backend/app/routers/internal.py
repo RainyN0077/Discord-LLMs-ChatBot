@@ -10,6 +10,7 @@ between AstrBot subprocesses and the FastAPI management server.
 import asyncio
 import logging
 import secrets
+import types
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +26,12 @@ internal_router = APIRouter(prefix="/internal", tags=["internal"])
 
 
 def _verify_token(request: Request) -> str:
-    """Verify the X-Internal-Token header against the bot's api_secret_key.
+    """Verify the X-Internal-Token header against the bot's derived internal token.
+
+    The internal token is derived from ``api_secret_key`` by appending
+    ``":internal"`` (see ``astrbot_config_gen.py``).  This isolates IPC
+    credentials from the external management API key so they can be
+    rotated independently.
 
     Returns the validated bot_id on success.
     """
@@ -39,7 +45,9 @@ def _verify_token(request: Request) -> str:
     if not instance:
         raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found")
 
-    expected = instance.config.get("api_secret_key", "")
+    # Derive expected token from api_secret_key (must match config_gen)
+    api_key = instance.config.get("api_secret_key", "")
+    expected = api_key + ":internal" if api_key else ""
     if not expected or not secrets.compare_digest(token, expected):
         raise HTTPException(status_code=403, detail="Invalid internal token")
 
@@ -81,7 +89,7 @@ async def knowledge_recall(
         return {"memories": memories}
     except Exception as e:
         logger.error("Knowledge recall failed for bot '%s': %s", bot_id, e, exc_info=True)
-        return {"memories": [], "error": str(e)}
+        return {"memories": []}
 
 
 @internal_router.post("/{bot_id}/knowledge/ingest")
@@ -126,7 +134,7 @@ async def knowledge_ingest(
             raise HTTPException(status_code=400, detail=f"Unknown ingest type: {ingest_type}")
     except Exception as e:
         logger.error("Knowledge ingest failed for bot '%s': %s", bot_id, e, exc_info=True)
-        return {"status": "error", "error": str(e)}
+        return {"status": "error"}
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +177,84 @@ async def usage_track(
         return {"status": "recorded"}
     except Exception as e:
         logger.error("Usage tracking failed for bot '%s': %s", bot_id, e, exc_info=True)
-        return {"status": "error", "error": str(e)}
+        return {"status": "error"}
+
+
+# ---------------------------------------------------------------------------
+# Plugin bridge (legacy plugin message processing)
+# ---------------------------------------------------------------------------
+
+@internal_router.post("/{bot_id}/plugins/process_message")
+async def plugins_process_message(
+    bot_id: str,
+    payload: Dict[str, Any],
+    request: Request = None,
+) -> Dict[str, Any]:
+    """Process a message through the legacy PluginManager.
+
+    Delegates to ``PluginManager.process_message()`` which runs all loaded
+    legacy plugins (e.g. memory_plugin, configurable plugins) in the
+    management layer.
+
+    Request Body:
+        message_content (str): The message text.
+        user_id (str): Discord snowflake of the sender.
+        channel_id (str): Channel snowflake.
+        guild_id (str | null): Guild snowflake (null for DMs).
+        author_name (str): Sender's username.
+        author_display_name (str): Sender's display/nickname.
+
+    Response:
+        result (str): ``consumed`` | ``append`` | ``none``.
+        append_blocks (list[str] | null): Append-mode block content, if any.
+    """
+    bot_id = _verify_token(request)
+    manager = get_bot_manager()
+    instance = manager.get(bot_id)
+    if not instance:
+        raise HTTPException(status_code=404, detail="Bot not found")
+
+    plugin_manager = getattr(instance, "_plugin_manager", None)
+    if not plugin_manager:
+        logger.debug("No plugin_manager for bot '%s'", bot_id)
+        return {"result": "none", "append_blocks": None}
+
+    # Build a lightweight namespace object that mimicks the subset of
+    # discord.Message attributes that legacy plugins access.
+    msg = types.SimpleNamespace(
+        author=types.SimpleNamespace(
+            id=payload.get("user_id", ""),
+            name=payload.get("author_name", ""),
+            display_name=payload.get("author_display_name", ""),
+        ),
+        channel=types.SimpleNamespace(
+            id=payload.get("channel_id", ""),
+        ),
+        guild=(
+            types.SimpleNamespace(id=payload["guild_id"])
+            if payload.get("guild_id")
+            else types.SimpleNamespace(id="dm")
+        ),
+        content=payload.get("message_content", ""),
+        mentions=[],
+    )
+
+    try:
+        result = await plugin_manager.process_message(msg, instance.config)
+    except Exception as e:
+        logger.error(
+            "Plugin process_message failed for bot '%s': %s",
+            bot_id, e, exc_info=True,
+        )
+        return {"result": "none", "append_blocks": None}
+
+    if result is True:
+        return {"result": "consumed", "append_blocks": None}
+
+    if isinstance(result, tuple) and result[0] == "append":
+        return {"result": "append", "append_blocks": result[1]}
+
+    return {"result": "none", "append_blocks": None}
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +289,95 @@ async def interaction_record(
         return {"status": "recorded"}
     except Exception as e:
         logger.error("Interaction recording failed for bot '%s': %s", bot_id, e, exc_info=True)
-        return {"status": "error", "error": str(e)}
+        return {"status": "error"}
+
+
+# ---------------------------------------------------------------------------
+# Debug capture (for Debugger WebUI)
+# ---------------------------------------------------------------------------
+
+@internal_router.post("/{bot_id}/debug/capture")
+async def debug_capture(
+    bot_id: str,
+    payload: Dict[str, Any],
+    request: Request = None,
+) -> Dict[str, Any]:
+    """Store a debug capture record from the AstrBot pipeline.
+
+    Intended for use by the debug_capture Star (Phase 2 IPC upload).
+    Phase 1 uses local in-memory storage directly; this endpoint is
+    reserved for Phase 2 when captures are uploaded from the Star.
+
+    Request Body — fields matching the DebugCapture star's capture dict:
+        trigger_message_id (str)
+        channel_id (str)
+        guild_id (str | None)
+        user_id (str)
+        user_name (str)
+        user_display_name (str)
+        trigger_sources (str | list)
+        plugin_outputs (list)
+        raw_user_message (str)
+        formatted_user_request (str)
+        system_prompt (str)
+        history_for_llm (list)
+        llm_messages (list)
+        intermediate_llm_responses (list)
+        raw_llm_response (str)
+        cleaned_llm_response (str)
+        usage (dict)
+        provider (str)
+        model (str)
+
+    Response:
+        {"status": "captured", "capture_id": "..."}
+    """
+    bot_id = _verify_token(request)
+    try:
+        from ..debug_capture_store import add_capture
+
+        record = await add_capture(payload)
+        return {"status": "captured", "capture_id": record.get("id", "")}
+    except ImportError:
+        return {"status": "not_implemented", "capture_id": ""}
+    except Exception as e:
+        logger.error(
+            "Debug capture failed for bot '%s': %s", bot_id, e, exc_info=True
+        )
+        return {"status": "error"}
+
+
+@internal_router.get("/{bot_id}/debug/captures")
+async def debug_captures_list(
+    bot_id: str,
+    channel_id: str = "",
+    limit: int = 20,
+    request: Request = None,
+) -> Dict[str, Any]:
+    """Retrieve debug captures for the Debugger WebUI.
+
+    Query Parameters:
+        channel_id (str, optional): Filter by channel snowflake.
+        limit (int, default 20): Max captures to return (1-100).
+
+    Response:
+        {"captures": [...]}
+    """
+    bot_id = _verify_token(request)
+    try:
+        from ..debug_capture_store import list_captures
+
+        rows = await list_captures(limit=limit, channel_id=channel_id or None)
+        return {"captures": rows}
+    except ImportError:
+        # TODO: fallback to local-memory access via DebugCapture.get_captures()
+        # when debug_capture_store is unavailable (Phase 2).
+        return {"captures": []}
+    except Exception as e:
+        logger.error(
+            "Debug captures list failed for bot '%s': %s", bot_id, e, exc_info=True
+        )
+        return {"captures": []}
 
 
 # ---------------------------------------------------------------------------

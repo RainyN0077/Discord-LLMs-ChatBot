@@ -74,9 +74,32 @@ class StreamingRespond(star.Star):
 
     @filter.event_message_type(filter.EventMessageType.ALL)
     async def on_message(self, event: AstrMessageEvent) -> None:
-        """Post-process any response in the event."""
+        """Post-process any response in the event.
+
+        Cleans the LLM response text, splits into chunks for Discord's
+        2000-char limit, and sets ``event.set_extra("message_chunks", ...)``
+        for downstream stars (e.g. the sender) to consume.
+        """
         result = event.get_result()
-        if result and hasattr(result, "message"):
-            msg = result.message
-            if isinstance(msg, str):
-                result.message = self.clean_response(msg)
+        if result is None:
+            return
+        msg = getattr(result, "message", None)
+        if not msg:
+            return
+        if not isinstance(msg, str):
+            return
+
+        try:
+            cleaned = self.clean_response(msg)
+            result.message = cleaned
+
+            # Split into chunks for Discord's 2000-char limit.
+            # If only one chunk fits, no extra is set.
+            chunks = self.split_message(cleaned)
+            if len(chunks) > 1:
+                event.set_extra("message_chunks", chunks)
+        except Exception as e:
+            logger.warning(
+                "Error during streaming response processing, keeping original: %s",
+                e, exc_info=True,
+            )

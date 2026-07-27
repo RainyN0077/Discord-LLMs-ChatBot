@@ -277,9 +277,14 @@ def generate_astrbot_config(bot_config: Dict[str, Any]) -> Dict[str, Any]:
             "case_sensitive": bot_config.get("trigger_case_sensitive", False),
         },
         # Internal API endpoint (for stars to reach management layer)
+        #
+        # The internal secret token is DERIVED from api_secret_key by
+        # appending ":internal".  This isolates IPC credentials from the
+        # external management API key so they can be rotated independently
+        # without adding a new config field in Phase 1.
         "internal_api": {
             "base_url": "http://127.0.0.1:8093/internal",
-            "secret_token": bot_config.get("api_secret_key", ""),
+            "secret_token": bot_config.get("api_secret_key", "") + ":internal",
         },
     }
     return config
