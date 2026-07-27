@@ -508,7 +508,8 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
             BACKEND_DIR,
             {"REDIS_HOST": os.getenv("REDIS_HOST", "localhost"),
              "REDIS_PORT": os.getenv("REDIS_PORT", "6379"),
-             "FAIL_ON_REDIS_ERROR": os.getenv("FAIL_ON_REDIS_ERROR", "false")},
+             "FAIL_ON_REDIS_ERROR": os.getenv("FAIL_ON_REDIS_ERROR", "false"),
+             "DISABLE_ENCRYPTION": os.getenv("DISABLE_ENCRYPTION", "1")},
         ))
 
     if not backend_only:
@@ -595,6 +596,7 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
             "REDIS_HOST": os.getenv("REDIS_HOST", "localhost"),
             "REDIS_PORT": os.getenv("REDIS_PORT", "6379"),
             "FAIL_ON_REDIS_ERROR": os.getenv("FAIL_ON_REDIS_ERROR", "false"),
+            "DISABLE_ENCRYPTION": os.getenv("DISABLE_ENCRYPTION", "1"),
         }, BACKEND_PORT)
 
     backend_started = frontend_only or _wait_for_backend_sync()
