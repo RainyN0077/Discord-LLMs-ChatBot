@@ -118,24 +118,33 @@ async def update_bot_config(bot_id: str, config_data: Dict[str, Any]) -> Dict[st
         raise HTTPException(status_code=500, detail="An internal error occurred while updating the configuration.")
 
 
-@router.get("/{bot_id}/adapter/status", summary="获取适配器状态", description="返回 Bot 的 Discord/QQ 适配器连接状态。")
+@router.get("/{bot_id}/adapter/status", summary="获取适配器状态", description="返回 Bot 的 AstrBot 进程连接状态。")
 async def get_adapter_status(bot_id: str) -> Dict[str, Any]:
-    driver = state.nonebot_driver
-    if driver is None:
-        raise HTTPException(status_code=503, detail="NoneBot driver not initialized")
+    mgr = _get_manager()
+    instance = mgr.get(bot_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found")
 
-    for adapter_name, adapter in driver._adapters.items():
-        for b_id in getattr(adapter, 'bots', {}):
-            if str(b_id) == bot_id:
-                bot = adapter.bots.get(b_id)
-                return {
-                    "bot_id": bot_id,
-                    "adapter": adapter_name,
-                    "self_id": str(getattr(bot, 'self_id', '')),
-                    "connected": getattr(bot, '_ws', None) is not None,
-                }
+    astrbot_mgr = state.astrbot_process_manager
+    if astrbot_mgr is None:
+        raise HTTPException(status_code=503, detail="AstrBot process manager not initialized")
 
-    raise HTTPException(status_code=404, detail=f"No adapter found for bot '{bot_id}'")
+    status_info = astrbot_mgr.get_status(bot_id)
+    if status_info is None:
+        return {
+            "bot_id": bot_id,
+            "status": "stopped",
+            "pid": None,
+            "connected": False,
+        }
+
+    return {
+        "bot_id": bot_id,
+        "status": status_info.get("status", "unknown"),
+        "pid": status_info.get("pid"),
+        "connected": status_info.get("status") == "running",
+        "started_at": status_info.get("started_at"),
+    }
 
 
 @router.get("/{bot_id}/logs", summary="获取 Bot 日志", description="返回指定 Bot 日志文件的最后 200 行。")

@@ -1045,7 +1045,7 @@ AstrBot 采用 **AGPL-3.0-or-later** 协议。AGPL-3.0 是强 copyleft 协议：
 ### 13.4 版权声明
 
 ```
-Copyright (C) 2025 时越霞 Shi Yuexia
+Copyright (C) 2025 RainyN0077 <gotiyu0407@gmail.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published

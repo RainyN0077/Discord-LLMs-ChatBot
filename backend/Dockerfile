@@ -1,5 +1,5 @@
-# 从官方Python镜像开始
-FROM python:3.11-slim
+# 从官方Python镜像开始（AstrBot 要求 >=3.12）
+FROM python:3.12-slim
 
 # 设置容器内的工作目录
 WORKDIR /app
@@ -19,6 +19,12 @@ COPY ./backend/plugins ./plugins
 
 # 复制 scripts 目录到容器的 /app/scripts 子目录
 COPY ./scripts ./scripts
+
+# 复制 astrbot_stars 目录到容器的 /app/astrbot_stars 子目录（AstrBot Star 插件）
+COPY ./backend/astrbot_stars ./astrbot_stars
+
+# 复制 providers 目录到容器的 /app/astrbot_stars/providers 子目录
+# （astrbot_stars/providers 已经在上面包含了，不需要额外复制）
 
 # --- 【【【修改结束】】】 ---
 

@@ -17,7 +17,6 @@
   import AutomationSettings from '../components/AutomationSettings.svelte';
   import UiSettings from '../components/UiSettings.svelte';
   import SessionManagement from '../components/SessionManagement.svelte';
-  import AstrBotMigration from '../components/AstrBotMigration.svelte';
 
   export let botId = null;
   export let applyFont;
@@ -173,8 +172,6 @@
             </div>
           </Card>
         {/if}
-
-        <AstrBotMigration />
 
         <Card title={$t('llmProvider.title')}>
           <p class="info">{$t('modelSettings.goToModelSettings')}</p>

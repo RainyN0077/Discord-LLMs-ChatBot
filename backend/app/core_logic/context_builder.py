@@ -4,8 +4,7 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple
-import discord
+from typing import Any, Dict, List, Optional, Tuple
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords, _format_author_id
 from .user_options_manager import is_user_blocked_from_context, is_user_whitelisted_for_context, should_filter_history, get_formatted_block_notice, resolve_user_options
@@ -212,7 +211,7 @@ DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
 DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
 
-async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[datetime]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
+async def build_context_history(client: Any, bot_config: Dict[str, Any], message: Any, cutoff_timestamp: Optional[datetime]) -> Tuple[List[Any], List[Dict[str, str]]]:
     history_messages, history_for_llm = [], []
     context_mode = bot_config.get('context_mode', 'none')
     if context_mode == 'none':
@@ -238,7 +237,10 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
             client, message.channel.id, message.id, raw_limit or 100, cutoff_timestamp)
     else:
         channel = message.channel
-        before_obj = discord.Object(id=message.id)
+        # Platform-agnostic cursor object for channel.history(before=...)
+        class _BeforeObj:
+            id = message.id
+        before_obj = _BeforeObj()
         raw_limit = None if unlimited_message_count else max(msg_limit * 3, 100)
         if context_mode == 'channel':
             raw_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
@@ -272,7 +274,7 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                 ref = getattr(hist_msg, 'reference', None)
                 if ref is not None:
                     resolved = getattr(ref, 'resolved', None)
-                    if resolved is not None and not isinstance(resolved, discord.DeletedReferencedMessage):
+                    if resolved is not None and type(resolved).__name__ != 'DeletedReferencedMessage':
                         if resolved.id not in processed_ids:
                             relevant_messages.append(resolved)
                             processed_ids.add(resolved.id)
@@ -304,9 +306,10 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
         hist_role_config = None
         if msg_class == 'user':
             hist_member = hist_msg.author
-            if isinstance(hist_member, discord.User) and hasattr(message, 'guild') and message.guild:
-                hist_member = message.guild.get_member(hist_member.id) or hist_member
-            if isinstance(hist_member, discord.Member):
+            if hasattr(hist_member, 'mutual_guilds') or type(hist_member).__name__ == 'User':
+                if hasattr(message, 'guild') and message.guild:
+                    hist_member = message.guild.get_member(hist_member.id) or hist_member
+            if type(hist_member).__name__ == 'Member' or hasattr(hist_member, 'roles'):
                 _, hist_role_config = get_highest_configured_role(hist_member, role_based_configs) or (None, None)
 
         rich_id = get_rich_identity(hist_msg.author, user_personas, hist_role_config)
@@ -374,8 +377,8 @@ def _replies_to_bot(hist_msg: Any, bot_user_id: int) -> bool:
     return getattr(resolved.author, 'id', None) == bot_user_id
 
 async def format_user_message_for_llm(
-    message: discord.Message,
-    client: discord.Client,
+    message: Any,
+    client: Any,
     bot_config: Dict[str, Any],
     role_config: Optional[Dict[str, Any]],
     injected_data: Optional[str] = None,
@@ -399,14 +402,15 @@ async def format_user_message_for_llm(
     request_block_parts = []
     
     # 处理回复上下文 - 优雅处理已删除消息
-    if message.reference and isinstance(message.reference.resolved, discord.Message):
+    if message.reference and type(message.reference.resolved).__name__ != 'DeletedReferencedMessage' and message.reference.resolved is not None:
         replied_msg = message.reference.resolved
         replied_member = replied_msg.author
-        if isinstance(replied_member, discord.User) and message.guild:
-            replied_member = message.guild.get_member(replied_member.id) or replied_member
+        if hasattr(replied_member, 'mutual_guilds') or type(replied_member).__name__ == 'User':
+            if message.guild:
+                replied_member = message.guild.get_member(replied_member.id) or replied_member
         
         replied_role_config = None
-        if isinstance(replied_member, discord.Member):
+        if type(replied_member).__name__ == 'Member' or hasattr(replied_member, 'roles'):
             _, replied_role_config = get_highest_configured_role(replied_member, role_based_configs) or (None, None)
 
         replied_rich_id = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
@@ -430,7 +434,7 @@ async def format_user_message_for_llm(
         request_block_parts.append(REPLY_CONTEXT_TPL.format(author_info=replied_author_info, replied_content=final_replied_description))
     elif message.reference:
         resolved = getattr(message.reference, 'resolved', None)
-        if isinstance(resolved, discord.DeletedReferencedMessage):
+        if type(resolved).__name__ == 'DeletedReferencedMessage':
             request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
         else:
             request_block_parts.append(INACCESSIBLE_REPLY_CONTEXT_TPL)

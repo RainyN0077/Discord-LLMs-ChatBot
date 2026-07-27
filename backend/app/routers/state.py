@@ -13,26 +13,21 @@ router = APIRouter(prefix="/api/state", tags=["state"])
 
 @router.get("/driver")
 async def get_driver_state(api_key: str = Depends(get_api_key)) -> Dict[str, Any]:
-    driver = state.nonebot_driver
-    if driver is None:
-        raise HTTPException(status_code=503, detail="NoneBot driver not initialized")
+    astrbot_mgr = state.astrbot_process_manager
+    if astrbot_mgr is None:
+        raise HTTPException(status_code=503, detail="AstrBot process manager not initialized")
 
-    bots = []
-    for adapter_name, adapter in driver._adapters.items():
-        bots_info = []
-        for bot_id in getattr(adapter, 'bots', {}):
-            bot = adapter.bots.get(bot_id)
-            bots_info.append({
-                "bot_id": str(bot_id),
-                "self_id": str(getattr(bot, 'self_id', '')),
-                "connected": getattr(bot, '_ws', None) is not None,
-            })
-        bots.append({
-            "adapter": adapter_name,
-            "bots": bots_info,
+    processes = astrbot_mgr.list_all()
+    bots_list = []
+    for bot_id, proc_info in processes.items():
+        bots_list.append({
+            "bot_id": bot_id,
+            "status": proc_info.get("status", "unknown"),
+            "pid": proc_info.get("pid"),
+            "started_at": proc_info.get("started_at"),
         })
 
     return {
-        "driver_type": type(driver).__name__,
-        "adapters": bots,
+        "driver_type": "AstrBotProcessManager",
+        "processes": bots_list,
     }

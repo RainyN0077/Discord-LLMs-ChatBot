@@ -128,35 +128,8 @@ async def get_bot_diagnostics(bot_id: str):
     intents = {}
     warnings = []
     config_intents = instance.config.get("discord_intents", {})
-    driver = getattr(state, "nonebot_driver", None)
-    matching_bot = None
-    if driver and is_running:
-        bot_token = instance.config.get("discord_token", "")
-        for _adapter_name, adapter in getattr(driver, "_adapters", {}).items():
-            if hasattr(adapter, "bots"):
-                for _bot_self_id, bot_obj in adapter.bots.items():
-                    bot_info = getattr(bot_obj, "bot_info", None) or getattr(bot_obj, "_bot_info", None)
-                    if bot_info and getattr(bot_info, "token", "") == bot_token and bot_token:
-                        matching_bot = bot_obj
-                        break
-                if matching_bot:
-                    break
-    if matching_bot:
-        bot_info = getattr(matching_bot, "bot_info", None) or getattr(matching_bot, "_bot_info", None)
-        if bot_info and hasattr(bot_info, "intent"):
-            raw_intents = bot_info.intent
-            if hasattr(raw_intents, "dict"):
-                ri = raw_intents.dict()
-            elif hasattr(raw_intents, "__dict__"):
-                ri = {k: v for k, v in raw_intents.__dict__.items() if not k.startswith("_")}
-            else:
-                ri = {}
-            intents = {
-                "guild_members": bool(ri.get("members") or ri.get("guild_members")),
-                "message_content": bool(ri.get("message_content")),
-                "guilds": bool(ri.get("guilds")),
-            }
-    if not intents and config_intents:
+    # Intents are now determined from config only (no NoneBot driver to introspect)
+    if config_intents:
         intents = {k: bool(v) for k, v in config_intents.items() if k in ("guilds", "guild_members", "message_content")}
         intents.setdefault("guilds", config_intents.get("guilds", False))
         intents.setdefault("guild_members", config_intents.get("members") or config_intents.get("guild_members", False))
@@ -175,8 +148,6 @@ async def get_bot_diagnostics(bot_id: str):
         warnings.append("Bot 未运行，无法获取服务器列表")
     if is_running and not intents.get("guild_members"):
         warnings.append("GUILD_MEMBERS intent 未启用，无法获取成员列表")
-    if is_running and not matching_bot and driver:
-        warnings.append("Bot 已标记运行中但未找到对应的 Discord 连接，请重启 Backend")
     return {
         "online": is_running,
         "guild_count": guild_count,

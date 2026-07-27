@@ -8,7 +8,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .app_context import AppContext
 from .bot_manager import BotManager
-from .config_bridge import generate_env_file
 from .middleware.rate_limit import register_rate_limit_middleware
 from .usage_tracker import UsageTracker
 from .utils import setup_logging
@@ -24,20 +23,9 @@ async def lifespan(app: FastAPI):
     DataPaths.ensure_dirs()
     setup_logging()
 
-    generate_env_file()
-
-    import nonebot
-    nonebot.init()
-    ctx.nonebot_driver = nonebot.get_driver()
-
-    from .discord_patch import apply_component_emoji_fix
-    apply_component_emoji_fix()
-
-    from nonebot.adapters.discord import Adapter as DiscordAdapter
-    driver = nonebot.get_driver()
-    driver.register_adapter(DiscordAdapter)
-
-    nonebot.load_plugins("nb_plugins")
+    # Initialize AstrBotProcessManager singleton
+    from .astrbot_manager import AstrBotProcessManager
+    ctx.astrbot_process_manager = AstrBotProcessManager()
 
     ctx.bot_manager = BotManager()
     await ctx.bot_manager.load_all()
@@ -45,17 +33,11 @@ async def lifespan(app: FastAPI):
     ctx.usage_tracker = UsageTracker()
     await ctx.usage_tracker.initialize()
 
-    generate_env_file()
-
-    if hasattr(driver, '_startup'):
-        await driver._startup()
-        logger.info("NoneBot driver startup complete — Discord adapters connected.")
-
     yield
-    if hasattr(driver, '_shutdown'):
-        await driver._shutdown()
     if ctx.usage_tracker:
         await ctx.usage_tracker.close()
+    if ctx.astrbot_process_manager:
+        await ctx.astrbot_process_manager.shutdown()
     await ctx.bot_manager.shutdown()
 
 
@@ -63,7 +45,7 @@ app = FastAPI(
     title="Discord LLM ChatBot API",
     description=(
         "REST API for the Discord LLM ChatBot — a multi-bot Discord/QQ chatbot "
-        "powered by NoneBot2, supporting 12 LLM providers with a web control panel, "
+        "powered by AstrBot, supporting 12 LLM providers with a web control panel, "
         "persistent knowledge engine, OCR image recognition, plugin system, and "
         "multi-instance management.\n\n"
         "## Authentication\n"

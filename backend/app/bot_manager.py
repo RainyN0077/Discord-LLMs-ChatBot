@@ -98,12 +98,8 @@ class BotManager:
                 except Exception as e:
                     logger.error(f"Failed to load bot '{bot_id}': {e}", exc_info=True)
 
-            # Lazy-init AstrBotProcessManager if any bot uses astrbot mode
-            has_astrbot = any(
-                inst.provider_mode == "astrbot" for inst in self._instances.values()
-            )
-            if has_astrbot:
-                self._get_astrbot_manager()
+            # Initialize AstrBotProcessManager for bot management
+            self._get_astrbot_manager()
 
             for bot_id, instance in self._instances.items():
                 if instance.config.get("enabled", True):
@@ -142,10 +138,8 @@ class BotManager:
             instance = self._instances.get(bot_id)
             if not instance:
                 raise ValueError(f"Bot '{bot_id}' not found")
-            # Ensure AstrBotProcessManager is initialized for astrbot bots.
-            # This covers API-created bots where load_all() did not run.
-            if instance.provider_mode == "astrbot":
-                self._get_astrbot_manager()
+            # Ensure AstrBotProcessManager is initialized
+            self._get_astrbot_manager()
             await instance.start()
 
     async def stop(self, bot_id: str) -> None:

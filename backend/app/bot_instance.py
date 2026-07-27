@@ -38,11 +38,6 @@ class BotInstance:
         self._bot_process_lock = None
 
     @property
-    def provider_mode(self) -> str:
-        """Return the provider mode: 'nonebot' (legacy) or 'astrbot'."""
-        return self.config.get("provider_mode", "nonebot")
-
-    @property
     def config_dir(self) -> Path:
         return BOTS_DIR / self.bot_id
 
@@ -172,10 +167,7 @@ class BotInstance:
         self._plugin_manager = PluginManager(self.config.get("plugins", {}), _get_llm_response)
 
         try:
-            if self.provider_mode == "astrbot":
-                await self._start_astrbot()
-            else:
-                await self._start_nonebot()
+            await self._start_astrbot()
         except Exception:
             async with self._status_lock:
                 self.status = BotStatus.STOPPED
@@ -191,107 +183,7 @@ class BotInstance:
 
         async with self._status_lock:
             self.status = BotStatus.RUNNING
-        logger.info(f"Bot '{self.bot_id}' started (mode={self.provider_mode}).")
-
-    async def _start_nonebot(self) -> None:
-        """Start the bot via the legacy NoneBot2 adapter."""
-        from nb_plugins.core_llm_bot.matchers import register_bot_instance
-
-        try:
-            register_bot_instance(self.bot_id, self)
-            logger.info("Bot '%s' registered with NoneBot adapter", self.bot_id)
-        except Exception as e:
-            logger.error("Failed to register bot '%s' with NoneBot adapter: %s", self.bot_id, e)
-            raise
-
-        # Start background reconnect monitor; cancel any previous task
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-        self._task = asyncio.create_task(self._nonebot_reconnect_loop())
-
-    async def _nonebot_reconnect_loop(self) -> None:
-        """Background task: monitor NoneBot adapter health and reconnect on failure.
-
-        Catches unhandled exceptions from the NoneBot adapter context and
-        triggers exponential-backoff reconnection when the bot is in RUNNING
-        status.  After ``MAX_RECONNECT_ATTEMPTS`` consecutive failures the bot
-        is marked as ``STOPPED``.
-        """
-        MAX_RECONNECT_ATTEMPTS = 10
-        attempt = 0
-
-        try:
-            while self.status == BotStatus.RUNNING and attempt < MAX_RECONNECT_ATTEMPTS:
-                try:
-                    # Keep the task alive; real NoneBot adapter exceptions may
-                    # surface as CancelledError or generic Exception here.
-                    await asyncio.sleep(5)
-                except asyncio.CancelledError:
-                    logger.info("Bot '%s' NoneBot reconnect loop cancelled", self.bot_id)
-                    break
-                except Exception as exc:
-                    attempt += 1
-                    logger.error(
-                        "Bot '%s' NoneBot adapter error (%d/%d): %s",
-                        self.bot_id, attempt, MAX_RECONNECT_ATTEMPTS, exc,
-                    )
-                    if self.status == BotStatus.RUNNING:
-                        await self._reconnect_nonebot(attempt)
-                    continue
-
-            if attempt >= MAX_RECONNECT_ATTEMPTS and self.status == BotStatus.RUNNING:
-                logger.error(
-                    "Bot '%s' exceeded max NoneBot reconnect attempts (%d). Marking as error.",
-                    self.bot_id, MAX_RECONNECT_ATTEMPTS,
-                )
-                async with self._status_lock:
-                    self.status = BotStatus.STOPPED
-        except asyncio.CancelledError:
-            logger.info("Bot '%s' NoneBot reconnect loop cancelled (outer)", self.bot_id)
-
-    async def _reconnect_nonebot(self, attempt: int) -> None:
-        """Reconnect NoneBot adapter with exponential backoff.
-
-        Backoff sequence: 1s, 2s, 4s, 8s, ... capped at 60s.
-        Only proceeds when ``status == RUNNING``.
-        """
-        if self.status != BotStatus.RUNNING:
-            logger.info(
-                "Bot '%s' skip reconnect (status=%s)", self.bot_id, self.status.value,
-            )
-            return
-
-        base_delay = 1.0
-        max_delay = 60.0
-        delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-
-        logger.warning(
-            "Bot '%s' NoneBot disconnected. Reconnecting in %.1fs (attempt %d) ...",
-            self.bot_id, delay, attempt,
-        )
-        await asyncio.sleep(delay)
-
-        if self.status != BotStatus.RUNNING:
-            logger.info(
-                "Bot '%s' abort reconnect (status changed to %s during backoff)",
-                self.bot_id, self.status.value,
-            )
-            return
-
-        try:
-            from nb_plugins.core_llm_bot.matchers import (
-                register_bot_instance,
-                unregister_bot_instance,
-            )
-            unregister_bot_instance(self.bot_id)
-            register_bot_instance(self.bot_id, self)
-            logger.info(
-                "Bot '%s' re-registered with NoneBot adapter (attempt %d)",
-                self.bot_id, attempt,
-            )
-        except Exception as e:
-            logger.error("Bot '%s' reconnect (re-register) failed: %s", self.bot_id, e)
-            raise
+        logger.info(f"Bot '{self.bot_id}' started.")
 
     async def _start_astrbot(self) -> None:
         """Start the bot via AstrBot subprocess."""
@@ -315,10 +207,7 @@ class BotInstance:
             self.status = BotStatus.STOPPING
 
         try:
-            if self.provider_mode == "astrbot":
-                await self._stop_astrbot()
-            else:
-                await self._stop_nonebot()
+            await self._stop_astrbot()
         except Exception:
             logger.exception(f"Error during provider stop for bot '{self.bot_id}'")
 
@@ -337,11 +226,6 @@ class BotInstance:
         async with self._status_lock:
             self.status = BotStatus.STOPPED
         logger.info(f"Bot '{self.bot_id}' stopped.")
-
-    async def _stop_nonebot(self) -> None:
-        """Unregister from NoneBot2 adapter."""
-        from nb_plugins.core_llm_bot.matchers import unregister_bot_instance
-        unregister_bot_instance(self.bot_id)
 
     async def _stop_astrbot(self) -> None:
         """Stop the AstrBot subprocess."""
@@ -368,5 +252,4 @@ class BotInstance:
             "model_name": self.config.get("model_name", ""),
             "llm_provider": self.config.get("llm_provider", "openai"),
             "trigger_keywords": self.config.get("trigger_keywords", []),
-            "provider_mode": self.provider_mode,
         }

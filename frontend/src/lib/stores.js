@@ -79,8 +79,7 @@ const defaultConfig = {
     memory_context_settings: { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false },
     custom_parameters: [],
     plugins: {},
-    api_secret_key: '',
-    provider_mode: 'nonebot'
+    api_secret_key: ''
 };
 
 
@@ -121,8 +120,7 @@ export const coreConfig = writable({
     rerank_api_key: '',
     rerank_base_url: '',
     rerank_port: '',
-    rerank_model_name: 'gpt-4.1-mini',
-    provider_mode: 'nonebot'
+    rerank_model_name: 'gpt-4.1-mini'
 });
 
 export const behaviorConfig = writable({
@@ -251,8 +249,7 @@ export function mapConfigToStores(config) {
         rerank_api_key: config.rerank_api_key || '',
         rerank_base_url: config.rerank_base_url || '',
         rerank_port: config.rerank_port || '',
-        rerank_model_name: config.rerank_model_name || 'gpt-4.1-mini',
-        provider_mode: config.provider_mode || 'nonebot'
+        rerank_model_name: config.rerank_model_name || 'gpt-4.1-mini'
     });
     behaviorConfig.set({
         bot_nickname: config.bot_nickname || config.bot_name || 'Bot',

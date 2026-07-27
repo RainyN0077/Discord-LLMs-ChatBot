@@ -60,15 +60,12 @@ async def get_plugin_config_endpoint(plugin_name: str):
 async def update_plugin_config_endpoint(plugin_name: str, plugin_data: dict):
     import asyncio
     from .. import state
-    from ..config_bridge import generate_env_file
     config = load_config()
     if plugin_name not in config.get("plugins", {}):
         raise HTTPException(status_code=404, detail=f"Plugin '{plugin_name}' not found.")
 
     config["plugins"][plugin_name] = plugin_data
     save_config(config)
-
-    generate_env_file()
 
     if state.bot_manager:
         for bot_id in list(state.bot_manager._instances.keys()):

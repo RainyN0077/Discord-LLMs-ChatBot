@@ -1,8 +1,8 @@
 ﻿# Discord-LLMs-ChatBot
 
-基于 NoneBot2 的多 Bot 聊天机器人，支持 **12 家 LLM 提供商**，配备 Web 控制面板、知识引擎、OCR 图片识别、插件系统和多 Bot 管理。
+基于 AstrBot 的多 Bot 聊天机器人，支持 **12 家 LLM 提供商**，配备 Web 控制面板、知识引擎、OCR 图片识别、插件系统和多 Bot 管理。
 
-A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM providers** with a web control panel, persistent knowledge, OCR, plugin automation, and multi-instance management.
+A multi-bot Discord / QQ chatbot powered by AstrBot, supporting **12 LLM providers** with a web control panel, persistent knowledge, OCR, plugin automation, and multi-instance management.
 
 ---
 
@@ -29,8 +29,8 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 
 | Layer | Technology |
 |-------|------------|
-| Bot Framework | NoneBot2 + Discord / QQ adapter |
-| API Server | FastAPI (Python 3.11+) |
+| Bot Framework | AstrBot (subprocess) + Discord adapter |
+| API Server | FastAPI (Python 3.12+) |
 | Frontend | Svelte 4 + Vite |
 | Cache / Lock | Redis（本地开发自动降级 mock） |
 | LLM SDKs | `openai` · `google-genai` · `anthropic` · `xai-sdk` |
@@ -55,11 +55,11 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 └────────┬──────────┬──────────┬──────────┬────────────────┘
          │          │          │          │
          ▼          ▼          ▼          ▼
-┌───────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐
-│ 配置缓存   │ │ Bot 管理器│ │ 中间件  │ │  NoneBot2     │
-│ config_   │ │bot_      │ │ 限速    │ │  Driver +     │
-│ cache.py  │ │manager.py│ │ 请求ID  │ │  Discord Adapter
-└───────────┘ └──────────┘ │ 指标    │ └──────────────┘
+┌───────────┐ ┌──────────┐ ┌────────┐ ┌──────────────────┐
+│ 配置缓存   │ │ Bot 管理器│ │ 中间件  │ │  AstrBot         │
+│ config_   │ │bot_      │ │ 限速    │ │  子进程管理器      │
+│ cache.py  │ │manager.py│ │ 请求ID  │ │  (astrbot_manager)│
+└───────────┘ └──────────┘ │ 指标    │ └──────────────────┘
                            └────────┘
          │          │          │
          ▼          ▼          ▼
@@ -88,10 +88,10 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 | 层级 | 职责 | 关键模块 |
 |------|------|---------|
 | **路由层** | API 端点定义、请求/响应序列化、鉴权 | `routers/*.py`, `dependencies.py` |
-| **管理层** | Bot 生命周期、配置缓存、中间件 | `bot_manager.py`, `config_cache.py`, `middleware/` |
+| **管理层** | Bot 生命周期、AstrBot 子进程管理、配置缓存、中间件 | `bot_manager.py`, `astrbot_manager.py`, `config_cache.py`, `middleware/` |
 | **核心逻辑层** | 对话上下文构建、人设管理、知识库、OCR | `core_logic/`, `ocr_service.py`, `security/` |
 | **提供商适配层** | LLM API 统一接口、流式响应 | `llm_providers/factory.py`, `llm_providers/*.py` |
-| **插件系统** | 可扩展工具链、HTTP 触发器 | `plugins/`, `nb_plugins/` |
+| **插件系统** | 可扩展工具链、HTTP 触发器 | `plugins/` |
 
 ---
 
@@ -317,7 +317,7 @@ python simulations/simulate.py --bot-id my-bot --api-url http://192.168.1.100:80
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+GNU Affero General Public License v3.0 or later — see [LICENSE](LICENSE).
 
 ---
 

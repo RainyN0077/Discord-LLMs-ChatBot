@@ -1,12 +1,11 @@
 import logging
 from typing import Any, Dict, Optional
 
-import discord
-
 logger = logging.getLogger(__name__)
 
 
-async def validate_user_id(user_id: str, guild: discord.Guild) -> Optional[discord.Member]:
+async def validate_user_id(user_id: str, guild: Any) -> Optional[Any]:
+    """Validate a user ID against a guild. guild should have get_member/fetch_member methods."""
     try:
         uid = int(user_id)
     except (ValueError, TypeError):
@@ -18,12 +17,12 @@ async def validate_user_id(user_id: str, guild: discord.Guild) -> Optional[disco
             return member
         member = await guild.fetch_member(uid)
         return member
-    except (discord.errors.NotFound, discord.errors.HTTPException) as e:
+    except Exception as e:
         logger.debug("User ID %s not found in guild: %s", user_id, e)
         return None
 
 
-def resolve_user_identity(user_id: str, personas: Dict[str, Any], guild: Optional[discord.Guild] = None) -> str:
+def resolve_user_identity(user_id: str, personas: Dict[str, Any], guild: Optional[Any] = None) -> str:
     persona_info = next((p for p in personas.values() if p.get("id") == user_id), None)
     if persona_info:
         nickname = persona_info.get("nickname")
