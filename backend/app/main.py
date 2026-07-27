@@ -49,11 +49,17 @@ async def lifespan(app: FastAPI):
     ctx.bot_manager = BotManager()
     await ctx.bot_manager.load_all()
 
+    from .adapters.discord_platform_adapter import DiscordPlatformAdapter
     from .adapters.factory import create_bot_runtime
     for bot_id, instance in ctx.bot_manager.get_all_instances().items():
         try:
             runtime = create_bot_runtime(bot_id, instance.config)
             ctx.message_bus.register_bot_runtime(bot_id, runtime)
+            # 冗余注册：处理先有 self_id 后 attach 的场景
+            if runtime.self_id:
+                DiscordPlatformAdapter.register_self_id_mapping(
+                    runtime.self_id, bot_id
+                )
         except Exception as e:
             logger.warning("Failed to create BotRuntime for '%s': %s", bot_id, e)
 

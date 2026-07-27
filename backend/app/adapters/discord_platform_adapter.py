@@ -29,6 +29,15 @@ class DiscordPlatformAdapter(PlatformAdapter):
         """
         cls._self_id_to_bot_id[self_id] = bot_id
 
+    @classmethod
+    def unregister_self_id_mapping(cls, self_id: str) -> None:
+        """注销 self_id 到 bot_id 的映射.
+
+        Args:
+            self_id: Bot 的 Discord self_id
+        """
+        cls._self_id_to_bot_id.pop(self_id, None)
+
     async def event_to_message(
         self,
         event: Any,

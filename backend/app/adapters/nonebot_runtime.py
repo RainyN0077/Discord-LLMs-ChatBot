@@ -131,6 +131,12 @@ class NoneBotRuntime(BotRuntime):
         """停止 Bot 运行时."""
         if self._reconnect_task and not self._reconnect_task.done():
             self._reconnect_task.cancel()
+        # 清理 self_id → bot_id 映射
+        if self._bot is not None:
+            from .discord_platform_adapter import DiscordPlatformAdapter
+            DiscordPlatformAdapter.unregister_self_id_mapping(
+                str(self._bot.self_id)
+            )
         self._bot = None
         self._status = BotStatus.STOPPED
         logger.info("NoneBotRuntime '%s' stopped", self._bot_id)
@@ -173,11 +179,17 @@ class NoneBotRuntime(BotRuntime):
         """注入 NoneBot2 Bot 实例.
 
         由 matchers 在事件触发时传入。
+        自动注册 self_id → bot_id 映射，使 MessageBus 能通过事件找到 Bot。
 
         Args:
             bot: NoneBot2 Bot 实例
         """
         self._bot = bot
+        # P0-1: 注册 self_id → bot_id 映射，确保 MessageBus 可以路由事件
+        from .discord_platform_adapter import DiscordPlatformAdapter
+        DiscordPlatformAdapter.register_self_id_mapping(
+            str(bot.self_id), self._bot_id
+        )
 
     # --- Reconnection Logic ---
 
