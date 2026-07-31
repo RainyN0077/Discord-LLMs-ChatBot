@@ -7,6 +7,10 @@ const localeLoaders = {
     zh: () => import('./locales/zh.js'),
 };
 const _translations = {};
+// 语言文件加载完成时递增，用于触发依赖翻译的 derived store 重新计算。
+// 不能用 lang.update(v => v)：Svelte store 对相同值不通知订阅者，
+// 导致首屏（preload 完成前挂载的组件）一直显示原始 key。
+const localeVersion = writable(0);
 
 async function loadLocale(langCode) {
     if (_translations[langCode]) return;
@@ -17,6 +21,7 @@ async function loadLocale(langCode) {
             _translations[langCode] = langCode === 'zh'
                 ? mergeDeep(raw, zhOverrides)
                 : raw;
+            localeVersion.update((v) => v + 1);
         } catch (err) {
             console.error(`Failed to load locale "${langCode}":`, err);
         }
@@ -504,7 +509,7 @@ function translate(currentLang, key, vars = {}) {
     });
 }
 
-export const t = derived(lang, ($lang) => (key, vars) => translate($lang, key, vars));
+export const t = derived([lang, localeVersion], ([$lang]) => (key, vars) => translate($lang, key, vars));
 
 export const get = (key, vars) => {
     let currentLang;
