@@ -52,6 +52,15 @@ def _is_localhost(request: Request) -> bool:
     return host in ("127.0.0.1", "::1", "localhost")
 
 
+@router.get("/api/auth/status", summary="认证状态", description="无认证端点。仅 localhost 请求返回 api_secret_key（供前端自动认证，实现傻瓜式启动）；非 localhost 请求不返回密钥。")
+async def auth_status_endpoint(request: Request):
+    config_data = load_config()
+    key = config_data.get("api_secret_key") or ""
+    if _is_localhost(request):
+        return {"authenticated": False, "api_secret_key": key}
+    return {"authenticated": False, "api_secret_key": ""}
+
+
 @router.post("/api/auth/bootstrap", summary="初始化 API 密钥", description="仅在 localhost 可用。用于首次部署时通过 Web UI 设置 api_secret_key。一旦密钥已配置，此端点将被禁用。")
 async def bootstrap_api_secret(request: Request, body: BootstrapRequest):
     if not _is_localhost(request):

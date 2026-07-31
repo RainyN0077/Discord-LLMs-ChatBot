@@ -112,8 +112,22 @@ async function handleResponse(response) {
 }
 
 export async function fetchConfig() {
-    const tempKey = getApiSecretKey();
+    let tempKey = getApiSecretKey();
     const headers = {};
+    if (!tempKey) {
+        // 无 key 时先尝试自动认证：localhost 部署下后端直接下发密钥（傻瓜式启动），
+        // 免去手动复制 api_secret_key 的步骤。
+        try {
+            const statusRes = await fetch(`${BASE_URL}/auth/status`);
+            if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                if (statusData && statusData.api_secret_key) {
+                    tempKey = statusData.api_secret_key;
+                    setApiSecretKey(tempKey);
+                }
+            }
+        } catch (e) { /* 后端不可达等场景忽略，走下方原有 401/403 流程 */ }
+    }
     if (tempKey) {
         headers['X-API-Key'] = tempKey;
     }

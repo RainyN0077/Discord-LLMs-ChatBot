@@ -58,6 +58,27 @@ class TestConfigRoutes:
         response = await app_client.post("/api/auth/bootstrap", json={"api_secret_key": "another-key"}, headers=auth_headers)
         assert response.status_code == 403
 
+    async def test_auth_status_returns_key_on_localhost(self, app_client):
+        """Auth status on localhost returns api_secret_key for auto-auth (傻瓜式启动)."""
+        response = await app_client.get("/api/auth/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["authenticated"] is False
+        assert data["api_secret_key"]  # localhost 返回密钥
+
+    async def test_auth_status_hides_key_for_remote(self):
+        """Auth status from non-localhost must not leak api_secret_key."""
+        from httpx import ASGITransport, AsyncClient
+        from app.main import app
+
+        transport = ASGITransport(app=app, client=("192.168.1.100", 54321))
+        async with AsyncClient(transport=transport, base_url="http://test") as remote_client:
+            response = await remote_client.get("/api/auth/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["authenticated"] is False
+        assert data["api_secret_key"] == ""
+
     async def test_bootstrap_requires_localhost(self, app_client, tmp_path, test_config_dict, monkeypatch):
         """Bootstrap from non-localhost client should be rejected."""
         import json

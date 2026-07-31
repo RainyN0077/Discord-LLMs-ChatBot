@@ -9,6 +9,9 @@
   import { promptTemplates, statusMessage, statusType, isLoading } from '../lib/commonStores.js';
   import { behaviorConfig, saveConfig, fetchConfig, roleConfigs } from '../lib/stores.js';
 
+  // App.svelte 统一传入的当前 Bot ID（页面暂未使用，声明以消除 unknown prop 警告）
+  export let botId = '';
+
   // Stubs — these API functions are not yet implemented on the backend.
   // When implemented, replace these with real imports from '../lib/api.js'.
   const fetchPromptPresets = () => { console.warn('fetchPromptPresets: not implemented'); return Promise.resolve([]); };
