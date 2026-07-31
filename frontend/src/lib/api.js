@@ -67,8 +67,11 @@ async function apiFetch(url, options = {}) {
 }
 
 async function handleResponse(response) {
-    // Special handling for fetching logs, which returns plain text
+    // Special handling for logs endpoints:
+    // - /api/bots/{id}/logs 返回 JSON { logs: [...] }
+    // - /api/logs           返回纯文本多行
     if (response.url.endsWith('/api/logs') || /\/api\/bots\/.+\/logs$/.test(response.url)) {
+        const isBotLogs = /\/api\/bots\/.+\/logs$/.test(response.url);
         if (!response.ok) {
             const errorText = await response.text();
             let logError;
@@ -76,7 +79,7 @@ async function handleResponse(response) {
             catch (_) { logError = errorText || 'Failed to fetch logs'; }
             throw new Error(logError);
         }
-        return response.text();
+        return isBotLogs ? response.json() : response.text();
     }
 
     // Standard JSON response handling for all other API requests
