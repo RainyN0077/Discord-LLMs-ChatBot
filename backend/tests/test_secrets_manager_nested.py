@@ -75,12 +75,16 @@ class TestDecryptDictNested:
         assert sm.last_migrated_paths == ["quota_alert.webhook_url"]
         assert any("quota_alert.webhook_url" in r.message for r in caplog.records)
 
-    def test_normal_mode_top_level_plaintext_still_strict(self):
+    def test_normal_mode_top_level_plaintext_lenient(self, caplog):
+        """v3: 顶层明文不再严格报错，改为宽容透传 + 记录路径（保存时自动写回加密）."""
         sm = SecretsManager("test-key-123")
-        with pytest.raises(ValueError, match="plaintext"):
-            sm.decrypt_dict(
+        with caplog.at_level(logging.WARNING, logger="app.security.secrets_manager"):
+            result = sm.decrypt_dict(
                 {"api_key": "sk-plain", "quota_alert": {"webhook_url": "https://x"}}
             )
+        assert result["api_key"] == "sk-plain"
+        assert sm.last_migrated_paths == ["api_key", "quota_alert.webhook_url"]
+        assert any("api_key" in r.message for r in caplog.records)
 
     def test_migration_mode_nested_plaintext_passthrough(self, monkeypatch, caplog):
         monkeypatch.setenv("DISABLE_ENCRYPTION", "1")

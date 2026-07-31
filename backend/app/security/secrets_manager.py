@@ -11,6 +11,12 @@ v2 (MEDIUM-5): 嵌套敏感字段（quota_alert.webhook_url）支持。
   正常模式明文 → warning + 透传 + 记录 last_migrated_paths（下次保存自动写回加密）；
   迁移模式明文 → info + 记录 last_migrated_paths；密文解密失败（InvalidToken）→ warning + 原样保留。
 - 输入 dict 永不被修改（deepcopy 纯函数语义）。
+
+v3 (auto-key): 傻瓜式启动。
+- 未设置 ENCRYPTION_KEY 且非迁移模式时，自动从 ``backend/.env`` 加载；
+  仍无则生成强随机 key 并持久化到 ``.env``（后续启动复用，避免重启后数据不可解）。
+- 顶层敏感字段明文改为与嵌套一致的宽容策略（透传 + 记录，保存时自动加密写回），
+  仅“密文解密失败”（InvalidToken，key 变更/数据损坏）抛 ValueError。
 """
 
 import base64
@@ -18,9 +24,12 @@ import copy
 import hashlib
 import logging
 import os
-from typing import Any, Dict, List
+import secrets as _secrets
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
+from dotenv import load_dotenv, set_key
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +65,11 @@ def _is_encrypted(value: str) -> bool:
     return value.startswith(_FERNET_PREFIX)
 
 
+def _default_env_file() -> Path:
+    """默认环境文件路径: ``backend/.env``（NoneBot 约定，独立于 cwd）."""
+    return Path(__file__).resolve().parent.parent.parent / ".env"
+
+
 class SecretsManager:
     """Manages Fernet-based encryption/decryption of sensitive config fields.
 
@@ -66,12 +80,17 @@ class SecretsManager:
         ``ENCRYPTION_KEY`` environment variable when not provided.
     """
 
-    def __init__(self, encryption_key: str = ""):
+    def __init__(self, encryption_key: str = "", env_file: Optional[Path] = None):
         self._disabled = os.environ.get("DISABLE_ENCRYPTION", "0") == "1"
         self._last_migrated: List[str] = []
+        self._env_file = Path(env_file) if env_file else _default_env_file()
 
         if not encryption_key:
             encryption_key = os.environ.get("ENCRYPTION_KEY", "")
+
+        if not encryption_key and not self._disabled:
+            # v3 傻瓜式启动: 无 key 时自动加载/生成并持久化，用户无需配置
+            encryption_key = self._load_or_create_key()
 
         # Always derive the key if provided — even in DISABLE_ENCRYPTION mode
         # so that already-encrypted fields can still be decrypted during migration.
@@ -89,6 +108,41 @@ class SecretsManager:
                 "ENCRYPTION_KEY environment variable is required. "
                 "Set DISABLE_ENCRYPTION=1 to read plaintext configs for migration."
             )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _load_or_create_key(self) -> str:
+        """加载 ``backend/.env`` 中的 ENCRYPTION_KEY；不存在则生成并持久化.
+
+        自动生成后写入 ``.env`` 文件，保证后续启动复用同一把 key
+        （否则每次重启都会重新生成，已加密数据将无法解密）。
+
+        Returns:
+            可用的 ENCRYPTION_KEY
+        """
+        load_dotenv(self._env_file, override=False)
+        key = os.environ.get("ENCRYPTION_KEY", "")
+        if key:
+            return key
+
+        key = _secrets.token_urlsafe(48)
+        os.environ["ENCRYPTION_KEY"] = key
+        try:
+            set_key(str(self._env_file), "ENCRYPTION_KEY", key, quote_mode="never")
+        except OSError as e:
+            logger.warning(
+                "Generated a new ENCRYPTION_KEY but could not persist it to %s: %s. "
+                "The key is only valid for this process.",
+                self._env_file,
+                e,
+            )
+        else:
+            logger.info(
+                "Generated a new ENCRYPTION_KEY and saved it to %s", self._env_file
+            )
+        return key
 
     # ------------------------------------------------------------------
     # Public API
@@ -144,13 +198,10 @@ class SecretsManager:
     def decrypt_dict(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """Return a new dict with encrypted string fields decrypted.
 
-        顶层字段语义严格（与 v1 一致）: 正常模式遇明文抛 ValueError；
-        ``DISABLE_ENCRYPTION=1`` 迁移模式透传明文。
-
-        嵌套敏感字段（NESTED_SENSITIVE_FIELDS）采用 v2 宽容策略:
-        - 正常模式明文 → warning + 透传 + 记录 last_migrated_paths（下次保存写回加密）
+        顶层与嵌套敏感字段均采用宽容策略（v3）:
+        - 正常模式明文 → warning + 透传 + 记录 last_migrated_paths（下次保存自动写回加密）
         - 迁移模式明文 → info + 记录 last_migrated_paths
-        - 密文解密失败（InvalidToken）→ warning + 原样保留
+        - 密文解密失败（InvalidToken）→ 顶层抛 ValueError；嵌套 warning + 原样保留
 
         输入 dict 不会被修改（deepcopy）。
         """
@@ -174,7 +225,8 @@ class SecretsManager:
                 # Plaintext values stay as-is
                 continue
 
-            # Normal mode: always decrypt (raises on non-encrypted values)
+            # Normal mode: encrypted → decrypt (raises on invalid token);
+            # plaintext → 宽容透传（与嵌套一致，下次保存自动加密写回）
             if _is_encrypted(value):
                 try:
                     result[field] = self._decrypt(value)
@@ -184,10 +236,11 @@ class SecretsManager:
                         "The encryption key may have changed or the data is corrupted."
                     ) from None
             else:
-                raise ValueError(
-                    f"Field '{field}' is stored in plaintext but encryption is enabled. "
-                    "Set DISABLE_ENCRYPTION=1 to read plaintext configs for migration."
+                logger.warning(
+                    "Field '%s' is stored in plaintext but encryption is enabled — "
+                    "passing through (will be encrypted on next save)", field
                 )
+                self._last_migrated.append(field)
 
         for container_key, nested_fields in NESTED_SENSITIVE_FIELDS.items():
             container = result.get(container_key)
