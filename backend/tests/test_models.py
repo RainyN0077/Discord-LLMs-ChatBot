@@ -89,6 +89,22 @@ class TestConfigModel:
         cfg = Config(**self._base_config(api_secret_key="my-secret-123"))
         assert cfg.api_secret_key == "my-secret-123"
 
+    def test_quota_alert_passthrough(self):
+        quota_alert = {
+            "enabled": True,
+            "webhook_url": "https://hooks.example.com/alert",
+            "token_limit": 5000,
+            "request_limit": 200,
+            "warning_threshold": 0.5,
+            "critical_threshold": 0.9,
+        }
+        cfg = Config(**self._base_config(quota_alert=quota_alert))
+        assert cfg.quota_alert == quota_alert
+
+    def test_quota_alert_default_none(self):
+        cfg = Config(**self._base_config())
+        assert cfg.quota_alert is None
+
 
 class TestDirectChatRequest:
     def test_empty_messages_valid(self):

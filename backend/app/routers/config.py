@@ -95,6 +95,9 @@ async def update_config_endpoint(config_data: Config):
         try:
             config_dict = config_data.model_dump(by_alias=True)
             config_dict.pop("_validation_warning", None)
+            # quota_alert 未提供 (None) 时不覆盖既有值; 显式清空请发送空对象 {}
+            if config_dict.get("quota_alert") is None:
+                config_dict.pop("quota_alert", None)
             save_config(config_dict)
             return {"message": "Configuration saved (no bot manager running)."}
         except Exception as e:
@@ -103,6 +106,9 @@ async def update_config_endpoint(config_data: Config):
 
     config_dict = config_data.model_dump(by_alias=True)
     config_dict.pop("_validation_warning", None)
+    # quota_alert 未提供 (None) 时不覆盖既有值; 显式清空请发送空对象 {}
+    if config_dict.get("quota_alert") is None:
+        config_dict.pop("quota_alert", None)
     bot_id = config_dict.get("bot_id") or DEFAULT_BOT_ID
 
     if bot_id in mgr._instances:

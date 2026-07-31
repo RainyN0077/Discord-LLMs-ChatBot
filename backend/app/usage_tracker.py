@@ -264,14 +264,15 @@ class UsageTracker:
         if _quota_snapshot is not None:
             _today, _daily_usage = _quota_snapshot
             _daily_quota = self._read_bot_quota_config(bot_id)
-            asyncio.create_task(
-                self._quota_alert_manager.check_and_alert(
-                    bot_id=bot_id,
-                    user_id=user_id,
-                    daily_usage=_daily_usage,
-                    daily_quota=_daily_quota,
+            if _daily_quota is not None:
+                asyncio.create_task(
+                    self._quota_alert_manager.check_and_alert(
+                        bot_id=bot_id,
+                        user_id=user_id,
+                        daily_usage=_daily_usage,
+                        daily_quota=_daily_quota,
+                    )
                 )
-            )
 
         # 异步保存
         self._schedule_save()
@@ -303,37 +304,58 @@ class UsageTracker:
         except Exception as e:
             logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
-    def _read_bot_quota_config(self, bot_id: str) -> Dict[str, Any]:
-        """从 Bot config 读取配额设置.
+    def _read_bot_quota_config(self, bot_id: str) -> Optional[Dict[str, Any]]:
+        """读取 Bot 配额告警配置 (None 语义).
 
-        Args:
-            bot_id: Bot 标识.
+        行为变更 (H1): 旧实现 quota_alert 缺失/未启用时返回默认配额 (1M/1000),
+        导致未启用告警的 Bot 按默认配额误报 WARNING/CRITICAL (虚假告警, 本修复
+        根治)。新实现: 缺失 / enabled=False / 配置无效 → None → 不触发告警;
+        告警必须显式启用。
+
+        严格模式 (M1): 配置无效即禁用该 Bot 全部告警, 保留 warning 日志提示
+        运维修复。
+
+        空串语义 (M2): webhook_url 为空串时不输出该键, 与「未配置」同义 →
+        check_and_alert 回退全局 webhook; 全局未配置 → 仅本地日志。无法表达
+        「启用告警但禁用 webhook」—— 禁用请用 enabled=False。
 
         Returns:
-            dict 包含 token_limit 和 request_limit，如果未配置则使用默认值.
+            完整配额告警配置 dict (token_limit / request_limit / webhook_url /
+            warning_threshold / critical_threshold, 不含 enabled), 或 None.
         """
         try:
             from .app_context import AppContext
+            from .alerting.quota_alert import QuotaAlertConfig
+            from pydantic import ValidationError
+
             ctx = AppContext.get()
             if ctx.bot_manager is None:
-                return {}
+                return None
             instance = ctx.bot_manager.get(bot_id)
             if instance is None:
-                return {}
+                return None
             config = instance.config
             if not config:
-                return {}
-            quota_alert = config.get("quota_alert", {})
-            if not quota_alert or not quota_alert.get("enabled", False):
-                # 不存在或未启用 → 使用默认配额限制
-                return {"token_limit": 1000000, "request_limit": 1000}
-            return {
-                "token_limit": quota_alert.get("token_limit", 1000000),
-                "request_limit": quota_alert.get("request_limit", 1000),
-            }
+                return None
+            quota_alert = config.get("quota_alert") or {}
+            if not quota_alert.get("enabled", False):
+                return None
+            cfg = QuotaAlertConfig.model_validate(quota_alert)
+        except ValidationError:
+            logger.warning(
+                "Invalid quota_alert config for bot '%s'; quota alerts skipped", bot_id,
+            )
+            return None
         except Exception:
-            logger.debug("Failed to read quota config for bot '%s'", bot_id, exc_info=True)
-            return {}
+            logger.warning(
+                "Failed to read quota config for bot '%s'; quota alerts skipped",
+                bot_id, exc_info=True,
+            )
+            return None
+        result = cfg.model_dump(exclude={"enabled"})
+        if not result.get("webhook_url"):
+            result.pop("webhook_url", None)
+        return result
 
     async def close(self) -> None:
         if hasattr(self, '_save_task') and self._save_task and not self._save_task.done():

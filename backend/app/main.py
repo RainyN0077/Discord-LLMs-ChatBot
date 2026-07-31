@@ -73,7 +73,13 @@ async def lifespan(app: FastAPI):
     )
     logger.info("ProviderPool initialized")
 
-    ctx.usage_tracker = UsageTracker()
+    from .alerting.quota_alert import QuotaAlertManager
+    ctx.quota_alert_manager = QuotaAlertManager()
+    logger.info("QuotaAlertManager initialized")
+
+    ctx.usage_tracker = UsageTracker(
+        quota_alert_manager=ctx.quota_alert_manager,
+    )
     await ctx.usage_tracker.initialize()
 
     generate_env_file()
@@ -87,6 +93,8 @@ async def lifespan(app: FastAPI):
         await driver._shutdown()
     if ctx.usage_tracker:
         await ctx.usage_tracker.close()
+    if ctx.quota_alert_manager is not None:
+        await ctx.quota_alert_manager.close()
     await ctx.bot_manager.shutdown()
 
 

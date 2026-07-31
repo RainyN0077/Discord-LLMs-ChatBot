@@ -8,10 +8,12 @@ Covers:
   - Edge cases (zero quota, zero usage)
 """
 import asyncio
+import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from app.alerting.quota_alert import (
     QuotaAlertConfig,
@@ -50,6 +52,15 @@ def _make_quota(token_limit=0, request_limit=0):
     return q
 
 
+class _FakeDatetime(datetime):
+    """datetime subclass with a mutable _now class attribute (for day-rollover tests)."""
+    _now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    @classmethod
+    def now(cls, tz=None):
+        return cls._now
+
+
 # =========================================================================
 # Test: QuotaAlertConfig
 # =========================================================================
@@ -84,6 +95,23 @@ class TestQuotaAlertConfig:
         """Empty webhook_url is valid (no webhook delivery, local log only)."""
         cfg = QuotaAlertConfig(enabled=True, webhook_url="")
         assert cfg.webhook_url == ""
+
+    def test_limit_defaults(self):
+        """token_limit/request_limit default to 1M/1000."""
+        cfg = QuotaAlertConfig()
+        assert cfg.token_limit == 1000000
+        assert cfg.request_limit == 1000
+
+    def test_limit_custom_values(self):
+        cfg = QuotaAlertConfig(enabled=True, token_limit=500000, request_limit=2000)
+        assert cfg.token_limit == 500000
+        assert cfg.request_limit == 2000
+
+    def test_negative_limit_rejected(self):
+        with pytest.raises(ValidationError):
+            QuotaAlertConfig(token_limit=-1)
+        with pytest.raises(ValidationError):
+            QuotaAlertConfig(request_limit=-1)
 
 
 # =========================================================================
@@ -288,6 +316,103 @@ class TestCheckAndAlert:
         )
         assert alert2 is None
 
+    @pytest.mark.asyncio
+    async def test_payload_quota_limit_whitelist(self, manager):
+        """quota_limit in the alert only carries whitelisted keys (MEDIUM-2)."""
+        daily_quota = {
+            "token_limit": 1000,
+            "request_limit": 100,
+            "warning_threshold": 0.8,
+            "critical_threshold": 0.95,
+            "webhook_url": "https://hooks.example.com/secret",
+            "future_sensitive_key": "should-not-leak",
+        }
+        alert = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=800),
+            daily_quota=daily_quota,
+        )
+        assert alert is not None
+        assert alert.quota_limit == {
+            "token_limit": 1000,
+            "request_limit": 100,
+            "warning_threshold": 0.8,
+            "critical_threshold": 0.95,
+        }
+
+    @pytest.mark.asyncio
+    async def test_per_call_thresholds_override(self, manager):
+        """daily_quota thresholds override manager constructor defaults."""
+        daily_quota = _make_quota(token_limit=1000)
+        daily_quota["warning_threshold"] = 0.5
+        daily_quota["critical_threshold"] = 0.9
+
+        alert_w = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=600),
+            daily_quota=daily_quota,
+        )
+        assert alert_w is not None
+        assert alert_w.level == QuotaAlertLevel.WARNING
+
+        alert_c = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=920),
+            daily_quota=daily_quota,
+        )
+        assert alert_c is not None
+        assert alert_c.level == QuotaAlertLevel.CRITICAL
+
+    @pytest.mark.asyncio
+    async def test_per_call_zero_threshold(self, manager):
+        """warning_threshold=0.0 is a legal value (is None check, not `or` fallback)."""
+        daily_quota = _make_quota(token_limit=1000)
+        daily_quota["warning_threshold"] = 0.0
+        daily_quota["critical_threshold"] = 0.9
+
+        # usage 100/1000 = 0.1, any usage >= 0.0 must be WARNING;
+        # if 0.0 were `or`-fallbacked to 0.80, this would be OK (no alert)
+        alert = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=100),
+            daily_quota=daily_quota,
+        )
+        assert alert is not None
+        assert alert.level == QuotaAlertLevel.WARNING
+
+    @pytest.mark.asyncio
+    async def test_cross_day_dedup_reset(self, manager, monkeypatch):
+        """Alert dedup key carries the date, so a new day re-alerts (M4)."""
+        monkeypatch.setattr(
+            "app.alerting.quota_alert.datetime", _FakeDatetime,
+        )
+        _FakeDatetime._now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+        alert_day1 = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=800),
+            daily_quota=_make_quota(token_limit=1000),
+        )
+        assert alert_day1 is not None
+
+        # Same day, same level → no repeat alert
+        alert_day1_again = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=850),
+            daily_quota=_make_quota(token_limit=1000),
+        )
+        assert alert_day1_again is None
+
+        # Next day → new dedup key → alert again
+        _FakeDatetime._now = datetime(2026, 1, 2, 12, 0, 0, tzinfo=timezone.utc)
+        alert_day2 = await manager.check_and_alert(
+            bot_id="test-bot", user_id=None,
+            daily_usage=_make_usage(total_tokens=800),
+            daily_quota=_make_quota(token_limit=1000),
+        )
+        assert alert_day2 is not None
+        assert alert_day2.level == QuotaAlertLevel.WARNING
+
 
 # =========================================================================
 # Test: Webhook URL validation (P0-7 SSRF prevention)
@@ -330,6 +455,58 @@ class TestValidateWebhookUrl:
         assert manager._validate_webhook_url("https://hooks.slack.com/services/xxx") is True
         assert manager._validate_webhook_url("https://example.com/webhook") is True
 
+    def test_numeric_hostnames_rejected(self, manager):
+        """Numeric/hex hostname forms accepted by glibc getaddrinfo must be rejected."""
+        assert manager._validate_webhook_url("https://2130706433/hook") is False
+        assert manager._validate_webhook_url("https://0x7f.0.0.1/hook") is False
+        assert manager._validate_webhook_url("https://127.1/hook") is False
+
+    def test_wildcard_redirect_domains_rejected(self, manager):
+        """Static wildcard DNS services (nip.io / sslip.io / xip.io) are rejected."""
+        assert manager._validate_webhook_url("https://127.0.0.1.nip.io/hook") is False
+        assert manager._validate_webhook_url("https://169.254.169.254.nip.io/hook") is False
+        assert manager._validate_webhook_url("https://10.0.0.1.sslip.io/hook") is False
+        assert manager._validate_webhook_url("https://sub.xip.io/hook") is False
+        assert manager._validate_webhook_url("https://nip.io/hook") is False
+        # Normal public webhook hosts remain allowed
+        assert manager._validate_webhook_url("https://hooks.example.com/hook") is True
+        assert manager._validate_webhook_url("https://webhook.site/abc") is True
+
+    def test_zone_id_rejected(self, manager):
+        """IPv6 zone-id forms are rejected before parsing."""
+        assert manager._validate_webhook_url("https://[fe80::1%25eth0]/hook") is False
+
+    def test_hostname_missing_rejected(self, manager):
+        assert manager._validate_webhook_url("https:///hook") is False
+        assert manager._validate_webhook_url("https://") is False
+
+    def test_trailing_dot_rejected(self, manager):
+        """Trailing-dot variants of blocked hostnames are rejected."""
+        assert manager._validate_webhook_url("https://localhost./hook") is False
+        assert manager._validate_webhook_url("https://127.0.0.1./hook") is False
+
+    def test_link_local_rejected(self, manager):
+        """Link-local addresses (cloud metadata endpoints) are rejected."""
+        assert manager._validate_webhook_url("https://169.254.169.254/latest/meta-data") is False
+        assert manager._validate_webhook_url("https://169.254.0.1/hook") is False
+        assert manager._validate_webhook_url("https://[fe80::1]/hook") is False
+
+    def test_ipv4_mapped_ipv6_rejected(self, manager):
+        """IPv4-mapped IPv6 addresses must be unwrapped and checked as IPv4."""
+        assert manager._validate_webhook_url("https://[::ffff:127.0.0.1]/hook") is False
+        assert manager._validate_webhook_url("https://[::ffff:10.0.0.1]/hook") is False
+        assert manager._validate_webhook_url("https://[::ffff:169.254.169.254]/hook") is False
+
+    def test_ipv4_mapped_public_allowed(self, manager):
+        assert manager._validate_webhook_url("https://[::ffff:8.8.8.8]/hook") is True
+
+    def test_multicast_rejected(self, manager):
+        assert manager._validate_webhook_url("https://224.0.0.1/hook") is False
+        assert manager._validate_webhook_url("https://[ff02::1]/hook") is False
+
+    def test_unspecified_rejected(self, manager):
+        assert manager._validate_webhook_url("https://[::]/hook") is False
+
 
 # =========================================================================
 # Test: Webhook delivery
@@ -368,7 +545,7 @@ class TestSendWebhook:
             call_kwargs = mock_session.return_value.post.call_args[1]
             assert call_kwargs["json"]["event"] == "quota_alert"
             assert call_kwargs["json"]["level"] == "warning"
-            assert call_kwargs["max_redirects"] == 0
+            assert call_kwargs["allow_redirects"] is False
 
     @pytest.mark.asyncio
     async def test_webhook_http_error_logged(self, manager_with_webhook):
@@ -432,6 +609,105 @@ class TestSendWebhook:
             )
             assert alert is not None
             mock_post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_redirect_not_followed(self, manager_with_webhook, caplog):
+        """Redirect responses (3xx) are not followed and are logged."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 302
+            mock_post_ctx = AsyncMock()
+            mock_post_ctx.__aenter__.return_value = mock_resp
+            mock_session.return_value.post.return_value = mock_post_ctx
+
+            with caplog.at_level(logging.WARNING):
+                alert = await manager_with_webhook.check_and_alert(
+                    bot_id="test-bot", user_id=None,
+                    daily_usage=_make_usage(total_tokens=800),
+                    daily_quota=_make_quota(token_limit=1000),
+                )
+            assert alert is not None
+            mock_session.return_value.post.assert_called_once()
+            call_kwargs = mock_session.return_value.post.call_args[1]
+            assert call_kwargs["allow_redirects"] is False
+            first_arg_url = mock_session.return_value.post.call_args[0][0]
+            assert "127.0.0.1" not in first_arg_url
+        assert "redirect not followed" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_effective_url_validated_not_global(self, manager_with_webhook):
+        """Per-call effective URL is validated; a malicious per-call URL is rejected
+        even when the global webhook is valid."""
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            daily_quota = _make_quota(token_limit=1000)
+            daily_quota["webhook_url"] = "https://localhost:9000/evil"
+            alert = await manager_with_webhook.check_and_alert(
+                bot_id="test-bot", user_id=None,
+                daily_usage=_make_usage(total_tokens=800),
+                daily_quota=daily_quota,
+            )
+            assert alert is not None
+            mock_post.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_per_call_webhook_used(self, manager):
+        """Per-call webhook_url wins when the manager has no global webhook."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_post_ctx = AsyncMock()
+            mock_post_ctx.__aenter__.return_value = mock_resp
+            mock_session.return_value.post.return_value = mock_post_ctx
+
+            daily_quota = _make_quota(token_limit=1000)
+            daily_quota["webhook_url"] = "https://hooks.example.com/per-bot"
+            alert = await manager.check_and_alert(
+                bot_id="test-bot", user_id=None,
+                daily_usage=_make_usage(total_tokens=800),
+                daily_quota=daily_quota,
+            )
+            assert alert is not None
+            mock_session.return_value.post.assert_called_once()
+            first_arg_url = mock_session.return_value.post.call_args[0][0]
+            assert first_arg_url == "https://hooks.example.com/per-bot"
+
+    @pytest.mark.asyncio
+    async def test_global_webhook_used_when_no_per_call(self, manager_with_webhook):
+        """Global webhook is used when daily_quota has no webhook_url key."""
+        with patch("aiohttp.ClientSession") as mock_session:
+            mock_resp = AsyncMock()
+            mock_resp.status = 200
+            mock_post_ctx = AsyncMock()
+            mock_post_ctx.__aenter__.return_value = mock_resp
+            mock_session.return_value.post.return_value = mock_post_ctx
+
+            alert = await manager_with_webhook.check_and_alert(
+                bot_id="test-bot", user_id=None,
+                daily_usage=_make_usage(total_tokens=800),
+                daily_quota=_make_quota(token_limit=1000),
+            )
+            assert alert is not None
+            mock_session.return_value.post.assert_called_once()
+            first_arg_url = mock_session.return_value.post.call_args[0][0]
+            assert first_arg_url == "https://hooks.example.com/alerts"
+
+    @pytest.mark.asyncio
+    async def test_rejection_log_masks_url(self, manager, caplog):
+        """Rejected URLs are logged in masked form (scheme://hostname only)."""
+        with patch("aiohttp.ClientSession.post") as mock_post:
+            with caplog.at_level(logging.WARNING):
+                daily_quota = _make_quota(token_limit=1000)
+                daily_quota["webhook_url"] = "https://localhost:8080/hack?token=SECRET"
+                alert = await manager.check_and_alert(
+                    bot_id="test-bot", user_id=None,
+                    daily_usage=_make_usage(total_tokens=800),
+                    daily_quota=daily_quota,
+                )
+            assert alert is not None
+            mock_post.assert_not_called()
+        assert "https://localhost:8080" in caplog.text
+        assert "SECRET" not in caplog.text
+        assert "/hack" not in caplog.text
 
 
 # =========================================================================

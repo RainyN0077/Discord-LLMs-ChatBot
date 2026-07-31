@@ -63,6 +63,8 @@ async def get_usage_tracker_dep():
     from .usage_tracker import UsageTracker
 
     logger.warning("No UsageTracker found on AppContext — creating a temporary instance")
-    t = UsageTracker()
+    t = UsageTracker(
+        quota_alert_manager=getattr(ctx, 'quota_alert_manager', None),
+    )
     await t.initialize()
     return t

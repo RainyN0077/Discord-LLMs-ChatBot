@@ -19,6 +19,7 @@ class AppContext:
         self.memory_cutoffs: Dict[int, datetime] = {}
         self.bot_tasks: Dict[str, Any] = {}
         self.usage_tracker: Any = None
+        self.quota_alert_manager: Any = None
 
     @classmethod
     def get(cls) -> "AppContext":

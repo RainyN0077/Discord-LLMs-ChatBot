@@ -143,8 +143,13 @@ class BotInstance:
 
         from .usage_tracker import UsageTracker
         from .core_logic.knowledge_manager import KnowledgeManager
+        from .app_context import AppContext
 
-        self._usage_tracker = UsageTracker(data_file=str(self.usage_path))
+        _ctx = AppContext.get()
+        self._usage_tracker = UsageTracker(
+            data_file=str(self.usage_path),
+            quota_alert_manager=getattr(_ctx, 'quota_alert_manager', None),
+        )
         await self._usage_tracker.initialize()
         self._knowledge_manager = KnowledgeManager(db_path=str(self.knowledge_path))
 
