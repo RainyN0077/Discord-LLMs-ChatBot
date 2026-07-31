@@ -12,6 +12,7 @@ import pkgutil
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 from app.ports.plugin_base import PluginBase
+from app.security.log_sanitizer import sanitize_message
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,35 @@ class PluginRegistry:
                             instance = attr(plugin_cfg, llm_caller)
                             self.register(name, instance)
                             self._loaded_modules.add(name)
+
+                    # 新增: legacy 插件回退 (Task 1.4.4 闭环)
+                    # 非 PluginBase 但带 handle_message 的普通类 → NBPluginAdapter 包装
+                    if (
+                        inspect.isclass(attr)
+                        and hasattr(attr, "handle_message")
+                        and not issubclass(attr, PluginBase)
+                    ):
+                        plugin_cfg = plugins_config.get(name, {})
+                        is_memory_plugin = name == "memory_plugin"
+                        if plugin_cfg.get("enabled", False) or is_memory_plugin:
+                            try:
+                                try:
+                                    instance = attr(plugin_cfg, llm_caller)
+                                except TypeError:
+                                    instance = attr()
+                                from ..adapters.plugin_context_adapter import wrap_plugin
+                                plugin = wrap_plugin(instance, plugin_cfg, llm_caller)
+                                self.register(name, plugin)
+                                self._loaded_modules.add(name)
+                                logger.info("Legacy plugin '%s' wrapped via NBPluginAdapter", name)
+                            except Exception as e:
+                                # Sec LOW-2: 异常消息可能含密钥等敏感信息，脱敏后记录
+                                logger.error(
+                                    "Failed to wrap legacy plugin %s: %s",
+                                    name,
+                                    sanitize_message(str(e)),
+                                    exc_info=True,
+                                )
             except Exception as e:
                 logger.error(
                     "Failed to load plugin module %s: %s", name, e, exc_info=True

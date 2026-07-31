@@ -4,10 +4,12 @@
 """
 
 import asyncio
+import functools
 import logging
 from typing import Any, Dict, Optional
 
 from ..ports.bot_runtime import BotRuntime, BotStatus
+from ..utils import log_task_exception
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +127,9 @@ class NoneBotRuntime(BotRuntime):
         """启动 Bot 运行时."""
         self._status = BotStatus.RUNNING
         self._reconnect_task = asyncio.create_task(self._reconnect_loop())
+        self._reconnect_task.add_done_callback(
+            functools.partial(log_task_exception, label="NoneBot reconnect loop")
+        )
         logger.info("NoneBotRuntime '%s' started with reconnect loop", self._bot_id)
 
     async def stop(self) -> None:

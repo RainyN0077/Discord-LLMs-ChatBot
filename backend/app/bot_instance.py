@@ -62,20 +62,46 @@ class BotInstance:
             import json
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            data = sm.decrypt_dict(data)
+            try:
+                data = sm.decrypt_dict(data)
+            except ValueError as e:
+                # Sec LOW-3: 与 config_cache.load_config 对齐 —— 顶层明文/错误 key 时给出
+                # 明确指引后继续抛出（bot_manager 已有兜底，跳过该 Bot 加载）
+                logger.error(
+                    "FATAL: per-bot config decryption failed for '%s': %s. "
+                    "Set DISABLE_ENCRYPTION=1 to read plaintext configs for migration.",
+                    self.bot_id,
+                    e,
+                )
+                raise
             from .config_cache import _set_defaults_recursive
             _set_defaults_recursive(DEFAULT_CONFIG, data)
             if not data.get("api_secret_key"):
                 data["api_secret_key"] = secrets.token_hex(32)
                 logger.warning("api_secret_key was empty in per-bot config, generated a new one")
+            # MEDIUM-5: 嵌套明文写回（正常模式 save_config 内部 encrypt_dict 幂等）
+            if sm.last_migrated_paths:
+                if sm.write_enabled:
+                    self.save_config(data)
+                else:
+                    logger.info(
+                        "Migration mode: nested plaintext fields %s left in place (no write-back)",
+                        sm.last_migrated_paths,
+                    )
         else:
             from copy import deepcopy
             data = deepcopy(DEFAULT_CONFIG)
             data["bot_id"] = self.bot_id
-            encrypted = sm.encrypt_dict(data)
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                import json
-                json.dump(encrypted, f, indent=2, ensure_ascii=False)
+            if sm.write_enabled:
+                encrypted = sm.encrypt_dict(data)
+                with open(self.config_path, "w", encoding="utf-8") as f:
+                    import json
+                    json.dump(encrypted, f, indent=2, ensure_ascii=False)
+            else:
+                logger.warning(
+                    "Migration mode: skipping write of new bot config for '%s'",
+                    self.bot_id,
+                )
         self.config = data
         self.config["bot_id"] = self.bot_id
         self.platform = data.get("platform", "discord")
@@ -155,16 +181,21 @@ class BotInstance:
 
         def _get_llm_response(messages_or_config, extra_messages=None, images=None):
             async def _inner():
-                from .llm_providers.factory import get_llm_provider
-                llm_provider = get_llm_provider(self.config)
+                from .llm_providers.factory import get_provider_pool
+                pool = get_provider_pool()
                 full_response = ""
                 if isinstance(messages_or_config, dict) and extra_messages is not None:
                     messages = extra_messages
                 else:
                     messages = messages_or_config
-                async for response_type, data in llm_provider.get_response_stream(messages, images, tools=[], tool_functions={}):
+                generator = await pool.execute(
+                    self.config, messages, images=images, tools=[], tool_functions={}
+                )
+                async for response_type, data in generator:
                     if response_type == "final":
                         full_response = data
+                        # MEDIUM-2: 显式关闭生成器，触发 pool 收敛重置（break 不再跳过收敛）
+                        await generator.aclose()
                         break
                 return full_response
             return _inner()
@@ -221,90 +252,6 @@ class BotInstance:
         if self._task is not None and not self._task.done():
             self._task.cancel()
         self._task = None
-
-    async def _nonebot_reconnect_loop(self) -> None:
-        """Background task: monitor NoneBot adapter health and reconnect on failure.
-
-        Catches unhandled exceptions from the NoneBot adapter context and
-        triggers exponential-backoff reconnection when the bot is in RUNNING
-        status.  After ``MAX_RECONNECT_ATTEMPTS`` consecutive failures the bot
-        is marked as ``STOPPED``.
-        """
-        MAX_RECONNECT_ATTEMPTS = 10
-        attempt = 0
-
-        try:
-            while self.status == BotStatus.RUNNING and attempt < MAX_RECONNECT_ATTEMPTS:
-                try:
-                    # Keep the task alive; real NoneBot adapter exceptions may
-                    # surface as CancelledError or generic Exception here.
-                    await asyncio.sleep(5)
-                except asyncio.CancelledError:
-                    logger.info("Bot '%s' NoneBot reconnect loop cancelled", self.bot_id)
-                    break
-                except Exception as exc:
-                    attempt += 1
-                    logger.error(
-                        "Bot '%s' NoneBot adapter error (%d/%d): %s",
-                        self.bot_id, attempt, MAX_RECONNECT_ATTEMPTS, exc,
-                    )
-                    if self.status == BotStatus.RUNNING:
-                        await self._reconnect_nonebot(attempt)
-                    continue
-
-            if attempt >= MAX_RECONNECT_ATTEMPTS and self.status == BotStatus.RUNNING:
-                logger.error(
-                    "Bot '%s' exceeded max NoneBot reconnect attempts (%d). Marking as error.",
-                    self.bot_id, MAX_RECONNECT_ATTEMPTS,
-                )
-                async with self._status_lock:
-                    self.status = BotStatus.STOPPED
-        except asyncio.CancelledError:
-            logger.info("Bot '%s' NoneBot reconnect loop cancelled (outer)", self.bot_id)
-
-    async def _reconnect_nonebot(self, attempt: int) -> None:
-        """Reconnect NoneBot adapter with exponential backoff.
-
-        Backoff sequence: 1s, 2s, 4s, 8s, ... capped at 60s.
-        Only proceeds when ``status == RUNNING``.
-        """
-        if self.status != BotStatus.RUNNING:
-            logger.info(
-                "Bot '%s' skip reconnect (status=%s)", self.bot_id, self.status.value,
-            )
-            return
-
-        base_delay = 1.0
-        max_delay = 60.0
-        delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
-
-        logger.warning(
-            "Bot '%s' NoneBot disconnected. Reconnecting in %.1fs (attempt %d) ...",
-            self.bot_id, delay, attempt,
-        )
-        await asyncio.sleep(delay)
-
-        if self.status != BotStatus.RUNNING:
-            logger.info(
-                "Bot '%s' abort reconnect (status changed to %s during backoff)",
-                self.bot_id, self.status.value,
-            )
-            return
-
-        try:
-            from nb_plugins.core_llm_bot.matchers import (
-                register_bot_instance,
-                unregister_bot_instance,
-            )
-            unregister_bot_instance(self.bot_id)
-            register_bot_instance(self.bot_id, self)
-            logger.info(
-                "Bot '%s' re-registered with NoneBot adapter (attempt %d)",
-                self.bot_id, attempt,
-            )
-        except Exception as e:
-            logger.error("Bot '%s' reconnect (re-register) failed: %s", self.bot_id, e)
-            raise
 
     async def stop(self) -> None:
         async with self._status_lock:

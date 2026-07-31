@@ -23,6 +23,26 @@ def _async_stub(return_value: Any = None) -> Callable[..., Awaitable[Any]]:
         return return_value
     return _fn
 
+
+def log_task_exception(task: "asyncio.Task", *, label: str = "") -> None:
+    """done_callback 助手: 检索任务异常并记录脱敏日志, 避免 'Task exception was never retrieved'.
+
+    Args:
+        task: 已完成/已取消的 asyncio.Task
+        label: 任务描述, 用于日志上下文
+    """
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        from .security.log_sanitizer import sanitize_message
+        logger.error(
+            "Unhandled error in task %s: %s: %s",
+            label or task.get_name(), type(e).__name__,
+            sanitize_message(str(e)),
+        )
+
 def _safe_text(value) -> str:
     text = str(value or "")
     return text.encode("utf-8", errors="replace").decode("utf-8", errors="replace")

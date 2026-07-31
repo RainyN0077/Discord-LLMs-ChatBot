@@ -71,7 +71,9 @@ class DiscordPlatformAdapter(PlatformAdapter):
                 is_bot=getattr(event.author, 'bot', False),
             )
         else:
-            author = AuthorInfo(id=author_id or "unknown", name="Unknown")
+            author = AuthorInfo(
+                id=author_id or "unknown", name="Unknown", display_name="Unknown"
+            )
 
         channel = ChannelInfo(id=str(getattr(event, "channel_id", "")))
 

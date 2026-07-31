@@ -11,7 +11,7 @@ from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from ..core_logic.context_builder import format_user_message_for_llm
 from ..dependencies import get_api_key
-from ..llm_providers.factory import get_llm_provider
+from ..llm_providers.factory import get_provider_pool
 from .. import state
 from ..models import (
     DirectChatRequest, DirectChatResponse, DirectChatDebugContext,
@@ -360,15 +360,10 @@ async def direct_chat(request: DirectChatRequest):
     runtime_config["stream_response"] = False
 
     try:
-        llm_provider = get_llm_provider(runtime_config)
-        full_response = ""
-        usage_data: Optional[Dict[str, int]] = None
-        async for response_type, data in llm_provider.get_response_stream(llm_messages, images=llm_images):
-            if response_type == "final":
-                full_response = str(data)
-            elif response_type == "usage" and isinstance(data, dict):
-                usage_data = data
-
+        pool = get_provider_pool()
+        full_response, usage_data = await pool.collect_full_response(
+            runtime_config, llm_messages, images=llm_images,
+        )
         if full_response.startswith("LLM_PROVIDER_ERROR:"):
             raise HTTPException(status_code=500, detail=full_response)
 
@@ -387,6 +382,9 @@ async def direct_chat(request: DirectChatRequest):
         }
     except HTTPException:
         raise
+    except RuntimeError:
+        logger.warning("Direct chat rejected by provider pool")
+        raise HTTPException(status_code=503, detail="LLM provider is temporarily unavailable. Please retry later.")
     except Exception as e:
         logger.error(f"Direct chat failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Direct chat failed. Check backend logs for details.")

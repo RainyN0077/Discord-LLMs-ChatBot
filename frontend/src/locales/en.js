@@ -9,7 +9,8 @@ export default {
     themeLight: 'Switch to light mode',
     appearance: 'Appearance',
     userOptions: 'User Options',
-    promptStudio: 'Prompt Studio'
+    promptStudio: 'Prompt Studio',
+    providers: 'Providers'
   },
   promptStudio: {
     title: 'Bot Behavior Configuration Center',
@@ -920,6 +921,33 @@ export default {
     selectBotFirst: 'Select a bot first',
     loadingConfig: 'Loading configuration for {botId}...',
     loading: 'Loading...',
+  },
+  providersPage: {
+    title: 'Provider Management — {botId}',
+    current: 'Current Provider',
+    currentModel: 'Current Model',
+    healthy: 'Healthy',
+    unhealthy: 'Unhealthy',
+    unknown: 'Unknown',
+    latency: '{ms}ms',
+    notConfigured: 'No API key configured',
+    currentTag: 'Current',
+    switchBtn: 'Switch',
+    switching: 'Switching...',
+    modelLabel: 'Model',
+    modelPlaceholder: 'Enter model name',
+    modelRequired: 'Please enter a model name',
+    apiKeyLabel: 'New API Key',
+    apiKeyRequired: 'Please enter an API key',
+    baseUrlLabel: 'Base URL (optional)',
+    switchSuccess: 'Switch succeeded, bot restarted',
+    switchFailed: 'Switch failed: {error}',
+    loadFailed: 'Failed to load providers: {error}',
+    noBotSelected: 'Select a bot from the sidebar first',
+    refresh: 'Refresh',
+    refreshing: 'Refreshing...',
+    loading: 'Loading providers...',
+    cancel: 'Cancel'
   },
   inferenceParams: {
     title: 'Inference Parameters (Optional)',

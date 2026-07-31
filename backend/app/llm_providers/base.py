@@ -5,9 +5,30 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 import logging
 
+from ..ports.llm_provider import ProviderHealth, QuotaInfo
+
 logger = logging.getLogger(__name__)
 
-class LLMProvider(ABC):
+
+def normalize_provider_name(name: Optional[str]) -> str:
+    """归一化提供商名称 — 与 factory 完全一致的归一化唯一来源.
+
+    ``None``/空值回退为 ``"openai"``；``"xai"`` 映射为 ``"grok"``（工厂内部
+    使用 grok 作为 xAI 提供商的注册名）；其余名称原样小写返回。
+
+    Args:
+        name: 配置中的提供商名称（可为 None/非 str）
+
+    Returns:
+        归一化后的提供商名称
+    """
+    normalized = (name or "openai").lower()
+    if normalized == "xai":
+        return "grok"
+    return normalized
+
+
+class LLMProvider(ProviderHealth, QuotaInfo, ABC):
     """
     抽象基类，定义了所有LLM提供商的统一接口。
     """
@@ -25,6 +46,16 @@ class LLMProvider(ABC):
         self.presence_penalty = config.get("presence_penalty")
         self.custom_headers = config.get("custom_headers", [])
         self.custom_params = {param["name"]: param["value"] for param in config.get("custom_parameters", [])}
+
+    @property
+    def provider_name(self) -> str:
+        """返回归一化提供商名称 (xai → grok)."""
+        return normalize_provider_name(self.config.get("llm_provider"))
+
+    @property
+    def model_name(self) -> str:
+        """返回生效模型名: openai_model_name 优先, 回退 model_name (factory 语义)."""
+        return (self.config.get("openai_model_name") or self.config.get("model_name") or "")
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} model={self.model!r}>"

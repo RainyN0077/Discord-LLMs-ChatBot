@@ -3,7 +3,7 @@ import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-from .llm_providers.factory import get_llm_provider
+from .llm_providers.factory import get_provider_pool
 
 logger = logging.getLogger(__name__)
 OCR_TIMEOUT_SECONDS = 15
@@ -149,7 +149,7 @@ async def extract_ocr_text(
         logger.warning("Invalid OCR prompt template detected. Falling back to default template.")
         user_prompt = DEFAULT_OCR_PROMPT_TEMPLATE.format(image_count=len(valid_images), image_list=image_list)
 
-    llm_provider = get_llm_provider(runtime_config)
+    pool = get_provider_pool()
     messages = [
         {"role": "system", "content": OCR_SYSTEM_PROMPT},
         {"role": "user", "content": user_prompt},
@@ -162,12 +162,15 @@ async def extract_ocr_text(
 
     async def _consume_ocr_stream() -> None:
         nonlocal final_response, usage_data
-        async for response_type, data in llm_provider.get_response_stream(
+        # runtime_config 含独立的 ocr_provider/ocr_model_name，形成独立 config_key
+        generator = await pool.execute(
+            runtime_config,
             messages,
             images=image_bytes,
             tools=[],
             tool_functions={},
-        ):
+        )
+        async for response_type, data in generator:
             if response_type == "final":
                 final_response = str(data or "")
             elif response_type == "usage" and isinstance(data, dict):

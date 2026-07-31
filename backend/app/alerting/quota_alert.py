@@ -343,4 +343,7 @@ class QuotaAlertManager:
         except asyncio.TimeoutError:
             logger.warning("Webhook timeout for bot %s", alert.bot_id)
         except Exception as e:
-            logger.warning("Webhook failed for bot %s: %s", alert.bot_id, e)
+            logger.warning(
+                "Webhook failed for bot %s: %s (url=%s)",
+                alert.bot_id, type(e).__name__, self._redact_url(webhook_url or ""),
+            )

@@ -447,6 +447,19 @@ export async function fetchBotDiagnostics(botId) {
     return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/diagnostics`);
 }
 
+// --- Provider Management API ---
+export async function fetchProviders(botId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/providers`);
+}
+
+export async function switchProvider(botId, payload) {
+    // 后端 ProviderSwitchRequest 字段为 { provider, model, api_key, base_url? }
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/providers/switch`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
 // --- Interaction History API ---
 export async function fetchInteractionTree(botId, filters = {}) {
     const params = new URLSearchParams();

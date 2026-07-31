@@ -5,10 +5,12 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import asyncio
+import functools
 from collections import defaultdict
 import pytz
 
 from .paths import DataPaths
+from .utils import log_task_exception
 
 logger = logging.getLogger(__name__)
 
@@ -265,13 +267,16 @@ class UsageTracker:
             _today, _daily_usage = _quota_snapshot
             _daily_quota = self._read_bot_quota_config(bot_id)
             if _daily_quota is not None:
-                asyncio.create_task(
+                _alert_task = asyncio.create_task(
                     self._quota_alert_manager.check_and_alert(
                         bot_id=bot_id,
                         user_id=user_id,
                         daily_usage=_daily_usage,
                         daily_quota=_daily_quota,
                     )
+                )
+                _alert_task.add_done_callback(
+                    functools.partial(log_task_exception, label="quota alert")
                 )
 
         # 异步保存

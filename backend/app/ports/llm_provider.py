@@ -2,8 +2,8 @@
 
 用于解耦 LLM 提供商的可观测性需求。
 
-NOTE: ProviderHealth and QuotaInfo are interface definitions for future waves.
-In Wave 1, only the contract is defined. Implementation will come in Wave 3.
+实现状态: ProviderHealth/QuotaInfo 契约已由 ``llm_providers.base.LLMProvider``
+（显式继承）及各具体提供商实现，不再是未来 Wave 的占位接口。
 """
 
 from abc import ABC, abstractmethod
@@ -44,7 +44,7 @@ class QuotaInfo(ABC):
         ...
 
     @abstractmethod
-    def get_usage_stats(self) -> Dict[str, Any]:
+    async def get_usage_stats(self) -> Dict[str, Any]:
         """返回用量统计.
 
         Returns:

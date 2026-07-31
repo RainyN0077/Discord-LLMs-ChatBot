@@ -2,7 +2,7 @@
 import os
 from typing import Any, Dict, Optional, Type
 
-from .base import LLMProvider
+from .base import LLMProvider, normalize_provider_name
 from .openai_provider import OpenAIProvider
 from .google_provider import GoogleProvider
 from .anthropic_provider import AnthropicProvider
@@ -62,9 +62,7 @@ def _make_cache_key(config: Dict[str, Any]) -> str:
     string.  Includes model_name so that different models from the same
     provider+credential get separate cache entries.
     """
-    provider = config.get("llm_provider", "openai").lower()
-    if provider == "xai":
-        provider = "grok"
+    provider = normalize_provider_name(config.get("llm_provider"))
     api_key = config.get("openai_api_key", "") or config.get("api_key", "") or ""
     api_prefix = api_key[:8]
     base_url = config.get("openai_base_url") or config.get("base_url") or ""
@@ -121,9 +119,7 @@ def get_llm_provider(config: Dict[str, Any]) -> LLMProvider:
     if cached is not None:
         return cached
 
-    provider_name = config.get("llm_provider", "openai").lower()
-    if provider_name == "xai":
-        provider_name = "grok"
+    provider_name = normalize_provider_name(config.get("llm_provider"))
 
     provider_config = dict(config)
     if provider_name in PROVIDER_BASE_URLS:

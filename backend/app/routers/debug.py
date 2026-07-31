@@ -9,7 +9,7 @@ from ..core_logic.persona_manager import determine_bot_persona, build_system_pro
 from ..core_logic.context_builder import format_user_message_for_llm
 from ..debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from ..dependencies import get_api_key
-from ..llm_providers.factory import get_llm_provider
+from ..llm_providers.factory import get_provider_pool
 from ..models import (
     DebuggerRequest, DebugCaptureSummary, DebugCaptureDetail,
     DebugSanitizeRequest, DebugSanitizeResponse,
@@ -84,11 +84,16 @@ async def simulate_debugger_run(request: DebuggerRequest):
         {"role": "user", "content": formatted_content},
     ]
 
-    llm_provider = get_llm_provider(config)
-    llm_response = ""
-    async for response_type, data in llm_provider.get_response_stream(llm_messages):
-        if response_type in ("partial", "final"):
-            llm_response = str(data)
+    try:
+        pool = get_provider_pool()
+        generator = await pool.execute(config, llm_messages)
+        llm_response = ""
+        async for response_type, data in generator:
+            if response_type in ("partial", "final"):
+                llm_response = str(data)
+    except RuntimeError:
+        logger.warning("Debug simulate rejected by provider pool")
+        raise HTTPException(status_code=503, detail="LLM provider is temporarily unavailable. Please retry later.")
 
     return {
         "generated_system_prompt": system_prompt,

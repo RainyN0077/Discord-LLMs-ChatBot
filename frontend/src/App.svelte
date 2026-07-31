@@ -19,6 +19,7 @@
         debug: () => import('./pages/Debugger.svelte'),
         userOptions: () => import('./pages/UserOptions.svelte'),
         promptStudio: () => import('./pages/PromptStudio.svelte'),
+        providers: () => import('./pages/Providers.svelte'),
     };
     let configPromise;
     let modelsPromise;
@@ -26,6 +27,7 @@
     let debugPromise;
     let userOptionsPromise;
     let promptStudioPromise;
+    let providersPromise;
 
     const pageCache = {};
 
@@ -51,6 +53,7 @@
                 case 'debug': debugPromise = promise; break;
                 case 'userOptions': userOptionsPromise = promise; break;
                 case 'promptStudio': promptStudioPromise = promise; break;
+                case 'providers': providersPromise = promise; break;
             }
         }
     }
@@ -170,6 +173,10 @@
                     </svg>
                     {$t('appNav.promptStudio')}
                 </button>
+                <button class:active={$activePage === 'providers'} on:click={() => activePage.set('providers')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                    {$t('appNav.providers')}
+                </button>
             </nav>
             <div class="lang-switcher">
                 <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
@@ -210,6 +217,16 @@
                             <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
                         {:then Module}
                             <svelte:component this={Module.default} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
+                    </div>
+                {:else if $activePage === 'providers'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        {#await providersPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
                         {:catch err}
                             <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
                         {/await}

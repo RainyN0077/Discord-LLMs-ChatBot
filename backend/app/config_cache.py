@@ -143,10 +143,30 @@ def load_config() -> Dict[str, Any]:
             if not data.get("api_secret_key"):
                 data["api_secret_key"] = secrets.token_hex(32)
                 logger.warning("api_secret_key was empty in config.json, generated a new one")
-            save_config(data)
+            if _secrets_manager.write_enabled:
+                # 正常模式: 写回（encrypt_dict 幂等，自动完成嵌套明文加密写回）
+                save_config(data)
+            else:
+                # 迁移模式 (MEDIUM-5): 只读加载，不写盘
+                migrated = _secrets_manager.last_migrated_paths
+                if migrated:
+                    logger.info(
+                        "Migration mode: nested plaintext fields %s left in place (no write-back)",
+                        migrated,
+                    )
+                else:
+                    logger.info("Migration mode: config loaded read-only, no write-back")
             return data
         except json.JSONDecodeError as e:
             logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
+        except ValueError as e:
+            logger.error(
+                f"FATAL: config decryption failed: {e}. "
+                "Set DISABLE_ENCRYPTION=1 to read plaintext configs for migration."
+            )
             _cache = dict(DEFAULT_CONFIG)
             _cache_mtime = 0.0
             return _cache

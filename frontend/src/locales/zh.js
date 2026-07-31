@@ -17,7 +17,8 @@ export default {
     themeLight: '切换到浅色模式',
     userOptions: '用户选项',
     appearance: '外观设置',
-    promptStudio: '提示词工坊'
+    promptStudio: '提示词工坊',
+    providers: '提供商管理'
   },
   buttons: {
     save: '保存配置并重启 Bot',
@@ -630,6 +631,33 @@ export default {
     selectBotFirst: '请先选择一个 Bot',
     loadingConfig: '正在加载 {botId} 的配置...',
     loading: '加载中...',
+  },
+  providersPage: {
+    title: '提供商管理 — {botId}',
+    current: '当前提供商',
+    currentModel: '当前模型',
+    healthy: '健康',
+    unhealthy: '不健康',
+    unknown: '未知',
+    latency: '{ms}ms',
+    notConfigured: '未配置 API Key',
+    currentTag: '当前',
+    switchBtn: '切换',
+    switching: '切换中...',
+    modelLabel: '模型',
+    modelPlaceholder: '输入模型名称',
+    modelRequired: '请输入模型名称',
+    apiKeyLabel: '新 API Key',
+    apiKeyRequired: '请输入 API Key',
+    baseUrlLabel: 'Base URL（可选）',
+    switchSuccess: '切换成功，Bot 已重启',
+    switchFailed: '切换失败：{error}',
+    loadFailed: '加载提供商失败：{error}',
+    noBotSelected: '请先在左侧选择一个 Bot',
+    refresh: '刷新',
+    refreshing: '刷新中...',
+    loading: '正在加载提供商列表...',
+    cancel: '取消'
   },
   inferenceParams: {
     title: '推理参数（可选）',

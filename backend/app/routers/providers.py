@@ -140,6 +140,7 @@ async def list_providers(bot_id: str):
     """获取 Bot 的 Provider 列表和健康状态.
 
     并行检查所有已配置 Provider 的健康状态，每个检查独立超时 10 秒。
+    使用健康检查缓存（非 force），避免每次页面加载都触发真实 LLM ping（MEDIUM-1a）。
     """
     mgr, instance = _resolve_bot_id(bot_id)
     config: Dict[str, Any] = instance.config or {}
@@ -181,8 +182,10 @@ async def list_providers(bot_id: str):
             )
         try:
             pool = get_provider_pool()
+            # MEDIUM-1a: 列表页利用缓存（非 force），300s 内不重复真实 ping；
+            # 切换路径仍使用 force=True 主动验证目标 Provider
             health = await asyncio.wait_for(
-                pool.check_provider_health(pc["test_config"], force=True),
+                pool.check_provider_health(pc["test_config"]),
                 timeout=10.0,
             )
             return ProviderInfo(
@@ -340,9 +343,15 @@ async def _switch_provider_impl(
             await mgr.restart(bot_id)
         except Exception as rollback_e:
             logger.exception("Rollback restart also failed for '%s': %s", bot_id, rollback_e)
+        # Sec LOW-1: 不向客户端回显原始异常（可能含敏感信息），仅记录类型
+        logger.warning(
+            "Provider switch rollback for bot '%s': restart failed (%s)",
+            bot_id,
+            type(e).__name__,
+        )
         raise HTTPException(
             status_code=500,
-            detail=f"Restart failed, config rolled back: {e}",
+            detail="Bot restart failed. Config rolled back.",
         )
 
     # ---- Phase 5: 验证新 Provider 正常 ----
