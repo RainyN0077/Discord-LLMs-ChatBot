@@ -11,10 +11,42 @@ from ..dependencies import get_api_key
 from ..models import BotInstanceStatus, Config, CreateBotRequest
 from ..config_cache import DATA_DIR, normalize_config
 from .. import state
+# F-3: 复用 prompts 路由的模板结构校验（4 必填键 + operational_instructions 类型）。
+from .prompts import _validate_templates
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/bots", dependencies=[Depends(get_api_key)])
+
+#: 单模板长度上限（字符），超限 400（防超长模板拖慢/击穿上下文构建）。
+MAX_PROMPT_TEMPLATE_LENGTH = 8000
+
+
+def _validate_prompt_templates(value: Any) -> None:
+    """校验 config 中的 ``prompt_templates``（复用 prompts._validate_templates）.
+
+    ``None`` 放行（显式清除模板语义）；非 None 须通过预设同款结构校验，
+    任一模板（含操作指令条目）超过长度上限 → 400。不合法时抛 400 HTTPException。
+    """
+    if value is None:
+        return
+    _validate_templates(value)
+    for key, item in value.items():
+        if isinstance(item, str) and len(item) > MAX_PROMPT_TEMPLATE_LENGTH:
+            raise HTTPException(
+                status_code=400,
+                detail=f"模板 '{key}' 超过长度上限 {MAX_PROMPT_TEMPLATE_LENGTH} 字符。",
+            )
+        if isinstance(item, list):
+            for idx, entry in enumerate(item, start=1):
+                if isinstance(entry, str) and len(entry) > MAX_PROMPT_TEMPLATE_LENGTH:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            f"操作指令 #{idx} 超过长度上限 "
+                            f"{MAX_PROMPT_TEMPLATE_LENGTH} 字符。"
+                        ),
+                    )
 
 
 def _get_manager():
@@ -103,6 +135,9 @@ async def get_bot_config(bot_id: str) -> Dict[str, Any]:
 @router.put("/{bot_id}/config", summary="更新 Bot 配置", description="更新指定 Bot 的配置字段。如果 Bot 已启用，会自动重启以应用新配置。")
 async def update_bot_config(bot_id: str, config_data: Dict[str, Any]) -> Dict[str, Any]:
     mgr, instance = _resolve_bot_id(bot_id)
+    # F-3: 保存链路校验 prompt_templates（非法 400，避免坏模板静默入库）。
+    if "prompt_templates" in config_data:
+        _validate_prompt_templates(config_data["prompt_templates"])
     try:
         import copy
         merged = copy.deepcopy(instance.config)
@@ -190,6 +225,10 @@ async def import_bot_config(
         raise HTTPException(status_code=400, detail="Provide either a JSON file upload or config_json form field")
 
     normalized = normalize_config(data)
+
+    # F-3: 导入链路同样校验 prompt_templates（非法 400）。
+    if "prompt_templates" in normalized:
+        _validate_prompt_templates(normalized["prompt_templates"])
 
     bot_id = str(normalized.get("bot_id") or "").strip()
     if not bot_id:

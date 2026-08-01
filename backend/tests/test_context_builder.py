@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 pytestmark = [pytest.mark.unit]
 from app.utils import Stub, _async_stub
@@ -6,6 +8,8 @@ from app.core_logic.context_builder import format_user_message_for_llm
 from app.core_logic.context_builder import build_context_history
 from app.core_logic.context_builder import (
     USER_REQUEST_BLOCK_TPL,
+    USER_MESSAGE_TPL,
+    _format_tpl,
     format_memory_context,
     resolve_prompt_templates,
 )
@@ -813,3 +817,90 @@ class TestFormatMemoryContext:
     ])
     def test_inapplicable_returns_none(self, templates):
         assert format_memory_context(templates, "MEM") is None
+
+
+class TestFormatTplAttributeAccess:
+    """F-1：模板属性访问表达式（{content.upper()} / {data.nonexistent_attr}）不再崩溃.
+
+    AttributeError 此前未捕获：{content.nonexistent_attr} 等属性访问模板会导致
+    pipeline 消息静默丢弃 / chat·debug 500。修复后属性表达式正常格式化，
+    不存在属性时回退默认（format_memory_context 返回 None，调用方保持旧拼接）。
+    """
+
+    def test_format_tpl_attribute_expression_works(self):
+        """{content.upper()}（属性调用语法，str.format 不支持）→ AttributeError → 回退默认，无异常."""
+        result = _format_tpl(
+            "{content.upper()} {content}", USER_MESSAGE_TPL,
+            author_id_str="u1", content="hi", image_note="",
+        )
+        assert result == "[u1]: hi"
+
+    def test_format_tpl_missing_attribute_falls_back(self):
+        """{content.nonexistent_attr} 属性不存在 → AttributeError → 回退默认常量."""
+        result = _format_tpl(
+            "{content.nonexistent_attr}", USER_MESSAGE_TPL,
+            author_id_str="u1", content="hi", image_note="",
+        )
+        assert result == "[u1]: hi"
+
+    def test_format_memory_context_attribute_expression_works(self):
+        """memory_context 含 {data.upper()}（属性调用语法）→ AttributeError → None（旧拼接回退）."""
+        result = format_memory_context({"memory_context": "记忆块:\n{data.upper()}"}, "MEM")
+        assert result is None
+
+    def test_format_memory_context_missing_attribute_returns_none(self):
+        """memory_context 含 {data.nonexistent_attr} → AttributeError → None（旧拼接回退）."""
+        result = format_memory_context({"memory_context": "记忆块:\n{data.nonexistent_attr}"}, "MEM")
+        assert result is None
+
+
+class TestFormatTplFallbackWarning:
+    """F-2：回退告警仅自定义模板（tpl_key 提供）时记录，含键名不含模板内容."""
+
+    def test_fallback_logs_warning_with_tpl_key(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="app.core_logic.context_builder"):
+            result = _format_tpl(
+                "{author_name}", USER_MESSAGE_TPL,
+                tpl_key="message_format",
+                author_id_str="u1", content="hi", image_note="",
+            )
+        assert result == "[u1]: hi"
+        messages = [r.message for r in caplog.records]
+        assert any("template 'message_format' fallback to default (key=author_name)" in m for m in messages)
+
+    def test_fallback_no_warning_without_tpl_key(self, caplog):
+        """默认路径（未提供 tpl_key）回退不记录，避免每消息刷屏."""
+        with caplog.at_level(logging.WARNING, logger="app.core_logic.context_builder"):
+            _format_tpl(
+                "{author_name}", USER_MESSAGE_TPL,
+                author_id_str="u1", content="hi", image_note="",
+            )
+        assert not any("fallback to default" in r.message for r in caplog.records)
+
+    def test_fallback_warning_logs_key_only_not_content(self, caplog):
+        """告警日志不得包含模板内容/用户数据（仅键名与缺失占位符）."""
+        with caplog.at_level(logging.WARNING, logger="app.core_logic.context_builder"):
+            _format_tpl(
+                "SECRET-PAYLOAD-{author_name}-SECRET", USER_MESSAGE_TPL,
+                tpl_key="message_format",
+                author_id_str="u1", content="hi", image_note="",
+            )
+        for record in caplog.records:
+            assert "SECRET-PAYLOAD" not in record.message
+            assert "hi" not in record.message
+
+    async def test_runtime_message_format_fallback_logs_with_key(self, caplog, mock_discord_message, mock_discord_bot):
+        """format_user_message_for_llm 自定义坏模板 → 回退 + 键名告警（仅 templates 提供时）."""
+        msg = mock_discord_message(content="Hello world")
+        templates = {"message_format": "{author_name}"}
+        with caplog.at_level(logging.WARNING, logger="app.core_logic.context_builder"):
+            result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert "Hello world" in result
+        assert any("template 'message_format' fallback to default (key=author_name)" in r.message for r in caplog.records)
+
+    async def test_runtime_default_path_no_warning(self, caplog, mock_discord_message, mock_discord_bot):
+        """templates=None（默认路径）→ 不产生回退告警（避免每消息刷屏）."""
+        msg = mock_discord_message(content="Hello world")
+        with caplog.at_level(logging.WARNING, logger="app.core_logic.context_builder"):
+            await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=None)
+        assert not any("fallback to default" in r.message for r in caplog.records)

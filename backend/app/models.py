@@ -192,6 +192,7 @@ class Config(BaseModel):
     custom_parameters: List[CustomParameter] = Field(default_factory=list)
     plugins: Dict[str, PluginConfig] = Field(default_factory=dict)
     quota_alert: Optional[Dict[str, Any]] = None
+    prompt_templates: Optional[Dict[str, Any]] = None
     api_secret_key: str
 
 

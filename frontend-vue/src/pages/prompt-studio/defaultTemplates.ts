@@ -20,7 +20,9 @@ export const REQUIRED_TEMPLATE_KEYS = [
 /** 14-key default templates: 4 required + 10 optional + instruction list. */
 export const DEFAULT_TEMPLATES: PromptTemplate = {
   // Required (4) — non-empty defaults
-  message_format: '「{author_name}」说：\n{content}',
+  // Placeholder must match the runtime kwargs (author_id_str/content/image_note);
+  // the legacy {author_name} always fell back to the default (silent failure).
+  message_format: '「{author_id_str}」说：\n{content}',
   user_request_block: '<user_request>\n{parts}\n</user_request>',
   system_prompt_foundation_header: '你是一个乐于助人的 AI 助手，请根据以下信息回答用户的问题。',
   operational_instructions: [],
@@ -82,9 +84,9 @@ export const TEMPLATE_SECTIONS: TemplateSection[] = [
   },
 ]
 
-/** Placeholder hints per template key (legacy parity). */
+/** Placeholder hints per template key (legacy parity; runtime kwargs use author_id_str). */
 export const TEMPLATE_PLACEHOLDERS: Record<string, string[]> = {
-  message_format: ['{author_id}', '{content}', '{image_note}'],
+  message_format: ['{author_id_str}', '{content}', '{image_note}'],
   image_note: ['{count}'],
   reply_context: ['{author_info}', '{replied_content}'],
   tool_context: ['{data}'],

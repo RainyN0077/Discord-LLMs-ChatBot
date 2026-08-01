@@ -50,7 +50,9 @@ export default {
       addInstruction: "Add Instruction",
       removeInstruction: "Remove",
       availablePlaceholders: "Available placeholders",
-      instructionPlaceholder: "Enter an instruction"
+      instructionPlaceholder: "Enter an instruction",
+      securityWarningUserRequestBlock: "This template wraps injected content in tags to defend against prompt injection; removing the {placeholder} placeholder weakens that defense.",
+      securityWarningMemoryContext: "This template wraps knowledge content in <knowledge> tags; removing the {placeholder} placeholder weakens that defense."
     },
     simulator: {
       title: "Scenario Simulator",

@@ -26,6 +26,26 @@ class TestConfigRoutes:
         response = await app_client.post("/api/config", json={"invalid": "body"}, headers=auth_headers)
         assert response.status_code == 422
 
+    async def test_post_config_preserves_prompt_templates(self, app_client, auth_headers, monkeypatch, test_config_dict):
+        """F-3: Config 模型补 prompt_templates 字段后，/api/config 保存不再静默丢弃该键."""
+        import app.config_cache as cc
+        from app import state
+
+        monkeypatch.setattr(state, "bot_manager", None)
+        templates = {
+            "message_format": "「{author_id_str}」说：\n{content}",
+            "user_request_block": "<user_request>\n{parts}\n</user_request>",
+            "system_prompt_foundation_header": "你是一个乐于助人的 AI 助手。",
+            "operational_instructions": ["保持简洁"],
+        }
+        body = {**test_config_dict, "prompt_templates": templates}
+        response = await app_client.post("/api/config", json=body, headers=auth_headers)
+        assert response.status_code == 200
+
+        cc.invalidate_cache()
+        saved = cc.load_config()
+        assert saved.get("prompt_templates") == templates
+
     async def test_post_config_with_wrong_api_key(self, app_client, bad_auth_headers):
         response = await app_client.post("/api/config", json={}, headers=bad_auth_headers)
         assert response.status_code == 403

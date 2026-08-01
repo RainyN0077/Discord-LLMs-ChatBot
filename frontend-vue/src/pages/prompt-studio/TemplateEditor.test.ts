@@ -21,7 +21,7 @@ import type { PromptTemplate } from '@/api/prompts'
 
 function makeTemplates(): PromptTemplate {
   return {
-    message_format: '「{author_name}」说：\n{content}',
+    message_format: '「{author_id_str}」说：\n{content}',
     image_note: '[图片 x{count}]',
     reply_context: '',
     deleted_reply_context: '',
@@ -74,8 +74,8 @@ function textarea(wrapper: VueWrapper): { value: () => string; set: (v: string) 
 describe('TemplateEditor — placeholder token rendering', () => {
   it('renders the message_format tokens by default with the current value', () => {
     const wrapper = mountEditor()
-    expect(textarea(wrapper).value()).toBe('「{author_name}」说：\n{content}')
-    expect(placeholderTags(wrapper)).toEqual(['{author_id}', '{content}', '{image_note}'])
+    expect(textarea(wrapper).value()).toBe('「{author_id_str}」说：\n{content}')
+    expect(placeholderTags(wrapper)).toEqual(['{author_id_str}', '{content}', '{image_note}'])
   })
 
   it('switching keys swaps the placeholder token list and the textarea value', async () => {
@@ -97,6 +97,34 @@ describe('TemplateEditor — placeholder token rendering', () => {
     await clickNav(wrapper, '当前人设标题')
     expect(textarea(wrapper).value()).toBe('')
     expect(wrapper.find('.template-editor-placeholders').exists()).toBe(false)
+  })
+})
+
+describe('TemplateEditor — security semantic warnings (F-4)', () => {
+  it('warns on user_request_block about the {parts} placeholder', async () => {
+    const wrapper = mountEditor()
+    await clickNav(wrapper, '用户请求块')
+    const warning = wrapper.find('.template-editor-security-warning')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain('{parts}')
+    expect(warning.text()).toContain('防御')
+  })
+
+  it('warns on memory_context about the {data} placeholder', async () => {
+    const wrapper = mountEditor()
+    await clickNav(wrapper, '长期记忆')
+    const warning = wrapper.find('.template-editor-security-warning')
+    expect(warning.exists()).toBe(true)
+    expect(warning.text()).toContain('{data}')
+    expect(warning.text()).toContain('<knowledge>')
+  })
+
+  it('shows no warning on other keys', async () => {
+    const wrapper = mountEditor()
+    // Default key (message_format) has no warning.
+    expect(wrapper.find('.template-editor-security-warning').exists()).toBe(false)
+    await clickNav(wrapper, '工具输出')
+    expect(wrapper.find('.template-editor-security-warning').exists()).toBe(false)
   })
 })
 

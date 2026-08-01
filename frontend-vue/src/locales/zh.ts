@@ -884,7 +884,9 @@ export default {
       addInstruction: "添加新指令",
       removeInstruction: "移除",
       availablePlaceholders: "可用占位符",
-      instructionPlaceholder: "输入一条指令"
+      instructionPlaceholder: "输入一条指令",
+      securityWarningUserRequestBlock: "该模板以标签包裹注入内容以防御提示注入，删除 {placeholder} 占位符将削弱安全语义。",
+      securityWarningMemoryContext: "该模板以 <knowledge> 标签包裹知识内容，删除 {placeholder} 占位符将削弱安全语义。"
     },
     simulator: {
       title: "场景模拟器",

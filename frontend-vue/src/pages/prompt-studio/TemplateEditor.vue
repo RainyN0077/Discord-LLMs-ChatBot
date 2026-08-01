@@ -55,6 +55,25 @@ function updateInstruction(index: number, value: string): void {
 
 const selectedPlaceholders = computed(() => TEMPLATE_PLACEHOLDERS[selectedKey.value] ?? [])
 
+/**
+ * F-4: Semantic security warnings for keys that wrap injected content in
+ * defense tags (user_request_block / memory_context). Removing the
+ * {parts}/{data} placeholder silently breaks the prompt-injection defense.
+ */
+const selectedSecurityWarning = computed<string>(() => {
+  if (selectedKey.value === 'user_request_block') {
+    return t('promptStudio.editor.securityWarningUserRequestBlock', {
+      placeholder: '{parts}',
+    })
+  }
+  if (selectedKey.value === 'memory_context') {
+    return t('promptStudio.editor.securityWarningMemoryContext', {
+      placeholder: '{data}',
+    })
+  }
+  return ''
+})
+
 const selectedLabelKey = computed(
   () =>
     TEMPLATE_SECTIONS.flatMap((s) => s.items).find((i) => i.key === selectedKey.value)
@@ -102,6 +121,13 @@ const selectedLabelKey = computed(
           class="template-editor-textarea"
           @update:value="(v: string) => updateValue(selectedKey, v)"
         />
+        <div
+          v-if="selectedSecurityWarning"
+          class="template-editor-security-warning"
+          role="alert"
+        >
+          {{ selectedSecurityWarning }}
+        </div>
         <div v-if="selectedPlaceholders.length" class="template-editor-placeholders">
           <strong>{{ t('promptStudio.editor.availablePlaceholders') }}:</strong>
           <n-tag v-for="p in selectedPlaceholders" :key="p" size="small" class="placeholder-tag">
@@ -205,6 +231,17 @@ const selectedLabelKey = computed(
   flex-wrap: wrap;
   font-size: 13px;
   color: var(--text-color-3);
+}
+
+.template-editor-security-warning {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-left: 3px solid #f0a020;
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-color);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .template-editor-instructions {

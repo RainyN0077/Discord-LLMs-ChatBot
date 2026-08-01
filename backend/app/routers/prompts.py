@@ -47,7 +47,9 @@ REQUIRED_TEMPLATE_KEYS = [
 #: 与前端 frontend-vue/src/pages/prompt-studio/defaultTemplates.ts 同源移植，修改需同步。
 DEFAULT_TEMPLATES: Dict[str, Any] = {
     # 必填（4）
-    "message_format": "「{author_name}」说：\n{content}",
+    # [SECURITY] message_format 占位符须与运行时 kwargs 一致（author_id_str/
+    # content/image_note）；旧 {author_name} 恒回退默认（静默失效），已统一。
+    "message_format": "「{author_id_str}」说：\n{content}",
     "user_request_block": "<user_request>\n{parts}\n</user_request>",
     "system_prompt_foundation_header": "你是一个乐于助人的 AI 助手，请根据以下信息回答用户的问题。",
     "operational_instructions": [],

@@ -229,11 +229,29 @@ def _resolve_tpl(
     return default
 
 
-def _format_tpl(template: str, default: str, **kwargs) -> str:
-    """安全格式化模板：占位符缺失等异常时回退默认常量，避免预览崩溃."""
+def _format_tpl(
+    template: str, default: str, *, tpl_key: Optional[str] = None, **kwargs
+) -> str:
+    """安全格式化模板：占位符缺失/非法表达式（含属性访问）等异常时回退默认常量.
+
+    捕获 ``KeyError/IndexError/ValueError/AttributeError``（如 ``{content.upper()}``
+    对非预期对象取属性）避免消息静默丢弃或预览/chat 500。
+
+    ``tpl_key`` 为模板键名（如 ``"message_format"``），仅在调用方确认自定义模板
+    （templates 提供）时传入：回退发生时记录 warning（仅键名，不含模板内容），
+    默认路径（templates 为 None）不记录，避免每消息刷屏。
+    """
     try:
         return template.format(**kwargs)
-    except (KeyError, IndexError, ValueError):
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
+        if tpl_key is not None:
+            if isinstance(e, KeyError) and e.args:
+                missing = e.args[0]
+            else:
+                missing = "invalid-expression"
+            logger.warning(
+                "template '%s' fallback to default (key=%s)", tpl_key, missing
+            )
         return default.format(**kwargs)
 
 
@@ -267,7 +285,7 @@ def format_memory_context(
         return None
     try:
         return value.format(data=memory_block)
-    except (KeyError, IndexError, ValueError):
+    except (KeyError, IndexError, ValueError, AttributeError):
         return None
 
 
@@ -456,6 +474,9 @@ async def format_user_message_for_llm(
     worldbook_context_tpl = _resolve_tpl(templates, "worldbook_context", WORLDBOOK_CONTEXT_TPL)
     user_request_block_tpl = _resolve_tpl(templates, "user_request_block", USER_REQUEST_BLOCK_TPL)
 
+    # F-2: 自定义模板场景跟踪回退告警（键名），默认路径（templates 为 None）不记录。
+    _track_tpl = templates is not None
+
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
     
@@ -503,12 +524,16 @@ async def format_user_message_for_llm(
         
         request_block_parts.append(_format_tpl(
             reply_context_tpl, REPLY_CONTEXT_TPL,
+            tpl_key="reply_context" if _track_tpl else None,
             author_info=replied_author_info, replied_content=final_replied_description,
         ))
     elif message.reference:
         resolved = getattr(message.reference, 'resolved', None)
         if type(resolved).__name__ == 'DeletedReferencedMessage':
-            request_block_parts.append(_format_tpl(deleted_reply_tpl, DELETED_REPLY_CONTEXT_TPL))
+            request_block_parts.append(_format_tpl(
+                deleted_reply_tpl, DELETED_REPLY_CONTEXT_TPL,
+                tpl_key="deleted_reply_context" if _track_tpl else None,
+            ))
         else:
             request_block_parts.append(INACCESSIBLE_REPLY_CONTEXT_TPL)
 
@@ -519,7 +544,9 @@ async def format_user_message_for_llm(
                                   if att.content_type and att.content_type.startswith('image/')])
         if current_image_count > 0:
             current_image_info = _format_tpl(
-                image_note_tpl, IMAGE_NOTE_TPL, count=current_image_count
+                image_note_tpl, IMAGE_NOTE_TPL,
+                tpl_key="image_note" if _track_tpl else None,
+                count=current_image_count,
             )
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
@@ -538,7 +565,9 @@ async def format_user_message_for_llm(
             )
             if resolved.blacklist_mode == "block_messages":
                 return _format_tpl(
-                    user_request_block_tpl, USER_REQUEST_BLOCK_TPL, parts=block_notice
+                    user_request_block_tpl, USER_REQUEST_BLOCK_TPL,
+                    tpl_key="user_request_block" if _track_tpl else None,
+                    parts=block_notice,
                 )
             elif resolved.blacklist_mode == "deny_response":
                 request_block_parts.insert(0, block_notice)
@@ -548,6 +577,7 @@ async def format_user_message_for_llm(
 
     current_user_message_str = _format_tpl(
         user_message_tpl, USER_MESSAGE_TPL,
+        tpl_key="message_format" if _track_tpl else None,
         author_id_str=author_id_str,
         content=escape_content(final_text_content),
         image_note=current_image_info,
@@ -556,7 +586,11 @@ async def format_user_message_for_llm(
     
     # 处理插件注入的数据
     if injected_data:
-        request_block_parts.append(_format_tpl(tool_context_tpl, TOOL_CONTEXT_TPL, data=injected_data))
+        request_block_parts.append(_format_tpl(
+            tool_context_tpl, TOOL_CONTEXT_TPL,
+            tpl_key="tool_context" if _track_tpl else None,
+            data=injected_data,
+        ))
 
     # --- Inject world book content ---
     all_wb_entries = []
@@ -608,13 +642,16 @@ async def format_user_message_for_llm(
         if lines:
             wb_content = "\n".join(lines)
             request_block_parts.append(_format_tpl(
-                worldbook_context_tpl, WORLDBOOK_CONTEXT_TPL, data=wb_content
+                worldbook_context_tpl, WORLDBOOK_CONTEXT_TPL,
+                tpl_key="worldbook_context" if _track_tpl else None,
+                data=wb_content,
             ))
 
     # --- End of new section ---
 
     return _format_tpl(
         user_request_block_tpl, USER_REQUEST_BLOCK_TPL,
+        tpl_key="user_request_block" if _track_tpl else None,
         parts="\n\n".join(request_block_parts),
     )
 
