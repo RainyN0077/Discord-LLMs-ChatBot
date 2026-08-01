@@ -268,7 +268,7 @@ class QuotaAlertManager:
             hostname = hostname.rstrip(".")
             if "%" in hostname:
                 return False
-            if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
+            if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104: 本地主机判断（SSRF 防护），非绑定操作
                 return False
             # 纯数字/hex/点/冒号形态: 只能是 IP 字面量, 解析失败即拒绝
             if re.fullmatch(r"[0-9a-fA-Fx.:]+", hostname):

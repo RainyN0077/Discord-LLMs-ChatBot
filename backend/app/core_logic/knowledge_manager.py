@@ -83,7 +83,7 @@ class KnowledgeManager:
         """Execute lightweight FTS5 queries to prime the page cache."""
         for table in ("memory_fts", "world_book_fts"):
             try:
-                cursor.execute(f"SELECT count(*) FROM {table}")
+                cursor.execute(f"SELECT count(*) FROM {table}")  # nosec B608: table 来自上方硬编码白名单元组
                 cursor.fetchone()
             except sqlite3.OperationalError:
                 pass  # table may not exist yet
