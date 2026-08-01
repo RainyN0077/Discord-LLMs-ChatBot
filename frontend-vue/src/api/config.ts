@@ -12,6 +12,7 @@
  */
 
 import { fetchWithAuth } from './client'
+import type { PromptTemplate } from './prompts'
 
 export interface ContextSettings {
   message_limit: number
@@ -83,10 +84,35 @@ export interface SearchSettings {
   compression_strategy: 'none' | 'truncate' | 'rag'
 }
 
+/** User persona portrait (config `user_personas` entry). */
+export interface UserPersona {
+  id?: string | null
+  nickname?: string | null
+  prompt?: string | null
+  trigger_keywords: string[]
+}
+
+/** User inside a blocklist/whitelist rule (config `user_options.rules[*].users`). */
+export interface UserBlocklistEntry {
+  user_id: string
+  user_display_name: string
+  blacklist_mode: 'deny_response' | 'block_messages' | 'negative_portrait'
+  negative_portrait: string
+}
+
+/** One blocklist/whitelist rule. */
+export interface ScopeUserRule {
+  scope_type: 'global' | 'guild' | 'channel' | 'dm'
+  scope_id: string
+  mode: 'blacklist' | 'whitelist'
+  whitelist_behavior: 'triggers_only' | 'messages_only'
+  users: Record<string, UserBlocklistEntry>
+}
+
 export interface UserOptionsConfig {
   enabled: boolean
   member_search_timeout_ms?: number
-  rules: Record<string, unknown>
+  rules: Record<string, ScopeUserRule>
 }
 
 export interface InteractionHistoryConfig {
@@ -95,9 +121,41 @@ export interface InteractionHistoryConfig {
   auto_prune: boolean
 }
 
+/**
+ * Scoped prompt entry (config `scoped_prompts.guilds/channels`).
+ * Fields ported from legacy `frontend/src/components/ScopedPromptEditor.svelte`
+ * (P3 parity): id / enabled / mode(append|override) / prompt.
+ */
+export interface ScopedPromptEntry {
+  id?: string | null
+  enabled: boolean
+  mode: 'append' | 'override'
+  prompt: string
+}
+
+/**
+ * Role-based config entry (config `role_based_config`).
+ * Fields ported from legacy `frontend/src/components/RoleConfigEditor.svelte`
+ * (P3 parity): title / prompt / message & char quotas / display_color.
+ */
+export interface RoleConfigEntry {
+  id?: string | null
+  title: string
+  prompt: string
+  enable_message_limit: boolean
+  message_limit: number
+  message_refresh_minutes: number
+  message_output_budget: number
+  enable_char_limit: boolean
+  char_limit: number
+  char_refresh_minutes: number
+  char_output_budget: number
+  display_color: string
+}
+
 export interface ScopedPromptsConfig {
-  guilds: Record<string, unknown>
-  channels: Record<string, unknown>
+  guilds: Record<string, ScopedPromptEntry>
+  channels: Record<string, ScopedPromptEntry>
 }
 
 /**
@@ -195,11 +253,13 @@ export interface BotConfig {
   auto_memory_recall_top_k: number
   auto_memory_recall_char_limit: number
   auto_memory_recall_max_age_days: number
-  user_personas: Record<string, unknown>
-  role_based_config: Record<string, unknown>
+  user_personas: Record<string, UserPersona>
+  role_based_config: Record<string, RoleConfigEntry>
   scoped_prompts: ScopedPromptsConfig
   user_options: UserOptionsConfig
   interaction_history: InteractionHistoryConfig
+  /** Prompt Studio 14-key template structure (persisted as opaque config key). */
+  prompt_templates?: PromptTemplate
   context_mode: 'none' | 'channel' | 'memory'
   channel_context_settings: ContextSettings
   memory_context_settings: ContextSettings

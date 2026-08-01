@@ -143,3 +143,105 @@ export async function importBotConfig(
     body: formData,
   })
 }
+
+// ---------------------------------------------------------------------------
+// Discord REST passthrough (backend/app/routers/user_options.py)
+// ---------------------------------------------------------------------------
+
+export interface GuildInfo {
+  id: string
+  name: string
+}
+
+export interface ChannelInfo {
+  id: string
+  name: string
+}
+
+export interface RoleInfo {
+  id: string
+  name: string
+  position: number
+  color: number
+}
+
+export interface MemberInfo {
+  id: string
+  username: string
+  display_name: string
+  roles: string[]
+}
+
+/**
+ * Member search response. The backend returns 200 with an `error` field for
+ * Discord-side failures (rate_limited / api_error / search_timeout); callers
+ * MUST special-case `error` even on a 200 response.
+ */
+export interface MemberSearchResponse {
+  error?: string
+  message?: string
+  members: MemberInfo[]
+}
+
+export interface BotDiagnostics {
+  online: boolean
+  guild_count: number
+  intents: {
+    guilds: boolean
+    guild_members: boolean
+    message_content: boolean
+  }
+  warnings: string[]
+}
+
+/** Fetch the guilds the bot belongs to (GET /api/bots/{id}/guilds). */
+export async function getGuilds(botId: string): Promise<{ guilds: GuildInfo[] }> {
+  return fetchWithAuth<{ guilds: GuildInfo[] }>(
+    `/api/bots/${encodeURIComponent(botId)}/guilds`,
+  )
+}
+
+/** Fetch text channels of a guild (GET /api/bots/{id}/guilds/{gid}/channels). */
+export async function getChannels(
+  botId: string,
+  guildId: string,
+): Promise<{ channels: ChannelInfo[] }> {
+  return fetchWithAuth<{ channels: ChannelInfo[] }>(
+    `/api/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/channels`,
+  )
+}
+
+/** Fetch roles of a guild (GET /api/bots/{id}/guilds/{gid}/roles). */
+export async function getRoles(
+  botId: string,
+  guildId: string,
+): Promise<{ roles: RoleInfo[] }> {
+  return fetchWithAuth<{ roles: RoleInfo[] }>(
+    `/api/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/roles`,
+  )
+}
+
+/**
+ * Search guild members. Returns 200 with `error` set on Discord failures —
+ * the 200+error special-case lives at the call site.
+ */
+export async function searchMembers(
+  botId: string,
+  guildId: string,
+  query: string,
+  timeoutMs = 5000,
+): Promise<MemberSearchResponse> {
+  const params = new URLSearchParams()
+  if (query) params.set('query', query)
+  params.set('timeout_ms', String(timeoutMs))
+  return fetchWithAuth<MemberSearchResponse>(
+    `/api/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/members?${params.toString()}`,
+  )
+}
+
+/** Fetch bot diagnostics (online / guild_count / intents / warnings). */
+export async function getDiagnostics(botId: string): Promise<BotDiagnostics> {
+  return fetchWithAuth<BotDiagnostics>(
+    `/api/bots/${encodeURIComponent(botId)}/diagnostics`,
+  )
+}

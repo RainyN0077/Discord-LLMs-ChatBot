@@ -31,17 +31,17 @@ const router = createRouter({
         {
           path: 'prompt-studio',
           name: 'prompt-studio',
-          component: () => import('@/pages/PromptStudioPage.vue'),
+          component: () => import('@/pages/prompt-studio/PromptStudioPage.vue'),
         },
         {
           path: 'debugger',
           name: 'debugger',
-          component: () => import('@/pages/DebuggerPage.vue'),
+          component: () => import('@/pages/debugger/DebuggerPage.vue'),
         },
         {
           path: 'user-options',
           name: 'user-options',
-          component: () => import('@/pages/UserOptionsPage.vue'),
+          component: () => import('@/pages/user-options/UserOptionsPage.vue'),
         },
         {
           path: 'appearance',
