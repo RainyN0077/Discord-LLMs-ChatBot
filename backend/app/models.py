@@ -216,6 +216,7 @@ class DebuggerRequest(BaseModel):
     guild_id: Optional[str] = None
     role_id: Optional[str] = None
     message_content: str
+    bot_id: Optional[str] = None
 
 
 class ModelTestRequest(BaseModel):

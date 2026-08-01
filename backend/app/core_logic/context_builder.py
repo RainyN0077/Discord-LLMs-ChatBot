@@ -211,6 +211,31 @@ USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
 DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
 DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
+# --- Prompt template overrides (preview path only) ---
+# 键名与 prompts.py DEFAULT_TEMPLATES 的 14 键一致；仅 preview 通过
+# format_user_message_for_llm 的 templates 参数传入，pipeline 不传该参数，
+# 恒用下方模块常量，运行时行为零变化。
+
+
+def _resolve_tpl(
+    templates: Optional[Dict[str, Any]], key: str, default: str
+) -> str:
+    """返回自定义模板覆盖值；未提供/空串/非字符串时回退模块默认常量."""
+    if templates is None:
+        return default
+    value = templates.get(key)
+    if isinstance(value, str) and value:
+        return value
+    return default
+
+
+def _format_tpl(template: str, default: str, **kwargs) -> str:
+    """安全格式化模板：占位符缺失等异常时回退默认常量，避免预览崩溃."""
+    try:
+        return template.format(**kwargs)
+    except (KeyError, IndexError, ValueError):
+        return default.format(**kwargs)
+
 
 async def build_context_history(client: Any, bot_config: Dict[str, Any], message: Any, cutoff_timestamp: Optional[datetime]) -> Tuple[List[Any], List[Dict[str, str]]]:
     history_messages, history_for_llm = [], []
@@ -380,8 +405,22 @@ async def format_user_message_for_llm(
     role_config: Optional[Dict[str, Any]],
     injected_data: Optional[str] = None,
     world_book_entries: Optional[List[Dict[str, Any]]] = None,
+    templates: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """将用户的当前消息格式化为最终LLM输入块。"""
+    """将用户的当前消息格式化为最终LLM输入块。
+
+    ``templates`` 仅供 preview 路径注入用户自定义模板（键名与 prompts.py
+    DEFAULT_TEMPLATES 一致）；pipeline 调用不传，恒用模块默认常量。
+    """
+    # Resolve template overrides once (preview only; defaults otherwise).
+    user_message_tpl = _resolve_tpl(templates, "message_format", USER_MESSAGE_TPL)
+    image_note_tpl = _resolve_tpl(templates, "image_note", IMAGE_NOTE_TPL)
+    reply_context_tpl = _resolve_tpl(templates, "reply_context", REPLY_CONTEXT_TPL)
+    deleted_reply_tpl = _resolve_tpl(templates, "deleted_reply_context", DELETED_REPLY_CONTEXT_TPL)
+    tool_context_tpl = _resolve_tpl(templates, "tool_context", TOOL_CONTEXT_TPL)
+    worldbook_context_tpl = _resolve_tpl(templates, "worldbook_context", WORLDBOOK_CONTEXT_TPL)
+    user_request_block_tpl = _resolve_tpl(templates, "user_request_block", USER_REQUEST_BLOCK_TPL)
+
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
     
@@ -427,11 +466,14 @@ async def format_user_message_for_llm(
                 else:
                     final_replied_description = f"[消息内容是{image_count}张图片，请查看附件]"
         
-        request_block_parts.append(REPLY_CONTEXT_TPL.format(author_info=replied_author_info, replied_content=final_replied_description))
+        request_block_parts.append(_format_tpl(
+            reply_context_tpl, REPLY_CONTEXT_TPL,
+            author_info=replied_author_info, replied_content=final_replied_description,
+        ))
     elif message.reference:
         resolved = getattr(message.reference, 'resolved', None)
         if type(resolved).__name__ == 'DeletedReferencedMessage':
-            request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
+            request_block_parts.append(_format_tpl(deleted_reply_tpl, DELETED_REPLY_CONTEXT_TPL))
         else:
             request_block_parts.append(INACCESSIBLE_REPLY_CONTEXT_TPL)
 
@@ -441,7 +483,9 @@ async def format_user_message_for_llm(
         current_image_count = len([att for att in message.attachments
                                   if att.content_type and att.content_type.startswith('image/')])
         if current_image_count > 0:
-            current_image_info = IMAGE_NOTE_TPL.format(count=current_image_count)
+            current_image_info = _format_tpl(
+                image_note_tpl, IMAGE_NOTE_TPL, count=current_image_count
+            )
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
     author_id_str = _format_author_id(message.author, author_rich_id)
@@ -465,16 +509,17 @@ async def format_user_message_for_llm(
     user_identity_block = f"[当前用户信息]\n[{author_id_str}]\n[/当前用户信息]"
     request_block_parts.insert(0, user_identity_block)
 
-    current_user_message_str = USER_MESSAGE_TPL.format(
+    current_user_message_str = _format_tpl(
+        user_message_tpl, USER_MESSAGE_TPL,
         author_id_str=author_id_str,
         content=escape_content(final_text_content),
-        image_note=current_image_info
+        image_note=current_image_info,
     )
     request_block_parts.append(current_user_message_str)
     
     # 处理插件注入的数据
     if injected_data:
-        request_block_parts.append(TOOL_CONTEXT_TPL.format(data=injected_data))
+        request_block_parts.append(_format_tpl(tool_context_tpl, TOOL_CONTEXT_TPL, data=injected_data))
 
     # --- Inject world book content ---
     all_wb_entries = []
@@ -525,9 +570,14 @@ async def format_user_message_for_llm(
 
         if lines:
             wb_content = "\n".join(lines)
-            request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
+            request_block_parts.append(_format_tpl(
+                worldbook_context_tpl, WORLDBOOK_CONTEXT_TPL, data=wb_content
+            ))
 
     # --- End of new section ---
 
-    return USER_REQUEST_BLOCK_TPL.format(parts="\n\n".join(request_block_parts))
+    return _format_tpl(
+        user_request_block_tpl, USER_REQUEST_BLOCK_TPL,
+        parts="\n\n".join(request_block_parts),
+    )
 

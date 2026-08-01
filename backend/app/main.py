@@ -158,6 +158,7 @@ from .routers.user_options import router as user_options_router
 from .routers.interactions import router as interactions_router
 from .routers.internal import internal_router
 from .routers.providers import router as providers_router
+from .routers.prompts import router as prompts_router
 
 app.include_router(config_router)
 app.include_router(chat_router)
@@ -173,6 +174,7 @@ app.include_router(user_options_router)
 app.include_router(interactions_router)
 app.include_router(internal_router)
 app.include_router(providers_router)
+app.include_router(prompts_router)
 
 # ---------------------------------------------------------------------------
 # Observability routes (unauthenticated)

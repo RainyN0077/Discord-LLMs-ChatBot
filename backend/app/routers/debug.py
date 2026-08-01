@@ -21,9 +21,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _resolve_debug_config(bot_id: Optional[str]) -> dict:
+    """解析调试所用的 Bot 配置.
+
+    Args:
+        bot_id: 指定 Bot ID 时使用该 Bot 的配置；缺省时回退到全局配置（向后兼容）。
+
+    Returns:
+        配置字典（dict 形式）.
+
+    Raises:
+        HTTPException: Bot 不存在（404）或 Bot 管理器未初始化（503）
+    """
+    if not bot_id:
+        return load_config()
+
+    from .. import state
+    mgr = state.bot_manager
+    if mgr is None:
+        raise HTTPException(status_code=503, detail="Bot manager not initialized")
+    instance = mgr.get(bot_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found.")
+    return instance.config
+
+
 @router.post("/api/debug/simulate", dependencies=[Depends(get_api_key)])
 async def simulate_debugger_run(request: DebuggerRequest):
-    config = load_config()
+    config = _resolve_debug_config(request.bot_id)
 
     role_config = None
     role_name = None

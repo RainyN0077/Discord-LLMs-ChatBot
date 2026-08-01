@@ -7,11 +7,27 @@ class Stub:
         self.__dict__.update(kwargs)
 
 from ..models import PromptPreviewRequest, RoleConfig
-from .persona_manager import determine_bot_persona, build_system_prompt, get_rich_identity, get_highest_configured_role
+from .persona_manager import determine_bot_persona, build_system_prompt
 from .context_builder import format_user_message_for_llm
 from ..utils import escape_content
 
 logger = logging.getLogger(__name__)
+
+#: 场景数字字段最大图片数（防御恶意超界值导致的 DoS/内存放大）。
+MAX_SCENARIO_IMAGE_COUNT = 20
+
+
+def _scenario_int(value: Any, default: int = 0) -> int:
+    """将场景数字字段安全转换为 int；非法/非数字输入回退默认值."""
+    try:
+        if isinstance(value, bool):
+            return default
+        text = str(value).strip()
+        if text.isdigit():
+            return int(text)
+    except (TypeError, ValueError):
+        pass
+    return default
 
 class ConstructionLog:
     """A helper class to build a detailed construction log for the frontend."""
@@ -30,22 +46,25 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     """Creates mock discord.py-like objects based on scenario data."""
     log = ConstructionLog()
 
+    # Defensive coercion: numeric fields via isdigit fallback, content as str.
+    message_content = str(scenario_data.get('message_content', ''))
+
     # Mock Guild
     mock_guild = Stub()
-    mock_guild.id = int(scenario_data.get('guild_id', 0))
+    mock_guild.id = _scenario_int(scenario_data.get('guild_id', 0))
     mock_guild.name = "模拟服务器"
     log.add(f"场景设定：服务器 '{mock_guild.name}' (ID: {mock_guild.id})", 1)
 
     # Mock Channel
     mock_channel = Stub()
-    mock_channel.id = int(scenario_data.get('channel_id', 0))
+    mock_channel.id = _scenario_int(scenario_data.get('channel_id', 0))
     mock_channel.name = "模拟频道"
     mock_channel.guild = mock_guild
     log.add(f"场景设定：频道 '#{mock_channel.name}' (ID: {mock_channel.id})", 1)
 
     # Mock Author (User/Member)
     mock_author = Stub()
-    mock_author.id = int(scenario_data.get('user_id', 0))
+    mock_author.id = _scenario_int(scenario_data.get('user_id', 0))
     mock_author.name = "模拟用户"
     mock_author.display_name = "模拟用户"
     mock_author.roles = []
@@ -54,8 +73,8 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     role_based_configs = bot_config.get("role_based_config", {})
     for role_id_str in scenario_data.get('user_roles', []):
         mock_role = Stub()
-        mock_role.id = int(role_id_str)
-        role_config_data = role_based_configs.get(role_id_str, {})
+        mock_role.id = _scenario_int(role_id_str, 0)
+        role_config_data = role_based_configs.get(str(role_id_str), {})
         mock_role.name = role_config_data.get("title", f"角色{role_id_str}")
         mock_author.roles.append(mock_role)
     
@@ -68,13 +87,13 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     if scenario_data.get('is_reply') and scenario_data.get('replied_message'):
         replied_data = scenario_data['replied_message']
         mock_replied_author = Stub()
-        mock_replied_author.id = int(replied_data.get('author_id', 0))
+        mock_replied_author.id = _scenario_int(replied_data.get('author_id', 0))
         mock_replied_author.name = "被回复者"
         mock_replied_author.display_name = "被回复者"
 
     # Mock Mentioned User if necessary
     # This is a simplified simulation. A real scenario could have multiple mentions.
-    if "@张三" in scenario_data.get('message_content', ''):
+    if "@张三" in message_content:
         mock_mentioned_user = Stub()
         mock_mentioned_user.id = 9876543210 # A fixed ID for simulation
         mock_mentioned_user.name = "张三"
@@ -98,12 +117,12 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
     mock_message.author = mock_author
     mock_message.channel = mock_channel
     mock_message.guild = mock_guild
-    mock_message.content = scenario_data.get('message_content', '')
+    mock_message.content = message_content
     mock_message.clean_content = escape_content(mock_message.content)
 
     # Mock Attachments
     mock_message.attachments = []
-    image_count = scenario_data.get('image_count', 0)
+    image_count = min(max(_scenario_int(scenario_data.get('image_count', 0)), 0), MAX_SCENARIO_IMAGE_COUNT)
     if image_count > 0:
         log.add(f"场景设定：用户发送了 {image_count} 张图片", 1)
         for i in range(image_count):
@@ -126,7 +145,7 @@ def _create_mock_objects(scenario_data: Dict[str, Any], bot_config: Dict[str, An
         
         mock_replied_message = Stub()
         mock_replied_message.author = mock_replied_author
-        mock_replied_message.clean_content = escape_content(replied_data.get('content', ''))
+        mock_replied_message.clean_content = escape_content(str(replied_data.get('content', '')))
         mock_replied_message.attachments = []
         
         mock_reference = Stub()
@@ -157,18 +176,39 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
     
     # Determine persona
     log.add("确定机器人人设...", 1)
-    persona, role_config, source_log = determine_bot_persona(mock_message.author, mock_message.channel, simulated_bot_config)
-    log.add(f"人设来源: {source_log}", 2)
+
+    # Resolve the author's configured role (scenario.user_roles → role_based_config)
+    role_name = None
+    role_config = None
+    role_based_configs = simulated_bot_config.get("role_based_config", {})
+    for role_id_str in scenario.get("user_roles", []):
+        rc = role_based_configs.get(role_id_str)
+        if rc:
+            role_config = rc
+            role_name = rc.get("title") or role_id_str
+            break
+
+    persona, situational_prompt, active_directives_log = determine_bot_persona(
+        simulated_bot_config,
+        str(mock_message.channel.id),
+        str(mock_message.guild.id) if mock_message.guild else None,
+        role_name,
+        role_config,
+    )
+    log.add(f"人设来源: {active_directives_log[-1] if active_directives_log else 'Global_Default'}", 2)
     if role_config:
         log.add(f"应用角色配置: '{role_config.get('title', 'N/A')}'", 2)
 
     # Build system prompt string
     log.add("构建最终系统提示词字符串...", 1)
-    system_prompt = build_system_prompt(
-        persona_prompt=persona,
-        bot_config=simulated_bot_config,
-        channel=mock_message.channel,
-        user=mock_message.author
+    system_prompt = await build_system_prompt(
+        Stub(),  # mock client — no self-awareness section for previews
+        simulated_bot_config,
+        persona,
+        situational_prompt,
+        mock_message,
+        active_directives_log,
+        templates=templates,
     )
     
     # This is a bit of a hack to add logging to build_system_prompt without refactoring it
@@ -208,8 +248,8 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
     # Format the final user message block
     log.add("格式化最终用户请求...", 1)
     
-    # We need the author's role config for get_rich_identity
-    _, author_role_config = get_highest_configured_role(mock_message.author, simulated_bot_config.get("role_based_config", {})) or (None, None)
+    # Reuse the author's role config resolved above for get_rich_identity
+    author_role_config = role_config
 
     user_request = await format_user_message_for_llm(
         message=mock_message,
@@ -218,6 +258,7 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
         role_config=author_role_config,
         injected_data=injected_data_str,
         world_book_entries=world_book_entries if world_book_entries else None,
+        templates=templates,
     )
     log.add("调用 `format_user_message_for_llm`...", 2)
     if mock_message.reference:
