@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { themeOverrides } from '@/styles/theme'
+import FeedbackBinder from '@/components/FeedbackBinder.vue'
 
 const { locale } = useI18n()
 const themeStore = useThemeStore()
@@ -37,7 +38,9 @@ onMounted(() => {
   >
     <NDialogProvider>
       <NMessageProvider>
-        <router-view />
+        <FeedbackBinder>
+          <router-view />
+        </FeedbackBinder>
       </NMessageProvider>
     </NDialogProvider>
   </NConfigProvider>

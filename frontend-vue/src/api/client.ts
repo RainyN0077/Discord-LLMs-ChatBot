@@ -109,7 +109,7 @@ function detailMessage(detail: unknown): string | null {
 }
 
 /** Parse an error response body into a unified { status, message }. */
-async function toApiError(res: Response): Promise<ApiErrorBody> {
+export async function toApiError(res: Response): Promise<ApiErrorBody> {
   let message = res.statusText || `HTTP ${res.status}`
   try {
     const body = await res.json()

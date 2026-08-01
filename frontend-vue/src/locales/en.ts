@@ -100,7 +100,8 @@ export default {
     scopeChannelOverride: "Channel Override"
   },
   generic: {
-    loading: "Loading…"
+    loading: "Loading…",
+    retry: "Retry"
   },
   title: "BOT Manager",
   tabs: {
@@ -994,7 +995,16 @@ export default {
     saving: "Saving...",
     selectBot: "Select a bot",
     configFor: "Config: {botId}",
-    loadingConfig: "Loading configuration for {botId}..."
+    loadingConfig: "Loading configuration for {botId}...",
+    platform: "Platform",
+    botName: "Bot Name",
+    enabled: "Enabled",
+    botIdentity: "Bot Identity",
+    llmSettings: "LLM Settings",
+    systemPromptTitle: "Persona & Reply Template",
+    pluginSelect: "Select Plugin",
+    pluginSelectPlaceholder: "-- Select Plugin --",
+    pluginConfigJson: "Plugin Config (JSON)"
   },
   appearance: {
     title: "Appearance",

@@ -5,7 +5,8 @@
 export default {
   title: "BOT Manager",
   generic: {
-    loading: "加载中…"
+    loading: "加载中…",
+    retry: "重试"
   },
   tabs: {
     core: "核心设置",
@@ -562,6 +563,16 @@ export default {
       worldBookDedupThreshold: "世界书查重阈值",
       dedupDescription: "设置查重阈值。0% 表示关闭查重，100% 只阻止完全相同的内容。推荐值为 80-90%。",
       save: "保存查重设置",
+      autoMemoryEnabled: "启用自动记忆暂存",
+      autoMemoryMinLength: "最短内容长度",
+      autoMemoryCooldown: "同用户冷却时间（秒）",
+      autoMemoryPromoteObservations: "累计观察 N 次后提升",
+      autoMemoryPromoteDistinctUsers: "累计 N 个不同用户后提升",
+      autoMemoryQualityThreshold: "自动提升质量阈值",
+      autoMemoryDirectPromoteAiTag: "直接提升模型输出的 <memory> 标签",
+      autoMemoryRecallTopK: "记忆召回 Top K",
+      autoMemoryRecallCharLimit: "记忆召回字符预算",
+      autoMemoryRecallMaxAgeDays: "记忆最长保留天数",
       memoryEmbeddingEnabled: "启用语义嵌入增强记忆召回",
       memoryRerankEnabled: "启用重排序增强记忆召回（需先启用嵌入）"
     },
@@ -756,7 +767,16 @@ export default {
     saving: "保存中...",
     selectBot: "请选择一个 Bot",
     configFor: "配置：{botId}",
-    loadingConfig: "正在加载 {botId} 的配置..."
+    loadingConfig: "正在加载 {botId} 的配置...",
+    platform: "平台",
+    botName: "Bot 名称",
+    enabled: "启用",
+    botIdentity: "Bot 基本信息",
+    llmSettings: "LLM 设置",
+    systemPromptTitle: "人设与回复模板",
+    pluginSelect: "选择插件",
+    pluginSelectPlaceholder: "-- 选择插件 --",
+    pluginConfigJson: "插件配置 (JSON)"
   },
   appearance: {
     title: "外观设置",
