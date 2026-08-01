@@ -164,8 +164,9 @@ async def generate_preview(request: PromptPreviewRequest, bot_config: Dict[str, 
     templates = request.templates.dict()
     scenario = request.scenario.dict()
     
-    # Override bot_config with templates from the request for this preview
-    simulated_bot_config = {**bot_config, 'prompt_templates': templates}
+    # 模板经下方 build_system_prompt/format_user_message_for_llm 的 templates
+    # 显式参数传入；不再向 config 注入 'prompt_templates' 键（grep 确认零消费方）。
+    simulated_bot_config = bot_config
     
     mock_message, log = _create_mock_objects(scenario, simulated_bot_config)
     

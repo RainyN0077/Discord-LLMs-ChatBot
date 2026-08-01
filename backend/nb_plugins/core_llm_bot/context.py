@@ -7,7 +7,11 @@ from app.core_logic.persona_manager import (
     determine_bot_persona,
     get_highest_configured_role,
 )
-from app.core_logic.context_builder import build_context_history, format_user_message_for_llm
+from app.core_logic.context_builder import (
+    build_context_history,
+    format_user_message_for_llm,
+    resolve_prompt_templates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +40,16 @@ async def build_full_context(
         role_config,
     )
 
+    # 读取源：bot_config['prompt_templates']（归一化，非 dict 一律 None → 全链路回退默认）
+    templates = resolve_prompt_templates(config)
+
     system_prompt = await build_system_prompt(
-        bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log
+        bot, config, specific_persona_prompt, situational_prompt, message, active_directives_log,
+        templates=templates,
     )
 
     final_formatted_content = await format_user_message_for_llm(
-        message, bot, config, role_config, injected_data
+        message, bot, config, role_config, injected_data, templates=templates
     )
 
     return system_prompt, final_formatted_content, history_for_llm, history_messages, role_name, role_config

@@ -211,10 +211,10 @@ USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
 DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
 DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
-# --- Prompt template overrides (preview path only) ---
-# 键名与 prompts.py DEFAULT_TEMPLATES 的 14 键一致；仅 preview 通过
-# format_user_message_for_llm 的 templates 参数传入，pipeline 不传该参数，
-# 恒用下方模块常量，运行时行为零变化。
+# --- Prompt template overrides ---
+# 键名与 prompts.py DEFAULT_TEMPLATES 的 14 键一致；templates 参数由调用方
+# 从 bot_config['prompt_templates'] 归一化传入（运行时与 preview 均生效），
+# 未配置时恒用下方模块常量，行为与旧版逐字节一致。
 
 
 def _resolve_tpl(
@@ -235,6 +235,40 @@ def _format_tpl(template: str, default: str, **kwargs) -> str:
         return template.format(**kwargs)
     except (KeyError, IndexError, ValueError):
         return default.format(**kwargs)
+
+
+def resolve_prompt_templates(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """从 bot_config 读取 ``prompt_templates`` 并归一化：非 dict（含缺省 None）一律返回 None.
+
+    所有消费点只接收 ``None`` 或 ``dict``，键值非法由 ``_resolve_tpl``/``_format_tpl``
+    回退默认常量，保证"未配置模板 = 旧行为逐字节不变"。
+    """
+    templates = config.get("prompt_templates")
+    if isinstance(templates, dict):
+        return templates
+    return None
+
+
+def format_memory_context(
+    templates: Optional[Dict[str, Any]], memory_block: str
+) -> Optional[str]:
+    """用 ``memory_context`` 模板键格式化长期记忆块；不适用时返回 None（调用方回退旧拼接）.
+
+    仅当模板键存在、为合法非空字符串、且包含 ``{data}`` 占位符且格式化无异常时生效；
+    键缺失/非字符串/空串/无占位符/占位符不匹配/格式化异常一律返回 ``None``，
+    由调用方保持原有 f-string 拼接（逐字节不变）。
+    """
+    if templates is None:
+        return None
+    value = templates.get("memory_context")
+    if not isinstance(value, str) or not value:
+        return None
+    if "{data}" not in value:
+        return None
+    try:
+        return value.format(data=memory_block)
+    except (KeyError, IndexError, ValueError):
+        return None
 
 
 async def build_context_history(client: Any, bot_config: Dict[str, Any], message: Any, cutoff_timestamp: Optional[datetime]) -> Tuple[List[Any], List[Dict[str, str]]]:
@@ -409,10 +443,11 @@ async def format_user_message_for_llm(
 ) -> str:
     """将用户的当前消息格式化为最终LLM输入块。
 
-    ``templates`` 仅供 preview 路径注入用户自定义模板（键名与 prompts.py
-    DEFAULT_TEMPLATES 一致）；pipeline 调用不传，恒用模块默认常量。
+    ``templates`` 由调用方（运行时 pipeline / 路由 / preview）从
+    ``bot_config['prompt_templates']`` 归一化后传入，键名与 prompts.py
+    DEFAULT_TEMPLATES 一致；未配置（None）时恒用模块默认常量。
     """
-    # Resolve template overrides once (preview only; defaults otherwise).
+    # Resolve template overrides once (None → module defaults).
     user_message_tpl = _resolve_tpl(templates, "message_format", USER_MESSAGE_TPL)
     image_note_tpl = _resolve_tpl(templates, "image_note", IMAGE_NOTE_TPL)
     reply_context_tpl = _resolve_tpl(templates, "reply_context", REPLY_CONTEXT_TPL)
@@ -502,7 +537,9 @@ async def format_user_message_for_llm(
                 message.author, user_personas, role_based_configs, resolved.blacklist_mode
             )
             if resolved.blacklist_mode == "block_messages":
-                return USER_REQUEST_BLOCK_TPL.format(parts=block_notice)
+                return _format_tpl(
+                    user_request_block_tpl, USER_REQUEST_BLOCK_TPL, parts=block_notice
+                )
             elif resolved.blacklist_mode == "deny_response":
                 request_block_parts.insert(0, block_notice)
 

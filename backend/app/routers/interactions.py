@@ -137,7 +137,7 @@ async def reconstruct_context(
 ):
     from ..config_cache import load_config
     from ..core_logic.persona_manager import build_system_prompt
-    from ..core_logic.context_builder import format_user_message_for_llm
+    from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
     from ..utils import Stub
 
     config = load_config()
@@ -187,7 +187,8 @@ async def reconstruct_context(
 
     try:
         system_prompt = await build_system_prompt(
-            None, bot_config, "", "", mock_message, []
+            None, bot_config, "", "", mock_message, [],
+            templates=resolve_prompt_templates(bot_config),
         )
     except Exception:
         system_prompt = "(Context reconstruction failed — insufficient config data)"
@@ -218,6 +219,7 @@ async def reconstruct_context(
             )
             formatted_content = await format_user_message_for_llm(
                 mock_msg, mock_client, bot_config, None,
+                templates=resolve_prompt_templates(bot_config),
             )
         except Exception:
             formatted_content = msg.get("content", "")

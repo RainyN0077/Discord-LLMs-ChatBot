@@ -4,6 +4,12 @@ from app.utils import Stub, _async_stub
 from app.core_logic.context_builder import format_user_message_for_llm
 
 from app.core_logic.context_builder import build_context_history
+from app.core_logic.context_builder import (
+    USER_REQUEST_BLOCK_TPL,
+    format_memory_context,
+    resolve_prompt_templates,
+)
+from app.core_logic.user_options_manager import get_formatted_block_notice
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -626,3 +632,184 @@ class TestBuildContextHistoryMemory:
         fetched, formatted = await build_context_history(client, bot_config, message, None)
         assert len(fetched) >= 2
         assert len(formatted) >= 2
+
+
+def _basic_config() -> dict:
+    return {"user_personas": {}, "role_based_config": {}}
+
+
+def _blacklist_config() -> dict:
+    return {
+        **_basic_config(),
+        "user_options": {
+            "enabled": True,
+            "rules": {
+                "r1": {
+                    "scope_type": "global",
+                    "mode": "blacklist",
+                    "users": {
+                        "u1": {"user_id": "123456789", "blacklist_mode": "block_messages"},
+                    },
+                }
+            },
+        },
+    }
+
+
+class TestFormatUserMessageTemplates:
+    """format_user_message_for_llm 的 templates 参数 7 键全量生效验证（S1/S3 接线目标）. """
+
+    async def test_template_message_format_effective(self, mock_discord_message, mock_discord_bot):
+        msg = mock_discord_message(content="Hello world")
+        templates = {"message_format": "«{author_id_str}»「{content}」"}
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert "«TestUser TestUser id：123456789»" in result
+        assert "「Hello world」" in result
+
+    async def test_template_image_note_effective(self, mock_discord_message, mock_discord_bot):
+        image_attachment = Stub(content_type="image/png", filename="test.png")
+        msg = mock_discord_message(content="Look at this", attachments=[image_attachment])
+        templates = {"image_note": "【{count}张图】"}
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert "【1张图】" in result
+
+    async def test_template_reply_context_effective(self, mock_discord_message, mock_discord_bot):
+        replied_author = Stub(id=111222, display_name="OriginalAuthor", bot=False)
+        replied_msg = Stub(
+            author=replied_author,
+            clean_content="Original message text",
+            attachments=[],
+        )
+        reference = Stub(resolved=replied_msg)
+        msg = mock_discord_message(content="My reply", reference=reference)
+        templates = {"reply_context": "回复了{author_info}：{replied_content}"}
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert "回复了" in result
+        assert "Original message text" in result
+
+    async def test_template_deleted_reply_context_effective(self, mock_discord_message, mock_discord_bot):
+        DeletedRef = type("DeletedReferencedMessage", (), {})
+        reference = Stub(resolved=DeletedRef())
+        msg = mock_discord_message(content="Replying to deleted", reference=reference)
+        templates = {"deleted_reply_context": "这条回复已被删除"}
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert "这条回复已被删除" in result
+
+    async def test_template_tool_context_effective(self, mock_discord_message, mock_discord_bot):
+        msg = mock_discord_message(content="Test message")
+        templates = {"tool_context": "工具输出: {data}"}
+        result = await format_user_message_for_llm(
+            msg, mock_discord_bot, _basic_config(), None,
+            injected_data="Plugin output here", templates=templates,
+        )
+        assert "工具输出: Plugin output here" in result
+
+    async def test_template_worldbook_context_effective(self, mock_discord_message, mock_discord_bot):
+        msg = mock_discord_message(content="Tell me about the kingdom")
+        templates = {"worldbook_context": "世界书: {data}"}
+        world_book_entries = [{"id": 1, "keywords": "kingdom", "content": "The kingdom is magical."}]
+        result = await format_user_message_for_llm(
+            msg, mock_discord_bot, _basic_config(), None,
+            world_book_entries=world_book_entries, templates=templates,
+        )
+        assert "世界书:" in result
+        assert "The kingdom is magical." in result
+
+    async def test_template_user_request_block_effective(self, mock_discord_message, mock_discord_bot):
+        msg = mock_discord_message(content="Simple message")
+        templates = {"user_request_block": "<user_request>\n{parts}\n</user_request>"}
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert result.startswith("<user_request>")
+        assert result.endswith("</user_request>")
+        assert "Simple message" in result
+
+
+class TestBlacklistBlockTemplates:
+    """黑名单 block 路径经 _format_tpl 消费 user_request_block 键；无键/非法逐字节回退（S1/A4）. """
+
+    async def test_blacklist_block_uses_template(self, mock_discord_message, mock_discord_bot):
+        msg = mock_discord_message(content="Hello world")
+        templates = {"user_request_block": "<block>{parts}</block>"}
+        result = await format_user_message_for_llm(
+            msg, mock_discord_bot, _blacklist_config(), None, templates=templates
+        )
+        block_notice = get_formatted_block_notice(msg.author, {}, {}, "block_messages")
+        assert result == f"<block>{block_notice}</block>"
+
+    @pytest.mark.parametrize("templates", [None, {}, {"user_request_block": ""}, {"user_request_block": 123}])
+    async def test_blacklist_block_fallback_byte_identical(
+        self, mock_discord_message, mock_discord_bot, templates
+    ):
+        msg = mock_discord_message(content="Hello world")
+        result = await format_user_message_for_llm(
+            msg, mock_discord_bot, _blacklist_config(), None, templates=templates
+        )
+        block_notice = get_formatted_block_notice(msg.author, {}, {}, "block_messages")
+        assert result == USER_REQUEST_BLOCK_TPL.format(parts=block_notice)
+
+
+class TestTemplatesBoundary:
+    """边界表：无键/非法值/空串/占位符缺失/未知键 → 与无模板基线逐字节一致（A3）. """
+
+    @pytest.mark.parametrize("templates", [
+        None,
+        {},
+        {"message_format": ""},
+        {"message_format": None},
+        {"message_format": 123},
+        {"message_format": ["not-a-str"]},
+        {"message_format": "{missing_placeholder}"},
+        {"unknown_key": "ignored"},
+        {"image_note": "", "reply_context": "", "tool_context": "", "worldbook_context": ""},
+    ])
+    async def test_boundary_byte_identical(self, mock_discord_message, mock_discord_bot, templates):
+        msg = mock_discord_message(content="Hello world")
+        expected = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=None)
+        result = await format_user_message_for_llm(msg, mock_discord_bot, _basic_config(), None, templates=templates)
+        assert result == expected
+
+
+class TestResolvePromptTemplates:
+    """读取点归一化：非 dict（含缺省）一律 None（契约：消费点只接 None/dict）. """
+
+    def test_missing_key_returns_none(self):
+        assert resolve_prompt_templates({}) is None
+
+    def test_explicit_none_returns_none(self):
+        assert resolve_prompt_templates({"prompt_templates": None}) is None
+
+    @pytest.mark.parametrize("bad", ["not-a-dict", 42, [], ("a",), False])
+    def test_non_dict_returns_none(self, bad):
+        assert resolve_prompt_templates({"prompt_templates": bad}) is None
+
+    def test_valid_dict_returned_as_is(self):
+        t = {"message_format": "x"}
+        assert resolve_prompt_templates({"prompt_templates": t}) is t
+
+
+class TestFormatMemoryContext:
+    """memory_context helper：占位符匹配才生效，否则 None（S5 回退语义）. """
+
+    def test_effective_with_placeholder(self):
+        result = format_memory_context({"memory_context": "记忆块:\n{data}"}, "MEM")
+        assert result == "记忆块:\nMEM"
+
+    def test_effective_multiple_placeholder(self):
+        result = format_memory_context({"memory_context": "【{data}】【{data}】"}, "MEM")
+        assert result == "【MEM】【MEM】"
+
+    @pytest.mark.parametrize("templates", [
+        None,
+        {},
+        {"memory_context": ""},
+        {"memory_context": None},
+        {"memory_context": 123},
+        {"memory_context": ["not-a-str"]},
+        {"memory_context": "静态文本无占位符"},
+        {"memory_context": "{other_placeholder}"},
+        {"memory_context": "{data}{other}"},
+        {"memory_context": "{}"},
+        {"memory_context": "前{data:>{x}}后"},
+    ])
+    def test_inapplicable_returns_none(self, templates):
+        assert format_memory_context(templates, "MEM") is None

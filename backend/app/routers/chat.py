@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
-from ..core_logic.context_builder import format_user_message_for_llm
+from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
 from ..dependencies import get_api_key
 from ..llm_providers.factory import get_provider_pool
 from .. import state
@@ -261,6 +261,7 @@ async def direct_chat(request: DirectChatRequest):
         system_prompt = await build_system_prompt(
             mock_bot, config, specific_persona_prompt,
             situational_prompt, prompt_message, active_directives_log,
+            templates=resolve_prompt_templates(config),
         )
         llm_messages.append({"role": "system", "content": system_prompt})
 
@@ -286,7 +287,10 @@ async def direct_chat(request: DirectChatRequest):
             mock_user_message.attachments = _build_mock_attachments(current_attachments)
             mock_user_message.reference = None
 
-            formatted_content = await format_user_message_for_llm(mock_user_message, mock_bot, config, role_config)
+            formatted_content = await format_user_message_for_llm(
+                mock_user_message, mock_bot, config, role_config,
+                templates=resolve_prompt_templates(config),
+            )
             # [SECURITY] Sanitize any user-manipulable content that entered the pipeline
             # after format_user_message_for_llm (attachment text, OCR output).
             if current_attachments:

@@ -215,8 +215,9 @@ async def build_system_prompt(
 ) -> str:
     """Build final system prompt for this message.
 
-    ``templates`` 仅供 preview 路径注入用户自定义模板（键名与 prompts.py
-    DEFAULT_TEMPLATES 一致）；pipeline 调用不传，恒用默认标题与指令。
+    ``templates`` 由调用方（运行时 pipeline / 路由 / preview）从
+    ``bot_config['prompt_templates']`` 归一化后传入，键名与 prompts.py
+    DEFAULT_TEMPLATES 一致；未配置（None）时恒用默认标题与指令。
     """
     foundation_header = _tpl_value(
         templates, "system_prompt_foundation_header", "Foundation and Core Rules"

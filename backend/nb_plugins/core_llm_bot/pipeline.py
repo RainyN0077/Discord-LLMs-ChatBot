@@ -15,6 +15,7 @@ from app.llm_providers.factory import get_llm_provider
 from app.ocr_service import is_multimodal_llm
 from app.utils import split_message, transform_memories_for_prompt
 from app.core_logic.usage_manager import UsageManager
+from app.core_logic.context_builder import format_memory_context, resolve_prompt_templates
 
 from app.ports.platform_message import PlatformMessage
 from .context import build_full_context
@@ -22,6 +23,23 @@ from .rendering import render_streaming_response, _render_streaming_response_old
 from .automation import reset_channel_automation_state
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_memory_injection(
+    system_prompt: str, memory_knowledge: str, config: Dict[str, Any]
+) -> str:
+    """将记忆知识注入 system_prompt（S5：memory_context 模板占位符匹配才生效）.
+
+    配置了合法 ``memory_context`` 模板（含 ``{data}`` 占位符）时以其格式化结果
+    作为新前缀；否则（未配置/非法/占位符不匹配）保持旧拼接**逐字节不变**。
+    """
+    memory_block = format_memory_context(resolve_prompt_templates(config), memory_knowledge)
+    if memory_block is None:
+        return (
+            f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n"
+            f"</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+        )
+    return f"{memory_block}\n\n{system_prompt}"
 
 
 async def execute_llm_pipeline(
@@ -92,7 +110,7 @@ async def execute_llm_pipeline(
         if relevant_memories:
             transformed_memories = transform_memories_for_prompt(relevant_memories, target_timezone_str='UTC')
             memory_knowledge = "\n".join(transformed_memories)
-            system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+            system_prompt = _apply_memory_injection(system_prompt, memory_knowledge, config)
             logger.info("Injected %s relevant memories for bot '%s'.", len(transformed_memories), instance.bot_id)
 
     role_config = _resolve_role_config(bot, event, config)

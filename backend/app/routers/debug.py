@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from ..bot import strip_dsml_tool_blocks, strip_thinking_sections
 from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
-from ..core_logic.context_builder import format_user_message_for_llm
+from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
 from ..debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from ..dependencies import get_api_key
 from ..llm_providers.factory import get_provider_pool
@@ -101,8 +101,12 @@ async def simulate_debugger_run(request: DebuggerRequest):
         situational_prompt,
         mock_message,
         active_directives_log,
+        templates=resolve_prompt_templates(config),
     )
-    formatted_content = await format_user_message_for_llm(mock_message, mock_bot, config, role_config)
+    formatted_content = await format_user_message_for_llm(
+        mock_message, mock_bot, config, role_config,
+        templates=resolve_prompt_templates(config),
+    )
 
     llm_messages = [
         {"role": "system", "content": system_prompt},
