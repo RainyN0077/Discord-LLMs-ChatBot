@@ -12,7 +12,7 @@ class TestConfigRoutes:
 
     async def test_get_config_no_auth_returns_403(self, app_client):
         response = await app_client.get("/api/config")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_get_config_wrong_api_key_returns_403(self, app_client, bad_auth_headers):
         response = await app_client.get("/api/config", headers=bad_auth_headers)

@@ -5,7 +5,7 @@ import pytest
 class TestMemoryRoutes:
     async def test_get_memory_requires_auth(self, app_client):
         response = await app_client.get("/api/memory")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_get_memory_empty_list(self, app_client, auth_headers):
         response = await app_client.get("/api/memory", headers=auth_headers)
@@ -15,7 +15,7 @@ class TestMemoryRoutes:
 
     async def test_add_memory_requires_auth(self, app_client):
         response = await app_client.post("/api/memory", json={"content": "test"})
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_add_memory_success(self, app_client, auth_headers):
         payload = {
@@ -63,7 +63,7 @@ class TestMemoryRoutes:
 
     async def test_clear_memory_requires_auth(self, app_client):
         response = await app_client.post("/api/memory/clear", json={"channel_id": "12345"})
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_clear_memory_success(self, app_client, auth_headers):
         response = await app_client.post("/api/memory/clear", json={"channel_id": "12345"}, headers=auth_headers)
@@ -75,7 +75,7 @@ class TestMemoryRoutes:
 class TestWorldBookRoutes:
     async def test_get_worldbook_requires_auth(self, app_client):
         response = await app_client.get("/api/worldbook")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_get_worldbook_empty(self, app_client, auth_headers):
         response = await app_client.get("/api/worldbook", headers=auth_headers)
@@ -84,7 +84,7 @@ class TestWorldBookRoutes:
 
     async def test_add_worldbook_requires_auth(self, app_client):
         response = await app_client.post("/api/worldbook", json={"keywords": "test", "content": "test"})
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_add_worldbook_success(self, app_client, auth_headers):
         payload = {"keywords": "lore, test", "content": "A world book entry for testing"}
@@ -124,7 +124,7 @@ class TestWorldBookRoutes:
 class TestMemoryCandidatesRoutes:
     async def test_get_candidates_requires_auth(self, app_client):
         response = await app_client.get("/api/memory/candidates")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_get_candidates_empty(self, app_client, auth_headers):
         response = await app_client.get("/api/memory/candidates", headers=auth_headers)

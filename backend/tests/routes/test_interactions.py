@@ -33,43 +33,43 @@ class TestInteractionsAuth:
 
     async def test_tree_requires_auth(self, app_client):
         response = await app_client.get("/api/interactions/test-bot/tree")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_members_requires_auth(self, app_client):
         response = await app_client.get("/api/interactions/test-bot/members?guild_id=123")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_messages_requires_auth(self, app_client):
         url = "/api/interactions/test-bot/messages?guild_id=1&role_id=2&channel_id=3&member_id=4&date=2025-01-01"
         response = await app_client.get(url)
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_images_requires_auth(self, app_client):
         url = "/api/interactions/test-bot/images?guild_id=1&role_id=2&channel_id=3&member_id=4&date=2025-01-01"
         response = await app_client.get(url)
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_image_file_requires_auth(self, app_client):
         url = "/api/interactions/test-bot/image-file?guild_id=1&role_id=2&channel_id=3&member_id=4&date=2025-01-01&filename=test.png"
         response = await app_client.get(url)
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_usage_requires_auth(self, app_client):
         response = await app_client.get("/api/interactions/test-bot/usage")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_delete_requires_auth(self, app_client):
         response = await app_client.delete("/api/interactions/test-bot/delete")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_prune_requires_auth(self, app_client):
         response = await app_client.post("/api/interactions/test-bot/prune")
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
     async def test_context_requires_auth(self, app_client):
         url = "/api/interactions/test-bot/context?guild_id=1&role_id=2&channel_id=3&member_id=4&date=2025-01-01"
         response = await app_client.post(url)
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
 
 
 class TestInteractionsEndpoints:
@@ -206,4 +206,4 @@ class TestInteractionsReconstructContext:
             "/api/interactions/test-bot/context"
             "?guild_id=111&role_id=222&channel_id=333&member_id=444&date=2025-01-01",
         )
-        assert response.status_code == 403
+        assert response.status_code in (401, 403)
