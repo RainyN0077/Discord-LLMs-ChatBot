@@ -37,11 +37,13 @@ except ImportError:
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
+FRONTEND_VUE_DIR = ROOT_DIR / "frontend-vue"
 RUN_DIR = ROOT_DIR / ".local-run"
 LOG_DIR = RUN_DIR / "logs"
 
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8093"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "8094"))
+FRONTEND_VUE_PORT = int(os.getenv("FRONTEND_VUE_PORT", "8095"))
 VITE_PROXY = os.getenv("VITE_API_PROXY_TARGET", f"http://localhost:{BACKEND_PORT}")
 
 IS_WINDOWS = os.name == "nt"
@@ -288,19 +290,26 @@ def do_install() -> None:
     if _find_npm():
         _log("3/3", "npm install")
         subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_DIR), check=True)
+    if _find_npm() and FRONTEND_VUE_DIR.exists():
+        _log("3/3", "npm install (frontend-vue)")
+        subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_VUE_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_VUE_DIR), check=True)
     print(c("G", "\nAll dependencies installed."))
 
 
 def do_status() -> None:
     bp = _read_pid("backend")
     fp = _read_pid("frontend")
+    vp = _read_pid("frontend-vue")
     ba = bp and _is_alive(bp)
     fa = fp and _is_alive(fp)
+    va = vp and _is_alive(vp)
     bu = _port_open(BACKEND_PORT)
     fu = _port_open(FRONTEND_PORT)
+    vu = _port_open(FRONTEND_VUE_PORT)
     print(f"  Backend  : {'RUNNING' if ba else 'STOPPED'}  (PID {bp or '-'}, port {BACKEND_PORT} {'open' if bu else 'free'})")
     print(f"  Frontend : {'RUNNING' if fa else 'STOPPED'}  (PID {fp or '-'}, port {FRONTEND_PORT} {'open' if fu else 'free'})")
-    if not ba and not fa:
+    print(f"  Frontend-vue: {'RUNNING' if va else 'STOPPED'}  (PID {vp or '-'}, port {FRONTEND_VUE_PORT} {'open' if vu else 'free'})")
+    if not ba and not fa and not va:
         print(f"\n  Run:  python run.py")
 
 
@@ -309,7 +318,7 @@ def do_stop() -> None:
     stopped = 0
 
     # Phase 1: kill by tracked PID
-    for name in ("backend", "frontend"):
+    for name in ("backend", "frontend", "frontend-vue"):
         pid = _read_pid(name)
         if pid:
             if _kill(pid):
@@ -322,7 +331,11 @@ def do_stop() -> None:
             _clear_pid(name)
 
     # Phase 2: port-based fallback — kill anything still listening
-    port_map = {"backend": BACKEND_PORT, "frontend": FRONTEND_PORT}
+    port_map = {
+        "backend": BACKEND_PORT,
+        "frontend": FRONTEND_PORT,
+        "frontend-vue": FRONTEND_VUE_PORT,
+    }
     for name, port in port_map.items():
         if _port_open(port):
             _log("stop", f"Port {port} ({name}) still occupied — killing by port", colour="Y")
@@ -386,7 +399,7 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
     for entry in procs:
         if entry[0] == "backend":
             backend_entry = entry
-        elif entry[0] == "frontend":
+        elif entry[0] in ("frontend", "frontend-vue"):
             frontend_entry = entry
 
     if backend_entry:
@@ -420,7 +433,8 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
         )
         CHILD_PROCS.append(proc)
         _log(tag, f"Started (PID {proc.pid})", colour="G")
-        tasks.append(asyncio.create_task(_stream(proc, tag, "W")))
+        stream_tag = "vue" if tag == "frontend-vue" else tag
+        tasks.append(asyncio.create_task(_stream(proc, stream_tag, "W")))
 
     if not tasks:
         return
@@ -484,6 +498,7 @@ def _on_sigint(signum, frame):
     # Also clean up via port as final fallback
     _kill_port(BACKEND_PORT)
     _kill_port(FRONTEND_PORT)
+    _kill_port(FRONTEND_VUE_PORT)
 
     os._exit(0)
 
@@ -622,6 +637,35 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
     print(f"  Stop:     python run.py stop")
 
 
+# ── frontend-vue (Vue 3) ─────────────────────────────────────────────
+def do_frontend_vue(background: bool) -> None:
+    """Start the new frontend-vue (Vue 3) dev server only."""
+    npm = _find_npm()
+    if not npm:
+        _log("frontend-vue", "npm not found", colour="Y")
+        return
+
+    args = [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT)]
+    env_extra = {"VITE_API_PROXY_TARGET": VITE_PROXY}
+
+    if background:
+        _spawn_bg("frontend-vue", args, FRONTEND_VUE_DIR, env_extra, FRONTEND_VUE_PORT)
+        print(c("G", f"Frontend-vue started: http://localhost:{FRONTEND_VUE_PORT}"))
+        print(f"  Logs:     {LOG_DIR}")
+        print(f"  Stop:     python run.py stop")
+        return
+
+    # Foreground: single entry through the shared async runner.
+    signal.signal(signal.SIGINT, _on_sigint)
+    print(c("Y", "Press Ctrl+C to stop.\n"))
+    try:
+        asyncio.run(_run_foreground([("frontend-vue", args, FRONTEND_VUE_DIR, env_extra)]))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _on_sigint(None, None)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(description="Discord-LLMs-ChatBot Local Launcher")
@@ -636,6 +680,9 @@ def main() -> None:
     sub.add_parser("restart", help="Restart background processes")
     sub.add_parser("status", help="Show status")
     sub.add_parser("install", help="Install/sync dependencies")
+
+    p_frontend_vue = sub.add_parser("frontend-vue", help="Start the Vue 3 frontend only")
+    p_frontend_vue.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
 
     args = parser.parse_args()
 
@@ -654,6 +701,8 @@ def main() -> None:
             do_start_background(args.backend_only, args.frontend_only)
         else:
             do_start_foreground(args.backend_only, args.frontend_only)
+    elif args.command == "frontend-vue":
+        do_frontend_vue(args.background)
     else:
         do_start_foreground(False, False)
 

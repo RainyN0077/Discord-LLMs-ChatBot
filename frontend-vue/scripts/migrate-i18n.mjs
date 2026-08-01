@@ -1,0 +1,207 @@
+#!/usr/bin/env node
+/**
+ * Migrate legacy Svelte i18n sources to TypeScript modules for frontend-vue.
+ *
+ * Inputs (legacy, read-only):
+ *   - frontend/src/locales/zh.js   (default export object)
+ *   - frontend/src/locales/en.js   (default export object)
+ *   - frontend/src/i18n.js         (contains the `zhOverrides` object literal)
+ *
+ * Outputs (generated, committed):
+ *   - src/locales/zh.ts
+ *   - src/locales/en.ts
+ *
+ * Process:
+ *   1. Load zh.js / en.js via dynamic import (file:// URL).
+ *   2. Extract the `zhOverrides` object literal from i18n.js with a brace
+ *      matcher (string/comment aware), compile it through a data: URL module.
+ *   3. mergeDeep(zh, zhOverrides) so the override wins on conflicts.
+ *   4. Assert leaf-key counts (zh >= 608, en >= 866); exit non-zero otherwise.
+ *   5. Fill any top-level keys missing in en from zh, with a TODO comment.
+ *   6. Serialize both trees to `export default { ... } as const` TS files.
+ */
+
+import { readFile, writeFile, mkdir } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(__dirname, '..')
+const LEGACY_SRC = path.resolve(ROOT, '..', 'frontend', 'src')
+const OUT_DIR = path.join(ROOT, 'src', 'locales')
+
+const MIN_ZH_KEYS = 608
+const MIN_EN_KEYS = 866
+
+/** Load a legacy locale module (default export) by file name. */
+async function loadLegacyLocale(fileName) {
+  const url = pathToFileURL(path.join(LEGACY_SRC, 'locales', fileName)).href
+  const mod = await import(url)
+  return mod.default
+}
+
+/** Extract the `zhOverrides = { ... }` object literal from i18n.js source. */
+function extractZhOverrides(i18nSource) {
+  const marker = 'const zhOverrides = '
+  const idx = i18nSource.indexOf(marker)
+  if (idx === -1) {
+    throw new Error('zhOverrides not found in frontend/src/i18n.js')
+  }
+  let i = idx + marker.length
+  while (i < i18nSource.length && i18nSource[i] !== '{') i += 1
+  if (i18nSource[i] !== '{') {
+    throw new Error('zhOverrides open brace not found')
+  }
+  const start = i
+  let depth = 0
+  let inString = null
+  let escaped = false
+  for (; i < i18nSource.length; i += 1) {
+    const ch = i18nSource[i]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === inString) inString = null
+      continue
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      inString = ch
+      continue
+    }
+    if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) return i18nSource.slice(start, i + 1)
+    }
+  }
+  throw new Error('zhOverrides literal is unterminated')
+}
+
+/** Compile a raw JS object literal via a data: URL module (vm-compatible). */
+async function evalObjectLiteral(literal) {
+  const code = `export default ${literal}`
+  const dataUrl =
+    'data:text/javascript;base64,' + Buffer.from(code, 'utf8').toString('base64')
+  const mod = await import(dataUrl)
+  return mod.default
+}
+
+/** Deep-merge `extra` into `base` (extra wins), plain objects only. */
+function mergeDeep(base, extra) {
+  if (typeof base !== 'object' || base === null) return extra
+  if (typeof extra !== 'object' || extra === null) return base
+  const out = { ...base }
+  for (const [key, value] of Object.entries(extra)) {
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      typeof out[key] === 'object' &&
+      out[key] !== null &&
+      !Array.isArray(out[key])
+    ) {
+      out[key] = mergeDeep(out[key], value)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
+}
+
+/** Count leaf (non-plain-object) keys recursively. */
+function countKeys(obj) {
+  let count = 0
+  for (const value of Object.values(obj)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      count += countKeys(value)
+    } else {
+      count += 1
+    }
+  }
+  return count
+}
+
+/** Serialize a nested object to TS source (indented, JSON-stringified leaves). */
+function serializeObject(obj, indent = '') {
+  const childIndent = indent + '  '
+  const lines = ['{']
+  const entries = Object.entries(obj)
+  entries.forEach(([key, value], index) => {
+    const keyOut = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(key) ? key : JSON.stringify(key)
+    const comma = index < entries.length - 1 ? ',' : ''
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      lines.push(`${childIndent}${keyOut}: ${serializeObject(value, childIndent)}${comma}`)
+    } else {
+      lines.push(`${childIndent}${keyOut}: ${JSON.stringify(value)}${comma}`)
+    }
+  })
+  lines.push(`${indent}}`)
+  return lines.join('\n')
+}
+
+/** Render the final TS module for one locale tree. */
+function renderTsModule(tree, headerNotes) {
+  const notes = headerNotes.length > 0 ? ` * ${headerNotes.join('\n * ')}` : ''
+  const header = `/**
+ * Generated by scripts/migrate-i18n.mjs — do not edit manually.
+${notes}
+ */
+export default ${serializeObject(tree)} as const
+`
+  return header
+}
+
+async function main() {
+  const zhRaw = await loadLegacyLocale('zh.js')
+  const enRaw = await loadLegacyLocale('en.js')
+
+  const i18nSource = await readFile(path.join(LEGACY_SRC, 'i18n.js'), 'utf8')
+  const overridesLiteral = extractZhOverrides(i18nSource)
+  const zhOverrides = await evalObjectLiteral(overridesLiteral)
+
+  const zh = mergeDeep(zhRaw, zhOverrides)
+  const en = structuredClone(enRaw)
+
+  const zhKeys = countKeys(zh)
+  const enKeys = countKeys(en)
+  console.log(`zh leaf keys: ${zhKeys} (min ${MIN_ZH_KEYS})`)
+  console.log(`en leaf keys: ${enKeys} (min ${MIN_EN_KEYS})`)
+  if (zhKeys < MIN_ZH_KEYS) {
+    throw new Error(`zh key count ${zhKeys} < minimum ${MIN_ZH_KEYS}`)
+  }
+  if (enKeys < MIN_EN_KEYS) {
+    throw new Error(`en key count ${enKeys} < minimum ${MIN_EN_KEYS}`)
+  }
+
+  // Fill top-level keys missing in en from zh, flagged with a TODO note.
+  const enTopLevel = new Set(Object.keys(en))
+  const missingTop = Object.keys(zh).filter((key) => !enTopLevel.has(key))
+  const enNotes = []
+  if (missingTop.length > 0) {
+    enNotes.push(`TODO(i18n): top-level keys missing in en.js filled from zh: ${missingTop.join(', ')}`)
+    for (const key of missingTop) {
+      en[key] = zh[key]
+    }
+  }
+
+  await mkdir(OUT_DIR, { recursive: true })
+  await writeFile(path.join(OUT_DIR, 'zh.ts'), renderTsModule(zh, []), 'utf8')
+  await writeFile(path.join(OUT_DIR, 'en.ts'), renderTsModule(en, enNotes), 'utf8')
+
+  console.log(`Wrote ${path.join(OUT_DIR, 'zh.ts')} (${zhKeys} keys)`)
+  console.log(`Wrote ${path.join(OUT_DIR, 'en.ts')} (${countKeys(en)} keys)`)
+  if (missingTop.length > 0) {
+    console.log(`Note: en.ts filled missing top-level keys: ${missingTop.join(', ')}`)
+  }
+}
+
+main().catch((err) => {
+  console.error(`[migrate-i18n] FAILED: ${err.message}`)
+  process.exit(1)
+})
