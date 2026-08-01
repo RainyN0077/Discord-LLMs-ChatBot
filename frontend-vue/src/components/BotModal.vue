@@ -82,7 +82,7 @@ async function handleCreate(): Promise<void> { if (creating.value) return
   }
   creating.value = true
   try {
-    await botsStore.createBot({
+    const refreshed = await botsStore.createBot({
       bot_id: botId,
       bot_name: form.bot_name.trim() || botId,
       platform: form.platform,
@@ -91,6 +91,15 @@ async function handleCreate(): Promise<void> { if (creating.value) return
       api_key: form.api_key,
       model_name: form.model_name.trim() || 'gpt-4o',
     })
+    if (!refreshed) {
+      // L3: the bot WAS created — closing silently would hide that the
+      // sidebar list is stale; show the refresh failure and let the user
+      // decide (cancel, or retry once the backend recovers).
+      error.value = t('botManager.createRefreshFailed', {
+        error: botsStore.error ?? '',
+      })
+      return
+    }
     emit('update:show', false)
     resetForm()
   } catch (err) {

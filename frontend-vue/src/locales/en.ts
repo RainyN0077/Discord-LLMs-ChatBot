@@ -912,6 +912,7 @@ export default {
     newBot: "+ New Bot",
     createBot: "Create Bot",
     creating: "Creating...",
+    createRefreshFailed: "Bot created, but the list refresh failed: {error}",
     cancel: "Cancel",
     start: "Start",
     stop: "Stop",

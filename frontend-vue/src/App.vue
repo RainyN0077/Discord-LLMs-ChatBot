@@ -50,6 +50,13 @@ router.onError((err: unknown) => {
   routeLoadError.value = err instanceof Error ? err.message : String(err)
 })
 
+// M3: a successful navigation clears the stale failure banner — without
+// this, the error from a failed lazy-chunk load stays visible forever
+// even after the user navigates/retries successfully.
+router.afterEach(() => {
+  routeLoadError.value = null
+})
+
 /** Retry the failed navigation; `force` re-triggers it even when the target
  *  equals the current location (vue-router 5 RouteLocationOptions.force). */
 function retryRoute(): void {

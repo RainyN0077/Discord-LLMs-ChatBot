@@ -702,6 +702,7 @@ export default {
     newBot: "+ 新建 Bot",
     createBot: "创建 Bot",
     creating: "创建中...",
+    createRefreshFailed: "Bot 已创建，但列表刷新失败：{error}",
     cancel: "取消",
     start: "启动",
     stop: "停止",

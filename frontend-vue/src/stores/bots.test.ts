@@ -146,7 +146,8 @@ describe('bots store — createBot selection (NEW-4 ghost fix)', () => {
     apiMocks.fetchBots.mockResolvedValue([alpha, bravo, newbie])
     const store = useBotsStore()
 
-    await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    const refreshed = await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    expect(refreshed).toBe(true)
     expect(store.selectedBotId).toBe('newbie')
     expect(store.selectedBot?.bot_id).toBe('newbie')
   })
@@ -158,7 +159,8 @@ describe('bots store — createBot selection (NEW-4 ghost fix)', () => {
     store.bots = [alpha, bravo]
     store.selectedBotId = 'alpha'
 
-    await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    const refreshed = await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    expect(refreshed).toBe(false)
     expect(store.error).toBe('list down')
     // The ghost id must NOT be selected — the list still holds the old bots.
     expect(store.selectedBotId).toBe('alpha')
@@ -170,7 +172,8 @@ describe('bots store — createBot selection (NEW-4 ghost fix)', () => {
     apiMocks.fetchBots.mockRejectedValue(new Error('list down'))
     const store = useBotsStore()
 
-    await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    const refreshed = await store.createBot({ bot_id: 'newbie', bot_name: 'New' })
+    expect(refreshed).toBe(false)
     expect(store.selectedBotId).toBeNull()
     expect(store.selectedBot).toBeNull()
   })

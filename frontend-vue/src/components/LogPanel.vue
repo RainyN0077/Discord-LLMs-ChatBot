@@ -240,8 +240,11 @@ onBeforeUnmount(() => {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
+/* F#2: hover must brighten, not fade — --log-border is a semi-transparent
+   border color (poor contrast as text); --log-text-color is the panel's
+   readable light text token. */
 .log-filter-btn:hover {
-  color: var(--log-border);
+  color: var(--log-text-color);
 }
 
 .log-filter-btn.active {

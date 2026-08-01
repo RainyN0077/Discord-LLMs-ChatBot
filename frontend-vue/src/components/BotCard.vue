@@ -206,9 +206,21 @@ function onRenameBlur(): void {
  * with preventDefault so the page does not scroll. While the rename input is
  * editing, keys bubble up from it and must stay owned by the input (Enter
  * commits, Space types); the guard returns before touching the event.
+ * M1: the same applies to ANY interactive child (action buttons, rename
+ * ✓/×, links/inputs) — Enter/Space pressed there must activate that
+ * element, not hijack it into selecting the card (preventDefault on a
+ * button keydown cancels its activation).
  */
 function onCardKeydown(e: KeyboardEvent): void {
   if (editing.value) return
+  const target = e.target as HTMLElement | null
+  if (
+    target &&
+    typeof target.closest === 'function' &&
+    target.closest('button, input, a, .card-actions, .rename-edit-row')
+  ) {
+    return
+  }
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault()
     emit('select', props.bot.bot_id)
@@ -531,7 +543,7 @@ async function commitRename(): Promise<void> {
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: #94a3b8;
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1;
   cursor: pointer;
@@ -549,7 +561,7 @@ async function commitRename(): Promise<void> {
 }
 
 .rename-btn-cancel:hover:not(:disabled) {
-  color: #ff8bb4;
+  color: var(--log-error); /* = #ff8bb4 in dark themes (L1) */
 }
 
 .rename-btn:disabled {

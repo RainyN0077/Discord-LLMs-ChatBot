@@ -74,15 +74,51 @@ export function clearApiKey(): void {
   }
 }
 
+/**
+ * M2: a stalled auth bootstrap must never hang the first-frame loader
+ * forever — every `/api/auth/status` request is time-bounded (10s). Regular
+ * API requests keep the previous no-timeout behavior.
+ * AbortSignal.timeout() is avoided for old-browser compatibility; a manual
+ * AbortController + setTimeout behaves identically everywhere.
+ */
+const AUTH_STATUS_TIMEOUT_MS = 10_000
+
+/** fetch with a hard abort timeout; aborts surface as an Error (not the
+ *  raw AbortError DOMException) so callers see a readable message. */
+async function fetchWithAuthTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`Auth request timed out after ${timeoutMs}ms`)
+    }
+    throw err
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 /** Fetch the API secret key via the unauthenticated auth/status endpoint. */
 async function fetchApiKey(): Promise<string | null> {
   try {
-    const res = await fetch(AUTH_STATUS_URL)
+    const res = await fetchWithAuthTimeout(
+      AUTH_STATUS_URL,
+      {},
+      AUTH_STATUS_TIMEOUT_MS,
+    )
     if (!res.ok) return null
     const body = (await res.json().catch(() => ({}))) as { api_secret_key?: string }
     return body.api_secret_key || null
   } catch {
-    // Network error / backend offline — normalized to null (see module doc).
+    // Network error / backend offline / timeout — normalized to null (see
+    // module doc); the request then proceeds keyless and follows the
+    // normal 401/403 fail path.
     return null
   }
 }
@@ -158,7 +194,13 @@ export async function fetchWithAuth<T = unknown>(
     if (init.body && typeof init.body === 'string') {
       headers.set('Content-Type', 'application/json')
     }
-    return fetch(path, { ...init, headers })
+    const requestInit = { ...init, headers }
+    // M2: the auth/status requests are time-bounded (both the internal
+    // fetchApiKey and the explicit one from authStore.init); every other
+    // API request keeps the previous no-timeout behavior.
+    return path === AUTH_STATUS_URL
+      ? fetchWithAuthTimeout(path, requestInit, AUTH_STATUS_TIMEOUT_MS)
+      : fetch(path, requestInit)
   }
 
   let res = await doRequest(apiKey)

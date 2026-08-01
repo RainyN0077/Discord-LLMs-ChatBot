@@ -310,6 +310,35 @@ describe('BotCard — keyboard activation (F11)', () => {
     expect(store.selectedBotId).toBe('alice')
     expect(activeIds(wrapper)).toEqual(['alice'])
   })
+
+  it('Space/Enter on an inner action button does NOT select the card (M1)', async () => {
+    const { wrapper, store } = mountHarness([alpha, bravo], 'alpha')
+    const cardB = cards(wrapper)[1]
+    const startBtn = cardB.find('.card-actions button') // first action button
+
+    // The keydown bubbles from the button up to the card handler — the
+    // card must not preventDefault / select, or the button activation
+    // (and its click) would be cancelled.
+    await startBtn.trigger('keydown', { key: ' ' })
+    expect(store.selectedBotId).toBe('alpha')
+
+    await startBtn.trigger('keydown', { key: 'Enter' })
+    expect(store.selectedBotId).toBe('alpha')
+  })
+
+  it('Space/Enter on the rename ✓/× buttons does NOT select the card (M1)', async () => {
+    const { wrapper, store } = mountHarness([alpha, bravo], 'alpha')
+    const cardA = cards(wrapper)[0]
+    await enterRename(cardA)
+
+    const confirmBtn = cardA.find('.rename-btn-confirm')
+    await confirmBtn.trigger('keydown', { key: ' ' })
+    expect(store.selectedBotId).toBe('alpha')
+
+    const cancelBtn = cardA.find('.rename-btn-cancel')
+    await cancelBtn.trigger('keydown', { key: 'Enter' })
+    expect(store.selectedBotId).toBe('alpha')
+  })
 })
 
 describe('BotCard — delete dialog (NEW-7 / NEW-8)', () => {

@@ -818,7 +818,8 @@ function resolveScopeDetail(scopeType: string, scopeId?: string): string {
   height: 26px;
   border-radius: 50%;
   background: var(--primary-color);
-  color: var(--tab-active-text);
+  /* 主色背景专用文字色：不随 --tab-active-text（neon 风格下与主色同色） */
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;

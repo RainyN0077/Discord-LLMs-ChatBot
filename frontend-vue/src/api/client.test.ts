@@ -321,6 +321,75 @@ describe('fetchWithAuth — error normalization', () => {
   })
 })
 
+describe('fetchWithAuth — /api/auth/status timeout (M2)', () => {
+  beforeEach(() => {
+    sessionStorage.clear()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    clearApiKey()
+  })
+
+  /**
+   * Mock fetch that never settles on its own — it only rejects when its
+   * AbortSignal fires, simulating a black-holed backend. The request must
+   * be bounded by the 10s auth/status timeout instead of hanging forever.
+   */
+  function stubAbortAwareFetch(): ReturnType<typeof vi.fn> {
+    const fn = vi.fn(
+      (_url: string, init?: RequestInit): Promise<Response> =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted', 'AbortError'))
+          })
+        }),
+    )
+    vi.stubGlobal('fetch', fn)
+    return fn
+  }
+
+  it('aborts a stalled auth bootstrap and fails like a network error', async () => {
+    const fetchMock = stubAbortAwareFetch()
+
+    const attempt = fetchWithAuth('/api/auth/status', { _noRetry: true })
+    // Attach the rejection handler BEFORE advancing the timers, so the
+    // abort rejection is always handled (no unhandled-rejection warning).
+    const rejects = expect(attempt).rejects.toThrow(
+      'Auth request timed out after 10000ms',
+    )
+
+    // Stall #1: the internal fetchApiKey bootstrap request.
+    await vi.advanceTimersByTimeAsync(10_000)
+    // Stall #2: the explicit keyless /api/auth/status request (doRequest).
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    await rejects
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(getStoredApiKey()).toBeNull()
+  })
+
+  it('a timed-out bootstrap inside fetchApiKey degrades to a keyless request', async () => {
+    const fetchMock = stubAbortAwareFetch()
+
+    const attempt = fetchWithAuth('/api/other-endpoint', { _noRetry: true })
+
+    // Only the bootstrap request is time-bounded (10s); the regular request
+    // keeps the previous no-timeout behavior (still pending here).
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    // The keyless request is still in flight — it never resolves on its own.
+    let settled = false
+    attempt.catch(() => {
+      settled = true
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(settled).toBe(false)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('toApiError — direct extraction', () => {
   it('extracts message from a {detail: string} body', async () => {
     const body = await toApiError(makeRes({ detail: 'bad request' }, 400))

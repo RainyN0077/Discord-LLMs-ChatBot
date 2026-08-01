@@ -73,11 +73,22 @@ export const useBotsStore = defineStore('bots', () => {
     selectedBotId.value = botId
   }
 
-  /** Create a bot, refetch the list and select the new bot. */
-  async function createBot(payload: CreateBotRequest): Promise<void> {
+  /**
+   * Create a bot, refetch the list and select the new bot.
+   *
+   * @returns true when the list refresh succeeded (the bot is selected if
+   *   present); false when the bot was created but the refresh failed —
+   *   NEW-4/L3: callers must surface this instead of silently closing, and
+   *   must NOT select the new bot (the list still holds the old bots, so a
+   *   selection would point at a ghost id).
+   */
+  async function createBot(payload: CreateBotRequest): Promise<boolean> {
     const { bot_id } = await apiCreateBot(payload)
     const newId = bot_id ?? payload.bot_id
     await fetchBotsList()
+    // fetchBotsList swallows its own errors into `error` (see above).
+    const refreshFailed = error.value !== null
+    if (refreshFailed) return false
     // NEW-4: only select the new bot when the refresh succeeded and the bot
     // is actually in the list. Selecting a bot that failed to refresh would
     // leave the store pointing at a ghost id — `selectedBot` resolves to
@@ -87,9 +98,10 @@ export const useBotsStore = defineStore('bots', () => {
       if (!selectedBotId.value) {
         selectedBotId.value = bots.value[0]?.bot_id ?? null
       }
-      return
+      return true
     }
     selectBot(newId)
+    return true
   }
 
   /** Delete a bot; drop it locally and fall back to the first bot. */

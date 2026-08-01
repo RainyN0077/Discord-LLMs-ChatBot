@@ -454,11 +454,14 @@ watch(
   overflow: hidden;
 }
 
+/* NEW-5: right-aligned (not centered) so the toggle never sits over the
+   middle of LogPanel's 6px resize handle — the handle's center is the
+   primary drag zone, and the footer spans the full viewport width so the
+   toggle stays reachable even on narrow screens. */
 .log-footer-toggle {
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  right: 12px;
   padding: 0 10px;
   cursor: pointer;
   font-size: 10px;
