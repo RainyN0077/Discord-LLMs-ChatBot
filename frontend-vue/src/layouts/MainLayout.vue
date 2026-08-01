@@ -318,7 +318,15 @@ watch(
       <n-layout-content
         content-style="padding: 16px; overflow: auto; min-height: 0;"
       >
-        <router-view />
+        <!-- Sub-page switch animation: out-in transition on the content area
+             only — the sider/top menu/log footer stay put. The page classes
+             (.page-enter-active etc.) live in styles/global.css and respect
+             :root[data-animations='off'] (Appearance → page transitions). -->
+        <router-view v-slot="{ Component, route }">
+          <transition name="page" mode="out-in">
+            <component :is="Component" :key="route.path" />
+          </transition>
+        </router-view>
       </n-layout-content>
 
       <n-layout-footer

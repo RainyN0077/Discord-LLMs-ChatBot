@@ -50,20 +50,21 @@
   --log-other: #334155;
 }
 
-/* Page route transition (App.vue <transition name="page">). */
+/* Page route transition — used by App.vue (top-level MainLayout mount)
+   and MainLayout.vue (sub-page switches inside the content area). */
 .page-enter-active,
 .page-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.28s ease, transform 0.28s ease;
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(10px);
 }
 
 .page-leave-to {
   opacity: 0;
-  transform: translateY(-4px);
+  transform: translateY(-10px);
 }
 
 :root[data-animations='off'] .page-enter-active,
