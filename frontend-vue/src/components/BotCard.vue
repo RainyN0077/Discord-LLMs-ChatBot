@@ -385,17 +385,17 @@ async function commitRename(): Promise<void> {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #9ca3af;
+  background: var(--text-muted);
   flex-shrink: 0;
 }
 
 .status-dot.running {
-  background: #4ade80;
+  background: var(--success-text);
   animation: dot-pulse 1.5s ease-in-out infinite;
 }
 
 .status-dot.starting {
-  background: #3b82f6;
+  background: var(--primary-color);
   animation: dot-pulse 0.8s ease-in-out infinite;
 }
 
@@ -481,7 +481,7 @@ async function commitRename(): Promise<void> {
 }
 
 .rename-btn-confirm:hover:not(:disabled) {
-  color: #4ade80;
+  color: var(--success-text);
 }
 
 .rename-btn-cancel:hover:not(:disabled) {
@@ -510,12 +510,12 @@ async function commitRename(): Promise<void> {
 
 .platform-badge.discord {
   background: rgba(88, 101, 242, 0.15);
-  color: #8ea1e1;
+  color: var(--sidebar-discord-text);
 }
 
 .platform-badge.qq {
   background: rgba(18, 183, 106, 0.15);
-  color: #5cd9a6;
+  color: var(--sidebar-qq-text);
 }
 
 .card-meta {

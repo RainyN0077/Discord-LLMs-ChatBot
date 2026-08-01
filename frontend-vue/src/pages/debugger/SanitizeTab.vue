@@ -93,8 +93,8 @@ async function handleSanitize(): Promise<void> {
 .sanitize-code {
   margin: 0;
   padding: 12px;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--log-shell-bg);
+  color: var(--log-text-color);
   border-radius: 8px;
   font-family: 'Fira Code', 'Consolas', monospace;
   font-size: 12px;

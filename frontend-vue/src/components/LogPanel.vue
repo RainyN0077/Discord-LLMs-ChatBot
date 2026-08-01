@@ -220,7 +220,7 @@ onBeforeUnmount(() => {
 .log-filter-btn {
   border: none;
   background: transparent;
-  color: #90a4ae;
+  color: var(--text-muted);
   padding: 2px 6px;
   font-size: 11px;
   border-radius: 4px;
@@ -229,12 +229,12 @@ onBeforeUnmount(() => {
 }
 
 .log-filter-btn:hover {
-  color: #b8c8da;
+  color: var(--log-border);
 }
 
 .log-filter-btn.active {
   background: rgba(69, 163, 230, 0.35);
-  color: #88d1ff;
+  color: var(--info-text);
 }
 
 .log-panel-label {

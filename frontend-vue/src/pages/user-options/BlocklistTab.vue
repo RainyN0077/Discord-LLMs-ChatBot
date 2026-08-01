@@ -680,11 +680,11 @@ function resolveScopeDetail(scopeType: string, scopeId?: string): string {
 }
 
 .rule-blacklist {
-  border-left: 4px solid #ef4444;
+  border-left: 4px solid var(--error-text);
 }
 
 .rule-whitelist {
-  border-left: 4px solid #22c55e;
+  border-left: 4px solid var(--success-text);
 }
 
 .rule-topbar {
@@ -818,7 +818,7 @@ function resolveScopeDetail(scopeType: string, scopeId?: string): string {
   height: 26px;
   border-radius: 50%;
   background: var(--primary-color);
-  color: #fff;
+  color: var(--tab-active-text);
   display: flex;
   align-items: center;
   justify-content: center;

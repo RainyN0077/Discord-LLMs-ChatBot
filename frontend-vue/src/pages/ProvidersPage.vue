@@ -347,6 +347,6 @@ onMounted(() => {
 
 .rate-limit-hint {
   font-size: 13px;
-  color: #ffd479;
+  color: var(--log-warn);
 }
 </style>

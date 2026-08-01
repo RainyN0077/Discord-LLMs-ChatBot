@@ -182,7 +182,7 @@ const selectedLabelKey = computed(
 
 .template-editor-nav-item.active {
   background: var(--primary-color);
-  color: #fff;
+  color: var(--tab-active-text);
   font-weight: 600;
 }
 
