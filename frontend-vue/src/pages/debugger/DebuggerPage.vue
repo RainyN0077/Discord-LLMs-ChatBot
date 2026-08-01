@@ -7,7 +7,7 @@
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTabs, NTabPane, NSpin } from 'naive-ui'
+import { NAlert, NButton, NTabs, NTabPane, NSpin } from 'naive-ui'
 
 import { useBotsStore } from '@/stores/bots'
 import { useConfigsStore } from '@/stores/configs'
@@ -39,6 +39,12 @@ onBeforeUnmount(() => {
 onMounted(() => {
   if (!botsStore.bots.length) void botsStore.fetchBotsList()
 })
+
+/** Page-level retry for the config load (the tabs handle their own errors). */
+function handleRetry(): void {
+  const botId = botsStore.selectedBotId
+  if (botId) void configsStore.load(botId)
+}
 </script>
 
 <template>
@@ -48,6 +54,15 @@ onMounted(() => {
     </template>
 
     <template v-else>
+      <n-alert v-if="configsStore.error" type="error" class="debugger-alert">
+        <div class="debugger-alert-body">
+          <span class="debugger-alert-text">{{ configsStore.error }}</span>
+          <n-button v-if="!configsStore.config" size="small" @click="handleRetry">
+            {{ t('generic.retry') }}
+          </n-button>
+        </div>
+      </n-alert>
+
       <n-spin :show="configsStore.loading">
         <n-tabs v-model:value="activeTab" type="line" animated>
           <n-tab-pane name="simulate" :tab="t('debugger.simulateTab')">
@@ -72,5 +87,21 @@ onMounted(() => {
 .debugger-page {
   max-width: 1000px;
   margin: 0 auto;
+}
+
+.debugger-alert {
+  margin-bottom: 12px;
+}
+
+.debugger-alert-body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.debugger-alert-text {
+  flex: 1;
+  min-width: 0;
 }
 </style>

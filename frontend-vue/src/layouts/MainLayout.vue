@@ -177,13 +177,14 @@ watch(
     <n-layout has-sider class="main-layout">
       <n-layout-sider
         bordered
-      collapse-mode="width"
-      :collapsed-width="64"
-      :width="260"
-      :collapsed="siderCollapsed"
-      @collapse="siderCollapsed = true"
-      @expand="siderCollapsed = false"
-    >
+        collapse-mode="width"
+        :collapsed-width="64"
+        :width="260"
+        :breakpoint="768"
+        :collapsed="siderCollapsed"
+        @collapse="siderCollapsed = true"
+        @expand="siderCollapsed = false"
+      >
       <div class="sider-inner">
         <div class="sider-title">
           <n-button
@@ -389,6 +390,19 @@ watch(
 .top-menu {
   flex: 1;
   min-width: 0;
+  /* Narrow screens: let the 7 tabs scroll horizontally instead of
+     wrapping/crowding; the scrollbar is hidden (no hamburger menu). */
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.top-menu::-webkit-scrollbar,
+.top-menu :deep(.n-menu-bar)::-webkit-scrollbar {
+  display: none; /* WebKit/Blink */
+}
+
+.top-menu :deep(.n-menu-bar) {
+  scrollbar-width: none; /* Firefox — naive-ui's internal scroller */
 }
 
 .lang-select-wrap {

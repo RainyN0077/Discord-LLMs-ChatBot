@@ -192,6 +192,13 @@ function removeItem(key: string): void {
   align-items: start;
 }
 
+/* Narrow screens: single column (matches the sider breakpoint). */
+@media (max-width: 768px) {
+  .scoped-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .cell {
   display: flex;
   flex-direction: column;

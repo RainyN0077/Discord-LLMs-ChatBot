@@ -6,7 +6,7 @@ import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { fetchWithAuth, storeApiKey } from '@/api/client'
 
-export type AuthStatus = 'idle' | 'ok' | 'fail'
+export type AuthStatus = 'idle' | 'pending' | 'ok' | 'fail'
 
 export const useAuthStore = defineStore('auth', () => {
   const status = ref<AuthStatus>('idle')
@@ -14,7 +14,10 @@ export const useAuthStore = defineStore('auth', () => {
 
   /** Bootstrap the API key from /api/auth/status (localhost only). */
   async function init(): Promise<void> {
-    reset()
+    // Enter pending immediately — App.vue shows a full-screen loader while
+    // pending, so the very first frame never renders auth-dependent pages.
+    status.value = 'pending'
+    error.value = null
     try {
       const body = await fetchWithAuth<{ api_secret_key?: string }>(
         '/api/auth/status',

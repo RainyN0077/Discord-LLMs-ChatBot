@@ -136,6 +136,13 @@ function removePersona(key: string): void {
   gap: 10px 12px;
 }
 
+/* Narrow screens: single column (matches the sider breakpoint). */
+@media (max-width: 768px) {
+  .portrait-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .portrait-prompt {
   grid-column: 1 / -1;
 }

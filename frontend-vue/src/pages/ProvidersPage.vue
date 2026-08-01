@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useMessage } from 'naive-ui'
 import { useRouter } from 'vue-router'
-import { SettingsOutline } from '@vicons/ionicons5'
+import { RefreshOutline, SettingsOutline } from '@vicons/ionicons5'
 import {
   NAlert,
   NButton,
@@ -24,8 +25,10 @@ import {
 
 import { useBotsStore } from '@/stores/bots'
 import { useProvidersStore } from '@/stores/providers'
+import { PROVIDER_DEFAULTS } from './model-settings/providerDefaults'
 
 const { t } = useI18n()
+const message = useMessage()
 const router = useRouter()
 const botsStore = useBotsStore()
 const providersStore = useProvidersStore()
@@ -100,6 +103,31 @@ async function submitSwitch(): Promise<void> {
   })
   if (ok) {
     form.api_key = ''
+  }
+}
+
+/**
+ * Default pre-fill (UI-only initial values, user-editable): when a provider
+ * is picked and a field is still empty, fill model/base_url from
+ * PROVIDER_DEFAULTS. Fields the user already typed are left untouched.
+ */
+watch(
+  () => form.provider,
+  (provider) => {
+    const defaults = PROVIDER_DEFAULTS[provider]
+    if (!defaults) return
+    if (!form.model) form.model = defaults.defaultModel ?? ''
+    if (!form.base_url) form.base_url = defaults.baseUrl
+  },
+)
+
+/** Manual refresh of the provider list (loading state + failure toast). */
+async function handleRefresh(): Promise<void> {
+  const botId = selectedBot.value?.bot_id
+  if (!botId || providersStore.loading) return
+  await providersStore.fetch(botId)
+  if (providersStore.error) {
+    message.error(t('providersPage.loadFailed', { error: providersStore.error }))
   }
 }
 
@@ -205,7 +233,26 @@ onMounted(() => {
       </n-spin>
 
       <n-card class="switch-card" size="small">
-        <template #header>{{ t('providersPage.switchTitle') }}</template>
+        <template #header>
+          <n-space justify="space-between" align="center" :size="12">
+            <span>{{ t('providersPage.switchTitle') }}</span>
+            <n-button
+              size="small"
+              :loading="providersStore.loading"
+              :disabled="providersStore.rateLimited"
+              @click="handleRefresh"
+            >
+              <template #icon>
+                <n-icon><RefreshOutline /></n-icon>
+              </template>
+              {{
+                providersStore.loading
+                  ? t('providersPage.refreshing')
+                  : t('providersPage.refresh')
+              }}
+            </n-button>
+          </n-space>
+        </template>
         <n-form
           ref="formRef"
           :model="form"

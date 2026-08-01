@@ -221,6 +221,13 @@ function removeRoleConfig(key: string): void {
   gap: 10px 12px;
 }
 
+/* Narrow screens: single column (matches the sider breakpoint). */
+@media (max-width: 768px) {
+  .role-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .role-prompt {
   grid-column: 1 / -1;
 }
