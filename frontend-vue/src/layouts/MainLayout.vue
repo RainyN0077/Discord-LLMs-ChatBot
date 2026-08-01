@@ -13,6 +13,7 @@ import {
   NButton,
   NIcon,
   NScrollbar,
+  NSelect,
   NSpace,
   NTag,
   NAlert,
@@ -30,6 +31,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBotsStore } from '@/stores/bots'
 import { useLogsStore } from '@/stores/logs'
 import { useThemeStore } from '@/stores/theme'
+import { LANGUAGES } from '@/locales/languages'
 import BotCard from '@/components/BotCard.vue'
 import LogPanel from '@/components/LogPanel.vue'
 
@@ -74,9 +76,19 @@ function handleMenuSelect(key: string): void {
   void router.push(key)
 }
 
-function switchLanguage(): void {
-  locale.value = locale.value === 'zh' ? 'en' : 'zh'
-  localStorage.setItem('lang', locale.value)
+/** Language dropdown options (native names, e.g. 日本語). */
+const languageOptions = LANGUAGES.map((lang) => ({
+  label: lang.name,
+  value: lang.code,
+}))
+
+function handleLanguageChange(code: string): void {
+  locale.value = code
+  try {
+    localStorage.setItem('lang', code)
+  } catch {
+    // ignore persistence failures (storage may be disabled/blocked)
+  }
 }
 
 function refreshBots(): void {
@@ -183,17 +195,22 @@ watch(
           <n-tag v-if="botsStore.selectedBot" size="small" :bordered="false" type="info">
             {{ botsStore.selectedBot.bot_id }}
           </n-tag>
-          <n-button quaternary circle size="small" @click="switchLanguage">
-            <template #icon>
-              <n-icon><LanguageOutline /></n-icon>
-            </template>
-            <span class="lang-label">{{ locale === 'zh' ? 'EN' : '中' }}</span>
-          </n-button>
-          <n-button quaternary circle size="small" @click="themeStore.toggle()">
+          <div class="lang-select-wrap">
+            <n-icon class="lang-select-icon"><LanguageOutline /></n-icon>
+            <n-select
+              :value="locale"
+              :options="languageOptions"
+              :style="{ width: '120px' }"
+              size="small"
+              :consistent-menu-width="false"
+              @update:value="handleLanguageChange"
+            />
+          </div>
+          <n-button quaternary circle size="small" @click="themeStore.toggleDark()">
             <template #icon>
               <n-icon>
-                <MoonOutline v-if="themeStore.dark" />
-                <SunnyOutline v-else />
+                <SunnyOutline v-if="themeStore.dark" />
+                <MoonOutline v-else />
               </n-icon>
             </template>
           </n-button>
@@ -308,9 +325,15 @@ watch(
   min-width: 0;
 }
 
-.lang-label {
-  font-size: 12px;
-  padding-left: 2px;
+.lang-select-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lang-select-icon {
+  font-size: 15px;
+  opacity: 0.7;
 }
 
 .log-footer {
