@@ -76,31 +76,52 @@ export const useBotsStore = defineStore('bots', () => {
   /** Create a bot, refetch the list and select the new bot. */
   async function createBot(payload: CreateBotRequest): Promise<void> {
     const { bot_id } = await apiCreateBot(payload)
+    const newId = bot_id ?? payload.bot_id
     await fetchBotsList()
-    // `bot_id` is optional in the response type; fall back to the payload id.
-    selectBot(bot_id ?? payload.bot_id)
+    // NEW-4: only select the new bot when the refresh succeeded and the bot
+    // is actually in the list. Selecting a bot that failed to refresh would
+    // leave the store pointing at a ghost id — `selectedBot` resolves to
+    // null (no card highlight, header tag gone, log polling dead) while the
+    // list still shows the old selection.
+    if (!bots.value.some((b) => b.bot_id === newId)) {
+      if (!selectedBotId.value) {
+        selectedBotId.value = bots.value[0]?.bot_id ?? null
+      }
+      return
+    }
+    selectBot(newId)
   }
 
   /** Delete a bot; drop it locally and fall back to the first bot. */
   async function deleteBot(botId: string): Promise<void> {
-    await apiDeleteBot(botId)
-    bots.value = bots.value.filter((b) => b.bot_id !== botId)
-    if (selectedBotId.value === botId) {
-      selectedBotId.value = bots.value[0]?.bot_id ?? null
-    }
+    await withOperating(botId, async () => {
+      await apiDeleteBot(botId)
+      bots.value = bots.value.filter((b) => b.bot_id !== botId)
+      if (selectedBotId.value === botId) {
+        selectedBotId.value = bots.value[0]?.bot_id ?? null
+      }
+    })
   }
 
-  /** Rename a bot; update the local id and keep the selection in sync. */
+  /**
+   * Rename a bot; update the local id and keep the selection in sync.
+   *
+   * The selection is only re-pointed when it still references the OLD id —
+   * a click that landed on another card while the rename was in flight must
+   * not be clobbered (NEW-4 race).
+   */
   async function renameBot(botId: string, newId: string): Promise<void> {
-    const result = await apiRenameBot(botId, newId)
-    const nextId = result.bot_id ?? newId
-    const idx = bots.value.findIndex((b) => b.bot_id === botId)
-    if (idx >= 0) {
-      bots.value[idx] = { ...bots.value[idx], bot_id: nextId }
-    }
-    if (selectedBotId.value === botId) {
-      selectedBotId.value = nextId
-    }
+    await withOperating(botId, async () => {
+      const result = await apiRenameBot(botId, newId)
+      const nextId = result.bot_id ?? newId
+      const idx = bots.value.findIndex((b) => b.bot_id === botId)
+      if (idx >= 0) {
+        bots.value[idx] = { ...bots.value[idx], bot_id: nextId }
+      }
+      if (selectedBotId.value === botId) {
+        selectedBotId.value = nextId
+      }
+    })
   }
 
   async function startBot(botId: string): Promise<void> {

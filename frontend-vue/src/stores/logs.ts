@@ -48,9 +48,14 @@ export const useLogsStore = defineStore('logs', () => {
   const autoScroll = ref(true)
   const paused = ref(false)
   const error = ref<string | null>(null)
+  /** True when the buffer was trimmed at the cap (silent `slice(-maxLines)`). */
+  const truncated = ref(false)
+  /** Lines dropped by the cap in the last poll/trim (for the truncation note). */
+  const droppedCount = ref(0)
+  /** Current polling interval — doubles on failure (×2, capped at 60s). */
+  const retryIntervalMs = ref(BASE_INTERVAL_MS)
 
   let timer: ReturnType<typeof setTimeout> | null = null
-  let intervalMs = BASE_INTERVAL_MS
 
   /** Start polling logs for the given bot. Resets state on botId change. */
   function start(targetBotId: string): void {
@@ -58,8 +63,10 @@ export const useLogsStore = defineStore('logs', () => {
       stop()
       rows.value = []
       botId.value = targetBotId
-      intervalMs = BASE_INTERVAL_MS
+      retryIntervalMs.value = BASE_INTERVAL_MS
       error.value = null
+      truncated.value = false
+      droppedCount.value = 0
     }
     if (polling.value) return
     polling.value = true
@@ -79,6 +86,8 @@ export const useLogsStore = defineStore('logs', () => {
   /** Clear buffered rows (botId stays, polling keeps running). */
   function clear(): void {
     rows.value = []
+    truncated.value = false
+    droppedCount.value = 0
   }
 
   /** Update the row cap: persist, then trim the current buffer immediately. */
@@ -89,7 +98,15 @@ export const useLogsStore = defineStore('logs', () => {
     } catch {
       // ignore persistence failures (storage may be disabled/blocked)
     }
-    rows.value = rows.value.slice(-n)
+    const overflow = rows.value.length - n
+    if (overflow > 0) {
+      rows.value = rows.value.slice(-n)
+      truncated.value = true
+      droppedCount.value = overflow
+    } else {
+      truncated.value = false
+      droppedCount.value = 0
+    }
   }
 
   /** Single fetch of the latest log tail (used by refresh button too). */
@@ -109,14 +126,25 @@ export const useLogsStore = defineStore('logs', () => {
         raw,
         level: classifyLevel(raw),
       }))
-      rows.value = [...newRows].slice(-maxLines.value)
-      intervalMs = BASE_INTERVAL_MS
+      // Track cap truncation so the panel can show "last N lines" (MED-1+F5).
+      if (newRows.length > maxLines.value) {
+        truncated.value = true
+        droppedCount.value = newRows.length - maxLines.value
+      } else {
+        truncated.value = false
+        droppedCount.value = 0
+      }
+      rows.value = newRows.slice(-maxLines.value)
+      retryIntervalMs.value = BASE_INTERVAL_MS
       error.value = null
     } catch (err) {
       if (id !== botId.value) return
       error.value = err instanceof Error ? err.message : String(err)
-      // Backoff ×2 on failure, capped at 60s.
-      intervalMs = Math.min(intervalMs * 2, MAX_INTERVAL_MS)
+      // Backoff ×2 on failure, capped at 60s (F7: exposed to the panel).
+      retryIntervalMs.value = Math.min(
+        retryIntervalMs.value * 2,
+        MAX_INTERVAL_MS,
+      )
     }
   }
 
@@ -132,7 +160,7 @@ export const useLogsStore = defineStore('logs', () => {
     if (!polling.value) return
     timer = setTimeout(() => {
       void pollOnce().then(scheduleNext)
-    }, intervalMs)
+    }, retryIntervalMs.value)
   }
 
   return {
@@ -143,6 +171,9 @@ export const useLogsStore = defineStore('logs', () => {
     autoScroll,
     paused,
     error,
+    truncated,
+    droppedCount,
+    retryIntervalMs,
     setMaxLines,
     start,
     stop,

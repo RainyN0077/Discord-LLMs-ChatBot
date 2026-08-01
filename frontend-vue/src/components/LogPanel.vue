@@ -151,7 +151,19 @@ onBeforeUnmount(() => {
         <n-button size="tiny" @click="logsStore.clear()">✕</n-button>
       </n-space>
     </div>
-    <div v-if="logsStore.error" class="log-panel-error">{{ logsStore.error }}</div>
+    <div v-if="logsStore.truncated" class="log-panel-limit" role="status">
+      {{ t('logPanel.showLast', { limit: logsStore.maxLines }) }}
+      <template v-if="logsStore.droppedCount > 0">
+        <span class="limit-sep">·</span>
+        {{ t('logPanel.hiddenCount', { hidden: logsStore.droppedCount }) }}
+      </template>
+    </div>
+    <div v-if="logsStore.error" class="log-panel-error">
+      {{ logsStore.error }}
+      <span v-if="logsStore.polling" class="log-retry-note">
+        {{ t('logPanel.retryIn', { seconds: Math.ceil(logsStore.retryIntervalMs / 1000) }) }}
+      </span>
+    </div>
     <NScrollbar ref="scrollbarRef" class="log-scroll">
       <n-empty v-if="filteredRows.length === 0" size="small" description="—" class="log-empty" />
       <div v-else class="log-lines">
@@ -247,6 +259,26 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--log-error);
   background: var(--log-error-bg);
+}
+
+/* Truncation note (MED-1+F5): shown while the buffer is at the row cap. */
+.log-panel-limit {
+  padding: 2px 12px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.08);
+  border-bottom: 1px solid var(--log-border);
+}
+
+.limit-sep {
+  margin: 0 4px;
+  opacity: 0.6;
+}
+
+/* Next-poll interval appended to the error banner (F7). */
+.log-retry-note {
+  margin-left: 8px;
+  opacity: 0.75;
 }
 
 .log-scroll {

@@ -42,9 +42,13 @@ export const useConfigsStore = defineStore('configs', () => {
   /** Coerce custom_parameters values to the declared type for the backend. */
   function convertCustomParameter(p: CustomParameter): CustomParameter {
     if (p.type === 'number') {
-      const n = parseFloat(String(p.value))
-      // Non-finite results (e.g. empty/NaN input) keep the raw string.
-      return { ...p, value: Number.isFinite(n) ? n : String(p.value) }
+      const raw = String(p.value)
+      // LOW-2: the UI clears number fields to '' — normalize empty input to 0
+      // so a string never lands in the JSON for a number-typed parameter.
+      if (raw.trim() === '') return { ...p, value: 0 }
+      const n = parseFloat(raw)
+      // Non-finite results (e.g. NaN input) keep the raw string.
+      return { ...p, value: Number.isFinite(n) ? n : raw }
     }
     if (p.type === 'boolean') {
       // UI edits produce strings; case-insensitive compare (True/TRUE too).

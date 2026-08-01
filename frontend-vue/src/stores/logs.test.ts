@@ -104,6 +104,65 @@ describe('logs store — maxLines persistence', () => {
     expect(store.rows).toHaveLength(1)
     expect(store.rows[0].raw).toBe('WARN c')
   })
+
+  it('flags truncation and dropped count when the buffer is capped', async () => {
+    const store = useLogsStore()
+    store.setMaxLines(2)
+    clientMocks.fetchWithAuth.mockResolvedValueOnce({
+      logs: ['INFO a', 'INFO b', 'WARN c', 'DEBUG d'],
+    })
+    await store.start('bot1')
+
+    expect(store.rows).toHaveLength(2)
+    expect(store.truncated).toBe(true)
+    expect(store.droppedCount).toBe(2)
+    expect(store.rows.map((r: LogRow) => r.raw)).toEqual(['WARN c', 'DEBUG d'])
+  })
+
+  it('clears the truncation flag when the poll fits the cap', async () => {
+    const store = useLogsStore()
+    store.setMaxLines(200)
+    clientMocks.fetchWithAuth.mockResolvedValueOnce({
+      logs: ['INFO a', 'INFO b', 'WARN c'],
+    })
+    await store.start('bot1')
+
+    expect(store.rows).toHaveLength(3)
+    expect(store.truncated).toBe(false)
+    expect(store.droppedCount).toBe(0)
+  })
+
+  it('setMaxLines trimming reports the dropped rows as truncated', async () => {
+    clientMocks.fetchWithAuth.mockResolvedValueOnce({
+      logs: ['INFO a', 'INFO b', 'WARN c', 'DEBUG d'],
+    })
+    const store = useLogsStore()
+    await store.start('bot1')
+    expect(store.truncated).toBe(false)
+
+    store.setMaxLines(1)
+    expect(store.rows).toHaveLength(1)
+    expect(store.truncated).toBe(true)
+    expect(store.droppedCount).toBe(3)
+
+    // Enlarging the cap removes the truncation note.
+    store.setMaxLines(1000)
+    expect(store.truncated).toBe(false)
+    expect(store.droppedCount).toBe(0)
+  })
+
+  it('clear() resets the truncation state', async () => {
+    const store = useLogsStore()
+    store.setMaxLines(1)
+    clientMocks.fetchWithAuth.mockResolvedValueOnce({ logs: ['INFO a', 'INFO b'] })
+    await store.start('bot1')
+    expect(store.truncated).toBe(true)
+
+    store.clear()
+    expect(store.rows).toHaveLength(0)
+    expect(store.truncated).toBe(false)
+    expect(store.droppedCount).toBe(0)
+  })
 })
 
 describe('logs store — polling lifecycle', () => {
@@ -156,6 +215,34 @@ describe('logs store — polling lifecycle', () => {
 
     expect(store.error).toBe('backend down')
     expect(store.polling).toBe(true)
+    store.stop()
+  })
+
+  it('doubles the retry interval on failure (F7)', async () => {
+    clientMocks.fetchWithAuth.mockRejectedValueOnce(new Error('down'))
+    const store = useLogsStore()
+
+    expect(store.retryIntervalMs).toBe(5000)
+    await store.start('bot1')
+
+    expect(store.retryIntervalMs).toBe(10000)
+    store.stop()
+  })
+
+  it('caps the retry interval at 60s and resets it after a success', async () => {
+    clientMocks.fetchWithAuth.mockRejectedValue(new Error('down'))
+    const store = useLogsStore()
+
+    await store.start('bot1') // fail 1 → 10s
+    await store.refresh() // fail 2 → 20s
+    await store.refresh() // fail 3 → 40s
+    await store.refresh() // fail 4 → 60s (cap)
+    expect(store.retryIntervalMs).toBe(60_000)
+
+    clientMocks.fetchWithAuth.mockResolvedValue({ logs: ['INFO ok'] })
+    await store.refresh() // success → back to base
+    expect(store.retryIntervalMs).toBe(5000)
+    expect(store.error).toBeNull()
     store.stop()
   })
 

@@ -126,7 +126,8 @@ export default {
     loadFailed: "Failed to load configuration: {error}"
   },
   errors: {
-    duplicateId: "ID \"{id}\" already exists, please use another ID"
+    duplicateId: "ID \"{id}\" already exists, please use another ID",
+    routeLoadFailed: "Failed to load page: {error}"
   },
   globalConfig: {
     title: "Global Configuration",
@@ -580,7 +581,8 @@ export default {
     auto: "Auto",
     lines: "lines",
     showLast: "Showing last {limit} lines",
-    hiddenCount: "{hidden} hidden"
+    hiddenCount: "{hidden} hidden",
+    retryIn: "Retrying in {seconds}s"
   },
   actionBtn: {
     start: "Start",

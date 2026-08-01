@@ -37,7 +37,8 @@ export default {
     waitingBackend: "后端启动中，正在等待连接...（{attempt}/{max}）"
   },
   errors: {
-    duplicateId: "ID \"{id}\" 已存在，请使用其他 ID"
+    duplicateId: "ID \"{id}\" 已存在，请使用其他 ID",
+    routeLoadFailed: "页面加载失败：{error}"
   },
   globalConfig: {
     title: "全局配置",
@@ -1046,7 +1047,8 @@ export default {
     auto: "自动",
     lines: "行",
     showLast: "显示最近 {limit} 行",
-    hiddenCount: "已隐藏 {hidden} 行"
+    hiddenCount: "已隐藏 {hidden} 行",
+    retryIn: "{seconds} 秒后重试"
   },
   actionBtn: {
     start: "启动",

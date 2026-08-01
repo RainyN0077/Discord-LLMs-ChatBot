@@ -100,7 +100,7 @@ function numberValue(row: CustomParameter): number | null {
           :value="numberValue(param)"
           :step="0.01"
           :placeholder="t('customParams.paramValue')"
-          @update:value="(v: number | null) => emit('update-field', i, 'value', v ?? 0)"
+          @update:value="(v: number | null) => emit('update-field', i, 'value', v ?? '')"
         />
         <n-select
           v-else-if="param.type === 'boolean'"

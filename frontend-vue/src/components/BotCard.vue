@@ -45,6 +45,11 @@ const renaming = ref(false)
 const renameError = ref('')
 const editInputRef = ref<InstanceType<typeof NInput> | null>(null)
 
+/** IME composition in progress (e.g. Chinese pinyin) — see onRenameBlur. */
+const isComposing = ref(false)
+/** A blur arrived mid-composition; commit once the composition ends. */
+let blurDuringComposition = false
+
 const operating = computed(() =>
   botsStore.operatingBotIds.includes(props.bot.bot_id),
 )
@@ -81,6 +86,16 @@ const metaText = computed(() =>
     .join(' · '),
 )
 
+/**
+ * Secondary info row text — nickname first (F8), falling back to the bot id
+ * so the row always opens with a name-like label; then model · provider.
+ */
+const secondaryText = computed(() =>
+  [props.bot.bot_nickname || props.bot.bot_id, metaText.value]
+    .filter((v) => !!v)
+    .join(' · '),
+)
+
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
@@ -102,7 +117,7 @@ async function runAction(
 }
 
 function confirmDelete(): void {
-  if (pendingAction.value || deleteDialogOpen.value) return
+  if (pendingAction.value || deleteDialogOpen.value || editing.value) return
   deleteDialogOpen.value = true
   dialog.warning({
     title: t('botManager.title'),
@@ -117,8 +132,12 @@ function confirmDelete(): void {
       pendingAction.value = 'delete'
       try {
         await botsStore.deleteBot(props.bot.bot_id)
+        return true
       } catch (err) {
         message.error(errMessage(err))
+        // Keep the dialog open on failure so the user can retry (naive-ui
+        // hides the dialog unless the handler resolves `false`).
+        return false
       } finally {
         pendingAction.value = null
       }
@@ -128,6 +147,9 @@ function confirmDelete(): void {
 
 // --- rename ---
 function startEdit(): void {
+  // NEW-8: mutual exclusion — the delete dialog must not open rename, and a
+  // pending delete must not be interrupted by entering the edit state.
+  if (deleteDialogOpen.value || pendingAction.value === 'delete') return
   editing.value = true
   editValue.value = props.bot.bot_id
   renameError.value = ''
@@ -150,6 +172,46 @@ function onRenameKeydown(e: KeyboardEvent): void {
     void commitRename()
   } else if (e.key === 'Escape') {
     cancelRename()
+  }
+}
+
+/**
+ * NEW-3: blur must not commit half-composed IME text. While a composition is
+ * active the commit is deferred to compositionend (the input already lost
+ * focus, so the composition event may fire before or after blur — both
+ * orders are handled); the full text is committed once composition ends.
+ */
+function onCompositionStart(): void {
+  isComposing.value = true
+}
+
+function onCompositionEnd(): void {
+  isComposing.value = false
+  if (blurDuringComposition) {
+    blurDuringComposition = false
+    void commitRename()
+  }
+}
+
+function onRenameBlur(): void {
+  if (isComposing.value) {
+    blurDuringComposition = true
+    return
+  }
+  void commitRename()
+}
+
+/**
+ * Keyboard activation (F11): Enter and Space both select the card — Space
+ * with preventDefault so the page does not scroll. While the rename input is
+ * editing, keys bubble up from it and must stay owned by the input (Enter
+ * commits, Space types); the guard returns before touching the event.
+ */
+function onCardKeydown(e: KeyboardEvent): void {
+  if (editing.value) return
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    emit('select', props.bot.bot_id)
   }
 }
 
@@ -185,7 +247,7 @@ async function commitRename(): Promise<void> {
     role="button"
     tabindex="0"
     @click="emit('select', bot.bot_id)"
-    @keydown.enter="emit('select', bot.bot_id)"
+    @keydown="onCardKeydown"
   >
     <div class="card-actions" @click.stop>
       <n-button
@@ -257,8 +319,10 @@ async function commitRename(): Promise<void> {
             :disabled="renaming"
             @click.stop
             @dblclick.stop
+            @compositionstart="onCompositionStart"
+            @compositionend="onCompositionEnd"
             @keydown="onRenameKeydown"
-            @blur="commitRename"
+            @blur="onRenameBlur"
           />
           <button
             type="button"
@@ -291,7 +355,7 @@ async function commitRename(): Promise<void> {
       <span class="platform-badge" :class="bot.platform === 'qq' ? 'qq' : 'discord'">
         {{ bot.platform }}
       </span>
-      <span v-if="metaText" class="card-meta">{{ metaText }}</span>
+      <span v-if="secondaryText" class="card-meta">{{ secondaryText }}</span>
     </div>
 
     <div v-if="bot.trigger_keywords && bot.trigger_keywords.length > 0" class="card-tags">
@@ -367,12 +431,12 @@ async function commitRename(): Promise<void> {
 }
 
 .card-row-main {
-  padding-right: 100px;
+  padding-right: clamp(12px, 4vw, 100px);
 }
 
 .card-row-id {
   margin-top: 2px;
-  padding-right: 100px;
+  padding-right: clamp(12px, 4vw, 100px);
 }
 
 .card-row-meta {
