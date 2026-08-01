@@ -1,4 +1,4 @@
-﻿# Discord-LLMs-ChatBot
+﻿# ELA-Bot
 
 基于 NoneBot2 的多 Bot 聊天机器人，支持 **12 家 LLM 提供商**，配备 Web 控制面板、知识引擎、OCR 图片识别、插件系统和多 Bot 管理。
 
@@ -99,8 +99,8 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 ## 快速开始 / Quick Start
 
 ```bash
-git clone https://github.com/RainyN0077/Discord-LLMs-ChatBot.git
-cd Discord-LLMs-ChatBot
+git clone https://github.com/RainyN0077/ELA-Bot.git
+cd ELA-Bot
 docker compose up --build -d
 ```
 
@@ -132,7 +132,7 @@ python run.py install               # 安装依赖
 ## 项目结构 / Structure
 
 ```
-Discord-LLMs-ChatBot/
+ELA-Bot/
 ├── backend/
 │   ├── app/                         # FastAPI + 业务逻辑
 │   │   ├── llm_providers/           # LLM 提供商适配层

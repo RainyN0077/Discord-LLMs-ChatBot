@@ -6,7 +6,7 @@
 
 ## 1. 项目概述
 
-**Discord-LLMs-ChatBot** 是基于 NoneBot2 的多 Bot LLM 聊天机器人，支持 12 家 LLM 提供商，配备 Web 控制面板、知识引擎（SQLite FTS5 + embedding）、OCR 图片识别、插件系统和多 Bot 管理。
+**ELA-Bot** 是基于 NoneBot2 的多 Bot LLM 聊天机器人，支持 12 家 LLM 提供商，配备 Web 控制面板、知识引擎（SQLite FTS5 + embedding）、OCR 图片识别、插件系统和多 Bot 管理。
 
 **核心能力**：
 - 多提供商 LLM（OpenAI / Anthropic / Google / xAI / DeepSeek 等 12 家）
@@ -138,7 +138,7 @@
 ## 3. 目录结构
 
 ```
-Discord-LLMs-ChatBot/
+ELA-Bot/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py                  # FastAPI 入口 + lifespan

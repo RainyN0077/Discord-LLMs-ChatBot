@@ -1,5 +1,5 @@
 """
-Gunicorn configuration for Discord-LLMs-ChatBot.
+Gunicorn configuration for ELA-Bot.
 
 IMPORTANT: Multi-worker mode is NOT supported.
 See "Deployment" section in README.md for details.

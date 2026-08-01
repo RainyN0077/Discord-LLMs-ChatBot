@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unified launcher for Discord-LLMs-ChatBot local development.
+Unified launcher for ELA-Bot local development.
 
 Usage:
   python run.py                 Start backend + frontend-vue (foreground, Ctrl+C to stop)
@@ -721,7 +721,7 @@ def do_frontend(background: bool) -> None:
 
 # ── CLI ──────────────────────────────────────────────────────────────
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Discord-LLMs-ChatBot Local Launcher")
+    parser = argparse.ArgumentParser(description="ELA-Bot Local Launcher")
     sub = parser.add_subparsers(dest="command")
 
     p_start = sub.add_parser("start", help="Start services (default: foreground)")

@@ -1,6 +1,6 @@
 # Configuration Reference
 
-> 本文档列出了 Discord-LLMs-ChatBot 支持的所有环境变量及其说明。
+> 本文档列出了 ELA-Bot 支持的所有环境变量及其说明。
 > 更新日期：2026-07-27
 
 ---

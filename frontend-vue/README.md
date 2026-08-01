@@ -1,4 +1,4 @@
-# Discord-LLMs-ChatBot — frontend-vue
+# ELA-Bot — frontend-vue
 
 新一代 Web 控制面板：**Vue 3.5 + Vite 8 + TypeScript + naive-ui**，覆盖 Bot 管理、提供商切换、模型设置、提示词工坊、调试器等全部功能模块。
 
