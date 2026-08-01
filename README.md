@@ -142,6 +142,15 @@ Discord-LLMs-ChatBot/
 │       ├── components/              # Card / Sidebar / LogPanel / KnowledgeEditor
 │       ├── lib/                     # stores / api / providerDefaults / i18n
 │       └── locales/                 # 中英文语言文件
+├── frontend-vue/                    # Vue 3 控制面板（新一代，与 frontend/ 并存）
+│   └── src/
+│       ├── pages/                   # Providers / ModelSettings / PromptStudio / Debugger / UserOptions
+│       ├── components/              # BotCard / LogPanel / config 配置卡片
+│       ├── stores/                  # Pinia stores（bots / logs / providers / theme）
+│       ├── api/                     # 后端 API 客户端（X-API-Key 认证）
+│       ├── locales/                 # 中英文 i18n
+│       ├── themes/                  # 设计 token（48 键 CSS 变量体系）
+│       └── styles/                  # 全局样式 + 响应式断点
 ├── simulations/                     # E2E 模拟测试
 │   ├── simulate.py                  # 验证脚本（文本 + OCR + 多 Bot）
 │   └── test_images/                 # OCR 测试图片
@@ -149,6 +158,28 @@ Discord-LLMs-ChatBot/
 ├── docker-compose.yml
 └── README.md
 ```
+
+### Vue 控制面板（frontend-vue）/ Vue Web Console (frontend-vue)
+
+**frontend-vue** 是新一代 Web 控制面板：**Vue 3.5 + Vite + naive-ui + TypeScript**，覆盖 Bot 管理、提供商切换、模型设置、提示词工坊、调试器等全部功能模块。与旧的 Svelte `frontend/` 并存运行、相互隔离、互不影响（两者共享同一套后端 REST API），迁移进度见仓库 Issue 跟踪。
+
+| 项 | 说明 |
+|----|------|
+| 技术栈 | Vue 3.5 · Vite 8 · TypeScript · naive-ui · Pinia · vue-i18n · vue-router |
+| 端口 | `8095`（环境变量 `FRONTEND_VUE_PORT`，`run.py` 已内置启动/停止/状态管理） |
+| 目录 | `frontend-vue/src/{api,stores,components,layouts,pages,locales,styles,themes,utils}` |
+| 与 `frontend/` 关系 | 并存 · 隔离 · 互不影响（同一后端，独立端口与构建产物） |
+
+```bash
+cd frontend-vue
+npm install          # 安装依赖
+npm run dev          # 开发服务器 → http://localhost:8095（/api 代理到 8093）
+npm run build        # 类型检查 + 生产构建（dist/）
+npm run typecheck    # vue-tsc 类型检查（0 错误标准）
+npm test             # Vitest 单元测试
+```
+
+> 详细文档（设计约定、测试说明、API 认证方式）见 [frontend-vue/README.md](frontend-vue/README.md)。
 
 ---
 
