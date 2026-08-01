@@ -26,6 +26,64 @@ export async function fetchBots(): Promise<BotSummary[]> {
   return fetchWithAuth<BotSummary[]>('/api/bots/')
 }
 
+/** Payload for POST /api/bots/ (mirrors backend `CreateBotRequest`). */
+export interface CreateBotRequest {
+  bot_id: string
+  bot_name?: string
+  platform?: 'discord' | 'qq'
+  discord_token?: string
+  llm_provider?: string
+  api_key?: string
+  model_name?: string
+}
+
+export interface BotOperationResult {
+  message: string
+  bot_id?: string
+  status?: string
+}
+
+/** Create a new bot (POST /api/bots/ — trailing slash, mirrors GET). */
+export async function createBot(payload: CreateBotRequest): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>('/api/bots/', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+/** Delete a bot and all its data (no trailing slash). */
+export async function deleteBot(botId: string): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>(`/api/bots/${encodeURIComponent(botId)}`, {
+    method: 'DELETE',
+  })
+}
+
+/** Rename a bot (PUT /api/bots/{id}/rename, body { new_id }). */
+export async function renameBot(botId: string, newId: string): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>(`/api/bots/${encodeURIComponent(botId)}/rename`, {
+    method: 'PUT',
+    body: JSON.stringify({ new_id: newId }),
+  })
+}
+
+export async function startBot(botId: string): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>(`/api/bots/${encodeURIComponent(botId)}/start`, {
+    method: 'POST',
+  })
+}
+
+export async function stopBot(botId: string): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>(`/api/bots/${encodeURIComponent(botId)}/stop`, {
+    method: 'POST',
+  })
+}
+
+export async function restartBot(botId: string): Promise<BotOperationResult> {
+  return fetchWithAuth<BotOperationResult>(`/api/bots/${encodeURIComponent(botId)}/restart`, {
+    method: 'POST',
+  })
+}
+
 export interface ExportResult {
   blob: Blob
   /** Filename parsed from the Content-Disposition header. */

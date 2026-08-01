@@ -25,6 +25,7 @@ import {
   RefreshOutline,
   MenuOutline,
   ChevronBackOutline,
+  AddOutline,
 } from '@vicons/ionicons5'
 
 import { useAuthStore } from '@/stores/auth'
@@ -33,6 +34,7 @@ import { useLogsStore } from '@/stores/logs'
 import { useThemeStore } from '@/stores/theme'
 import { LANGUAGES } from '@/locales/languages'
 import BotCard from '@/components/BotCard.vue'
+import BotModal from '@/components/BotModal.vue'
 import LogPanel from '@/components/LogPanel.vue'
 
 const { t, locale } = useI18n()
@@ -44,8 +46,58 @@ const logsStore = useLogsStore()
 const themeStore = useThemeStore()
 
 const siderCollapsed = ref(false)
-const footerCollapsed = ref(false)
-const footerHeight = computed(() => (footerCollapsed.value ? 36 : 180))
+const showBotModal = ref(false)
+
+// --- log footer: height (draggable 120–500, default 180) + collapsed state,
+// both persisted to localStorage so LogPanel and layout stay in sync. ---
+function readStoredFooterHeight(): number {
+  try {
+    const n = Number(localStorage.getItem('logPanel.height'))
+    if (Number.isFinite(n) && n >= 120 && n <= 500) return n
+  } catch {
+    // storage unavailable — fall back to the default
+  }
+  return 180
+}
+
+function readStoredFooterCollapsed(): boolean {
+  try {
+    return localStorage.getItem('logPanel.collapsed') === '1'
+  } catch {
+    return false
+  }
+}
+
+const footerCollapsed = ref(readStoredFooterCollapsed())
+const footerHeight = ref(readStoredFooterHeight())
+
+const footerStyle = computed(() => ({
+  height: footerCollapsed.value ? '36px' : `${footerHeight.value}px`,
+}))
+
+function toggleFooter(): void {
+  footerCollapsed.value = !footerCollapsed.value
+  try {
+    localStorage.setItem('logPanel.collapsed', footerCollapsed.value ? '1' : '0')
+  } catch {
+    // ignore persistence failures
+  }
+}
+
+/** LogPanel drags itself: `resize` applies the height live, `resize-end`
+ *  (fired once on pointerup) persists it — no localStorage writes per frame. */
+function onFooterResize(height: number): void {
+  footerHeight.value = height
+}
+
+function onFooterResizeEnd(height: number): void {
+  footerHeight.value = height
+  try {
+    localStorage.setItem('logPanel.height', String(height))
+  } catch {
+    // ignore persistence failures
+  }
+}
 
 /**
  * Layout for the right column. naive-ui NLayout renders its children inside
@@ -151,6 +203,18 @@ watch(
           <n-button
             v-if="!siderCollapsed"
             quaternary
+            size="small"
+            class="sider-create-btn"
+            @click="showBotModal = true"
+          >
+            <template #icon>
+              <n-icon><AddOutline /></n-icon>
+            </template>
+            {{ t('botManager.newBot') }}
+          </n-button>
+          <n-button
+            v-if="!siderCollapsed"
+            quaternary
             circle
             size="small"
             @click="refreshBots"
@@ -225,16 +289,18 @@ watch(
 
       <n-layout-footer
         bordered
-        :style="{ height: footerHeight + 'px' }"
+        :style="footerStyle"
         class="log-footer"
       >
-        <div class="log-footer-toggle" @click="footerCollapsed = !footerCollapsed">
+        <div class="log-footer-toggle" @click="toggleFooter">
           {{ footerCollapsed ? '▲' : '▼' }}
         </div>
-        <LogPanel v-show="!footerCollapsed" />
+        <LogPanel v-show="!footerCollapsed" @resize="onFooterResize" @resize-end="onFooterResizeEnd" />
       </n-layout-footer>
     </n-layout>
     </n-layout>
+
+    <BotModal v-model:show="showBotModal" />
   </div>
 </template>
 

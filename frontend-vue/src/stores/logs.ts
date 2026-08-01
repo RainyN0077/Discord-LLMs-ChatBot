@@ -2,7 +2,8 @@
  * Logs store — periodic polling of backend logs with backoff and buffering.
  *
  * Polling: 5s base interval ×2 backoff on failure, capped at 60s.
- * Buffer: rows are trimmed to 500 lines. Switching bots resets state.
+ * Buffer: rows are trimmed to `maxLines` (default 500, persisted under
+ * `logPanel.maxLines`). Switching bots resets state.
  */
 
 import { ref } from 'vue'
@@ -11,15 +12,27 @@ import { fetchWithAuth } from '@/api/client'
 
 const BASE_INTERVAL_MS = 5000
 const MAX_INTERVAL_MS = 60_000
-const MAX_LINES = 500
+const DEFAULT_MAX_LINES = 500
+const MAX_LINE_OPTIONS = [200, 500, 1000, 2000]
 
 export interface LogRow {
   raw: string
   level: 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'OTHER'
 }
 
+/** Read the persisted max line count, validated against the allowed set. */
+function readMaxLines(): number {
+  try {
+    const n = Number(localStorage.getItem('logPanel.maxLines'))
+    if (MAX_LINE_OPTIONS.includes(n)) return n
+  } catch {
+    // storage unavailable — fall back to the default
+  }
+  return DEFAULT_MAX_LINES
+}
+
 /** Classify a raw log line into a severity level. */
-function classifyLevel(line: string): LogRow['level'] {
+export function classifyLevel(line: string): LogRow['level'] {
   if (/\b(ERROR|CRITICAL|FATAL)\b/i.test(line)) return 'ERROR'
   if (/\bWARN(ING)?\b/i.test(line)) return 'WARN'
   if (/\bINFO\b/i.test(line)) return 'INFO'
@@ -29,6 +42,7 @@ function classifyLevel(line: string): LogRow['level'] {
 
 export const useLogsStore = defineStore('logs', () => {
   const rows = ref<LogRow[]>([])
+  const maxLines = ref(readMaxLines())
   const botId = ref<string | null>(null)
   const polling = ref(false)
   const autoScroll = ref(true)
@@ -67,6 +81,17 @@ export const useLogsStore = defineStore('logs', () => {
     rows.value = []
   }
 
+  /** Update the row cap: persist, then trim the current buffer immediately. */
+  function setMaxLines(n: number): void {
+    maxLines.value = n
+    try {
+      localStorage.setItem('logPanel.maxLines', String(n))
+    } catch {
+      // ignore persistence failures (storage may be disabled/blocked)
+    }
+    rows.value = rows.value.slice(-n)
+  }
+
   /** Single fetch of the latest log tail (used by refresh button too). */
   async function pollOnce(): Promise<void> {
     if (!botId.value) return
@@ -84,7 +109,7 @@ export const useLogsStore = defineStore('logs', () => {
         raw,
         level: classifyLevel(raw),
       }))
-      rows.value = [...newRows].slice(-MAX_LINES)
+      rows.value = [...newRows].slice(-maxLines.value)
       intervalMs = BASE_INTERVAL_MS
       error.value = null
     } catch (err) {
@@ -112,11 +137,13 @@ export const useLogsStore = defineStore('logs', () => {
 
   return {
     rows,
+    maxLines,
     botId,
     polling,
     autoScroll,
     paused,
     error,
+    setMaxLines,
     start,
     stop,
     clear,
