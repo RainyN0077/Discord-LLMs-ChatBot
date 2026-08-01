@@ -98,7 +98,8 @@ export default {
     modelListInfo: "已加载 {count} 个可用模型，可切换为手动输入",
     multimodalLabel: "当前主模型支持多模态",
     multimodalInfo: "开启后，主模型会直接读取图片；关闭后，图片会先交给单独的 OCR 模型转成文本，再送给主模型。",
-    ocrHiddenHint: "由于主模型会直接读取图片，OCR 设置已隐藏。"
+    ocrHiddenHint: "由于主模型会直接读取图片，OCR 设置已隐藏。",
+    usageInfo: "Tokens: {total}（输入：{prompt}，输出：{completion}）"
   },
   modelProviders: {
     openai: "OpenAI",
@@ -708,6 +709,7 @@ export default {
     latency: "{ms}ms",
     notConfigured: "未配置 API Key",
     currentTag: "当前",
+    switchTitle: "切换提供商",
     switchBtn: "切换",
     switching: "切换中...",
     modelLabel: "模型",
@@ -716,6 +718,13 @@ export default {
     apiKeyLabel: "新 API Key",
     apiKeyRequired: "请输入 API Key",
     baseUrlLabel: "Base URL（可选）",
+    formProvider: "提供商",
+    formProviderPlaceholder: "选择提供商",
+    formApiKeyPlaceholder: "输入你的 API Key",
+    formBaseUrlPlaceholder: "留空使用官方 API，或填写自定义接口地址",
+    apiKeyTooShort: "API Key 至少需要 8 个字符",
+    baseUrlInvalid: "Base URL 必须以 http:// 或 https:// 开头",
+    rateLimited: "切换过于频繁，请稍后再试",
     switchSuccess: "切换成功，Bot 已重启",
     switchFailed: "切换失败：{error}",
     loadFailed: "加载提供商失败：{error}",

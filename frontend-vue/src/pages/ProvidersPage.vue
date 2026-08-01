@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import { SettingsOutline } from '@vicons/ionicons5'
 import {
   NAlert,
   NButton,
@@ -10,6 +12,7 @@ import {
   NFormItem,
   NGrid,
   NGi,
+  NIcon,
   NInput,
   NSelect,
   NSpace,
@@ -23,6 +26,7 @@ import { useBotsStore } from '@/stores/bots'
 import { useProvidersStore } from '@/stores/providers'
 
 const { t } = useI18n()
+const router = useRouter()
 const botsStore = useBotsStore()
 const providersStore = useProvidersStore()
 
@@ -66,6 +70,11 @@ function healthType(p: { healthy: boolean | null; configured: boolean }) {
   if (!p.configured) return 'default'
   if (p.healthy === null) return 'warning'
   return p.healthy ? 'success' : 'error'
+}
+
+/** Jump to Model Settings with this provider pre-selected (link only). */
+function openModelSettings(provider: string): void {
+  void router.push({ name: 'model-settings', query: { provider } })
 }
 
 function healthLabel(p: { healthy: boolean | null; configured: boolean }): string {
@@ -160,9 +169,23 @@ onMounted(() => {
               <template #header>
                 <n-space justify="space-between" align="center" :size="6">
                   <span class="provider-name">{{ p.name }}</span>
-                  <n-tag v-if="p.is_current" type="primary" size="tiny" :bordered="false">
-                    {{ t('providersPage.currentTag') }}
-                  </n-tag>
+                  <n-space :size="4" align="center">
+                    <n-tag v-if="p.is_current" type="primary" size="tiny" :bordered="false">
+                      {{ t('providersPage.currentTag') }}
+                    </n-tag>
+                    <n-button
+                      quaternary
+                      circle
+                      size="tiny"
+                      :title="t('modelSettings.openSettings')"
+                      :aria-label="t('modelSettings.openSettings')"
+                      @click="openModelSettings(p.name)"
+                    >
+                      <template #icon>
+                        <n-icon><SettingsOutline /></n-icon>
+                      </template>
+                    </n-button>
+                  </n-space>
                 </n-space>
               </template>
               <n-space vertical :size="8">

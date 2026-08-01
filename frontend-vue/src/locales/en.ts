@@ -184,7 +184,8 @@ export default {
     modelListInfo: "Loaded {count} available models, click ✏️ to switch to manual input",
     multimodalLabel: "This model is multimodal",
     multimodalInfo: "Enable this when the main model can read images directly. Disable it to route images through a separate OCR model before they reach the text-only LLM.",
-    ocrHiddenHint: "OCR settings are hidden because the main model will consume images directly."
+    ocrHiddenHint: "OCR settings are hidden because the main model will consume images directly.",
+    usageInfo: "Tokens: {total} (Prompt: {prompt}, Completion: {completion})"
   },
   modelProviders: {
     openai: "OpenAI",
@@ -936,6 +937,7 @@ export default {
     latency: "{ms}ms",
     notConfigured: "No API key configured",
     currentTag: "Current",
+    switchTitle: "Switch Provider",
     switchBtn: "Switch",
     switching: "Switching...",
     modelLabel: "Model",
@@ -944,6 +946,13 @@ export default {
     apiKeyLabel: "New API Key",
     apiKeyRequired: "Please enter an API key",
     baseUrlLabel: "Base URL (optional)",
+    formProvider: "Provider",
+    formProviderPlaceholder: "Select provider",
+    formApiKeyPlaceholder: "Enter your API Key",
+    formBaseUrlPlaceholder: "Leave empty for official API, or enter custom endpoint",
+    apiKeyTooShort: "API key must be at least 8 characters",
+    baseUrlInvalid: "Base URL must start with http:// or https://",
+    rateLimited: "Switching too frequently, please try again later",
     switchSuccess: "Switch succeeded, bot restarted",
     switchFailed: "Switch failed: {error}",
     loadFailed: "Failed to load providers: {error}",
