@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -43,6 +44,18 @@ const themeStore = useThemeStore()
 const siderCollapsed = ref(false)
 const footerCollapsed = ref(false)
 const footerHeight = computed(() => (footerCollapsed.value ? 36 : 180))
+
+/**
+ * Layout for the right column. naive-ui NLayout renders its children inside
+ * a block-level scroll container, so the flex column must be applied there
+ * via content-style; otherwise tall content pushes the log footer below the
+ * viewport and the page scrolls instead of the content area.
+ */
+const mainColumnStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+} as CSSProperties
 
 /** Top navigation tabs (7 pages), router mode. */
 const menuOptions = computed(() => [
@@ -157,7 +170,7 @@ watch(
       </div>
     </n-layout-sider>
 
-    <n-layout>
+    <n-layout class="main-column" :content-style="mainColumnStyle">
       <n-layout-header bordered class="top-header">
         <n-menu
           mode="horizontal"
@@ -187,7 +200,9 @@ watch(
         </n-space>
       </n-layout-header>
 
-      <n-layout-content content-style="padding: 16px; min-height: 0;">
+      <n-layout-content
+        content-style="padding: 16px; overflow: auto; min-height: 0;"
+      >
         <router-view />
       </n-layout-content>
 
@@ -216,6 +231,20 @@ watch(
 .main-layout {
   flex: 1;
   height: 0;
+}
+
+/* Keep the right column from shrinking below its content needs; the flex
+   column itself lives on the NLayout scroll container via content-style. */
+.main-column {
+  min-width: 0;
+}
+
+/* Let the content area shrink (then scroll) instead of squeezing the footer.
+   flex-basis must be 0: with basis:auto the tall content inflates the flex
+   total and the shrink algorithm crushes the footer (180px → content height). */
+.main-column :deep(.n-layout-content) {
+  min-height: 0;
+  flex: 1 1 0%;
 }
 
 .auth-banner {

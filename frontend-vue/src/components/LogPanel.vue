@@ -87,7 +87,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid var(--log-border);
 }
 
 .log-panel-title {
@@ -103,8 +103,8 @@ watch(
 .log-panel-error {
   padding: 4px 12px;
   font-size: 12px;
-  color: #ff8bb4;
-  background: rgba(66, 29, 48, 0.6);
+  color: var(--log-error);
+  background: var(--log-error-bg);
 }
 
 .log-scroll {
@@ -129,22 +129,22 @@ watch(
 }
 
 .log-error {
-  color: #ff8bb4;
+  color: var(--log-error);
 }
 
 .log-warn {
-  color: #ffd479;
+  color: var(--log-warn);
 }
 
 .log-info {
-  color: #5dd9b8;
+  color: var(--log-info);
 }
 
 .log-debug {
-  color: #8fa1b5;
+  color: var(--log-debug);
 }
 
 .log-other {
-  color: #d2deea;
+  color: var(--log-other);
 }
 </style>

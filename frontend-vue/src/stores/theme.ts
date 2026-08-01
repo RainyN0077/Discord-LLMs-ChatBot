@@ -23,8 +23,16 @@ export const useThemeStore = defineStore('theme', () => {
 
   const naiveTheme = computed(() => (dark.value ? darkTheme : lightTheme))
 
+  /** Mirror the theme on <html data-theme> so plain CSS can adapt (log colors etc.). */
+  function syncDomTheme(value: boolean): void {
+    if (typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = value ? 'dark' : 'light'
+    }
+  }
+
   function setDark(value: boolean): void {
     dark.value = value
+    syncDomTheme(value)
     try {
       localStorage.setItem(STORAGE_KEY, value ? 'dark' : 'light')
     } catch {
@@ -35,6 +43,9 @@ export const useThemeStore = defineStore('theme', () => {
   function toggle(): void {
     setDark(!dark.value)
   }
+
+  // Apply on first load so CSS variables match the persisted theme.
+  syncDomTheme(dark.value)
 
   return { dark, naiveTheme, setDark, toggle }
 })
