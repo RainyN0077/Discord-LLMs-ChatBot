@@ -14,7 +14,7 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 | **推理参数** | temperature · top_p · top_k · max_tokens · frequency_penalty · presence_penalty，独立模型设置页面统一管理 |
 | **自定义 HTTP 头** | 为 OpenAI 兼容提供商注入自定义请求头，适配代理/网关鉴权 |
 | **多 Bot 管理** | 单一面板管理多个 Bot，独立配置、人设、知识库、配额 |
-| **Web 控制面板** | Svelte 4 实时仪表盘，模型设置 / 行为配置 / 自动化 / 高级工具四个页面，支持主题切换 |
+| **Web 控制面板** | Vue 3.5 控制面板（`frontend-vue`，默认，8095）· 旧 Svelte 4 面板（`frontend/`，已冻结 deprecated） |
 | **分层人设系统** | 频道/服务器级别提示词 · 用户画像 · 角色行为规则 |
 | **知识引擎** | 世界书关键词注入 · 自动记忆摄取（质量评分 + 候选提升）· FTS5 全文搜索 · 向量语义召回 |
 | **插件系统** | 可扩展插件框架，HTTP 触发器、工具调用集成、外部 REST 接口 |
@@ -31,11 +31,11 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 |-------|------------|
 | Bot Framework | NoneBot2 + Discord / QQ adapter |
 | API Server | FastAPI (Python 3.11+) |
-| Frontend | Svelte 4 + Vite |
+| Frontend | Vue 3.5 + Vite（`frontend-vue`，默认）· Svelte 4 + Vite（`frontend/`，deprecated 冻结） |
 | Cache / Lock | Redis（本地开发自动降级 mock） |
 | LLM SDKs | `openai` · `google-genai` · `anthropic` · `xai-sdk` |
 | Knowledge DB | SQLite FTS5 + embedding |
-| Container | Docker Compose（backend + frontend + redis） |
+| Container | Docker Compose（backend + redis + 旧 frontend〔deprecated，见下方说明〕） |
 
 ---
 
@@ -43,8 +43,9 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                     Web UI (Svelte 4)                     │
-│              http://localhost:8094                        │
+│                 Web UI (Vue 3 frontend-vue)               │
+│              http://localhost:8095                        │
+│        （旧 Svelte frontend: 8094，deprecated 冻结）        │
 └────────────────────┬─────────────────────────────────────┘
                      │ REST API (X-API-Key auth)
                      ▼
@@ -103,6 +104,8 @@ cd Discord-LLMs-ChatBot
 docker compose up --build -d
 ```
 
+> **注意**：docker-compose 中的 `frontend` service 仍是**旧 Svelte 前端（deprecated，冻结）**，访问 `http://localhost:8094`。新前端 `frontend-vue` 暂未纳入 compose，本地开发请使用 `run.py` 或 `cd frontend-vue && npm run dev`（8095）。
+
 打开 `http://localhost:8094`，在 Web UI 中：
 1. 配置 Discord Bot Token
 2. 选择 LLM 提供商，填入 API Key
@@ -111,15 +114,18 @@ docker compose up --build -d
 ### 本地开发 / Local Dev
 
 ```bash
-python run.py start                 # 后台启动
-python run.py start --foreground    # 前台模式（Ctrl+C 停止）
+python run.py start                 # 默认启动 backend + frontend-vue（8095），前台模式
+python run.py start --background    # 后台模式（日志 → .local-run/）
+python run.py start --legacy-frontend  # 改用旧 Svelte 前端（8094，deprecated）
+python run.py frontend              # 仅启动旧 Svelte 前端（8094，deprecated）
+python run.py frontend-vue          # 仅启动 frontend-vue（8095）
 python run.py stop                  # 停止所有
 python run.py restart               # 重启
 python run.py status                # 查看状态
 python run.py install               # 安装依赖
 ```
 
-`run.py` 自动处理：创建虚拟环境 → 安装 Python 依赖 → `npm install` → 启动 uvicorn（8093）+ Vite（8094）→ 管理 PID / 日志。
+`run.py` 自动处理：创建虚拟环境 → 安装 Python 依赖 → `npm install` → 启动 uvicorn（8093）+ Vite（8095，`frontend-vue`；旧 `frontend/` 需加 `--legacy-frontend` 显式启动）→ 管理 PID / 日志。
 
 ---
 
@@ -136,13 +142,13 @@ Discord-LLMs-ChatBot/
 │   ├── nb_plugins/                  # NoneBot2 插件（核心 LLM Bot + 可配置工具）
 │   ├── plugins/                     # 可扩展插件系统
 │   └── tests/                       # pytest 单元/集成测试
-├── frontend/
+├── frontend/                        # 旧 Svelte 控制面板（deprecated — 已冻结，仅维护，新功能走 frontend-vue）
 │   └── src/
 │       ├── pages/                   # ConfigPanel / ModelSettings / Debugger / PromptStudio
 │       ├── components/              # Card / Sidebar / LogPanel / KnowledgeEditor
 │       ├── lib/                     # stores / api / providerDefaults / i18n
 │       └── locales/                 # 中英文语言文件
-├── frontend-vue/                    # Vue 3 控制面板（新一代，与 frontend/ 并存）
+├── frontend-vue/                    # Vue 3 控制面板（新一代，默认启动）
 │   └── src/
 │       ├── pages/                   # Providers / ModelSettings / PromptStudio / Debugger / UserOptions
 │       ├── components/              # BotCard / LogPanel / config 配置卡片
@@ -161,14 +167,14 @@ Discord-LLMs-ChatBot/
 
 ### Vue 控制面板（frontend-vue）/ Vue Web Console (frontend-vue)
 
-**frontend-vue** 是新一代 Web 控制面板：**Vue 3.5 + Vite + naive-ui + TypeScript**，覆盖 Bot 管理、提供商切换、模型设置、提示词工坊、调试器等全部功能模块。与旧的 Svelte `frontend/` 并存运行、相互隔离、互不影响（两者共享同一套后端 REST API），迁移进度见仓库 Issue 跟踪。
+**frontend-vue** 是新一代 Web 控制面板：**Vue 3.5 + Vite + naive-ui + TypeScript**，覆盖 Bot 管理、提供商切换、模型设置、提示词工坊、调试器等全部功能模块。自本版本起为**默认启动**的前端（`run.py` 默认启动 8095）。旧的 Svelte `frontend/` 已**冻结（deprecated）**：仅保留并存可用与维护，新功能一律在 `frontend-vue` 开发，迁移进度见仓库 Issue 跟踪。
 
 | 项 | 说明 |
 |----|------|
 | 技术栈 | Vue 3.5 · Vite 8 · TypeScript · naive-ui · Pinia · vue-i18n · vue-router |
-| 端口 | `8095`（环境变量 `FRONTEND_VUE_PORT`，`run.py` 已内置启动/停止/状态管理） |
+| 端口 | `8095`（环境变量 `FRONTEND_VUE_PORT`，`run.py` 已内置启动/停止/状态管理，默认启动） |
 | 目录 | `frontend-vue/src/{api,stores,components,layouts,pages,locales,styles,themes,utils}` |
-| 与 `frontend/` 关系 | 并存 · 隔离 · 互不影响（同一后端，独立端口与构建产物） |
+| 与 `frontend/` 关系 | 旧 `frontend/` 已 deprecated（冻结、仅维护）；需显式启动：`python run.py start --legacy-frontend` 或 `python run.py frontend`（8094） |
 
 ```bash
 cd frontend-vue
@@ -234,7 +240,7 @@ API Key     →  Fetch Models 拉取可用模型  |  切换手动输入  |  Test
 | `USAGE_FILE` | 用量统计数据文件 | `./data/usage_data.json` | |
 | `SCRIPTS_DIR` | 自定义脚本目录 | `./scripts` | |
 | `LLM_BASE_URL_<NAME>` | 指定 LLM 提供商的 Base URL 覆盖（如 `LLM_BASE_URL_OPENAI`） | 提供商默认值 | |
-| `CORS_ORIGINS` | 允许的 CORS 来源（逗号分隔） | `http://localhost:8094,http://127.0.0.1:8094` | |
+| `CORS_ORIGINS` | 允许的 CORS 来源（逗号分隔） | `http://localhost:8095,http://127.0.0.1:8095,http://localhost:8094,http://127.0.0.1:8094`（8095 默认前端，8094 旧前端 deprecated 并存） | |
 
 > **敏感字段**：标注 🔴 的变量包含敏感信息，不应提交到版本控制或暴露在日志中。
 

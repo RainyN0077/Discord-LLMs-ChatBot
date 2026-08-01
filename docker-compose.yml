@@ -32,6 +32,7 @@ services:
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,backend,frontend,redis}
     # --- 新增部分结束 ---
 
+  # deprecated: 旧 Svelte 前端，保留兼容；新前端 frontend-vue 见 README
   frontend:
     build: ./frontend
     restart: always

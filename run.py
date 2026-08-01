@@ -3,21 +3,25 @@
 Unified launcher for Discord-LLMs-ChatBot local development.
 
 Usage:
-  python run.py                 Start backend + frontend (foreground, Ctrl+C to stop)
+  python run.py                 Start backend + frontend-vue (foreground, Ctrl+C to stop)
   python run.py start           Same as above
   python run.py start --background   Detached mode (logs to .local-run/)
   python run.py start --backend-only
-  python run.py start --frontend-only
+  python run.py start --frontend-only        Start frontend-vue only (default)
+  python run.py start --legacy-frontend      Use the deprecated legacy Svelte frontend (8094)
+  python run.py frontend        Start the deprecated legacy Svelte frontend only (8094)
+  python run.py frontend-vue    Start the Vue 3 frontend only (8095)
   python run.py stop            Stop background processes
   python run.py restart         Restart background processes
   python run.py status          Show process / port status
   python run.py install         Install/sync dependencies only
 
 Environment variables:
-  BACKEND_PORT   default 8093
-  FRONTEND_PORT  default 8094
-  REDIS_HOST     default localhost
-  REDIS_PORT     default 6379
+  BACKEND_PORT     default 8093
+  FRONTEND_PORT    default 8094  (legacy Svelte frontend, deprecated)
+  FRONTEND_VUE_PORT default 8095 (new Vue 3 frontend, default)
+  REDIS_HOST       default localhost
+  REDIS_PORT       default 6379
 """
 
 import argparse
@@ -288,7 +292,8 @@ def do_install() -> None:
         _log("2/3", f"Installing {req}")
         subprocess.run([str(vp), "-m", "pip", "install", "-r", str(req)], check=True)
     if _find_npm():
-        _log("3/3", "npm install")
+        _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — installing for compatibility only", colour="Y")
+        _log("3/3", "npm install (legacy frontend, deprecated)")
         subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_DIR), check=True)
     if _find_npm() and FRONTEND_VUE_DIR.exists():
         _log("3/3", "npm install (frontend-vue)")
@@ -307,8 +312,8 @@ def do_status() -> None:
     fu = _port_open(FRONTEND_PORT)
     vu = _port_open(FRONTEND_VUE_PORT)
     print(f"  Backend  : {'RUNNING' if ba else 'STOPPED'}  (PID {bp or '-'}, port {BACKEND_PORT} {'open' if bu else 'free'})")
-    print(f"  Frontend : {'RUNNING' if fa else 'STOPPED'}  (PID {fp or '-'}, port {FRONTEND_PORT} {'open' if fu else 'free'})")
-    print(f"  Frontend-vue: {'RUNNING' if va else 'STOPPED'}  (PID {vp or '-'}, port {FRONTEND_VUE_PORT} {'open' if vu else 'free'})")
+    print(f"  Frontend : {'RUNNING' if fa else 'STOPPED'}  (PID {fp or '-'}, port {FRONTEND_PORT} {'open' if fu else 'free'})  [deprecated]")
+    print(f"  Frontend-vue: {'RUNNING' if va else 'STOPPED'}  (PID {vp or '-'}, port {FRONTEND_VUE_PORT} {'open' if vu else 'free'})  [default]")
     if not ba and not fa and not va:
         print(f"\n  Run:  python run.py")
 
@@ -318,6 +323,7 @@ def do_stop() -> None:
     stopped = 0
 
     # Phase 1: kill by tracked PID
+    # NOTE: "frontend" is the deprecated legacy Svelte frontend — kept managed for compatibility
     for name in ("backend", "frontend", "frontend-vue"):
         pid = _read_pid(name)
         if pid:
@@ -503,7 +509,7 @@ def _on_sigint(signum, frame):
     os._exit(0)
 
 
-def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
+def do_start_foreground(backend_only: bool, frontend_only: bool, legacy_frontend: bool = False) -> None:
     _check_python_compat()
     signal.signal(signal.SIGINT, _on_sigint)
 
@@ -528,7 +534,10 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
 
     if not backend_only:
         npm = _find_npm()
-        if npm:
+        if not npm:
+            _log("frontend", "npm not found", colour="Y")
+        elif legacy_frontend:
+            _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
             procs.append((
                 "frontend",
                 [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT)],
@@ -536,7 +545,12 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
                 {"VITE_API_PROXY_TARGET": VITE_PROXY},
             ))
         else:
-            _log("frontend", "npm not found", colour="Y")
+            procs.append((
+                "frontend-vue",
+                [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT)],
+                FRONTEND_VUE_DIR,
+                {"VITE_API_PROXY_TARGET": VITE_PROXY},
+            ))
 
     print(c("Y", "Press Ctrl+C to stop all processes.\n"))
 
@@ -577,15 +591,16 @@ def _spawn_bg(name: str, args: list[str], cwd: Path, env_extra: dict, port: int)
     return proc
 
 
-def do_start_background(backend_only: bool, frontend_only: bool) -> None:
+def do_start_background(backend_only: bool, frontend_only: bool, legacy_frontend: bool = False) -> None:
     do_stop()
 
     # Wait for ports to actually release before starting new processes
+    frontend_port = FRONTEND_PORT if legacy_frontend else FRONTEND_VUE_PORT
     ports_to_check = []
     if not frontend_only:
         ports_to_check.append(("backend", BACKEND_PORT))
     if not backend_only:
-        ports_to_check.append(("frontend", FRONTEND_PORT))
+        ports_to_check.append(("frontend", frontend_port))
 
     for name, port in ports_to_check:
         for _ in range(50):  # up to 5 seconds
@@ -620,18 +635,26 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
 
     if not backend_only:
         npm = _find_npm()
-        if npm:
+        if not npm:
+            _log("frontend", "npm not found", colour="Y")
+        elif legacy_frontend:
+            _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
             _spawn_bg("frontend", [
                 npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT),
             ], FRONTEND_DIR, {"VITE_API_PROXY_TARGET": VITE_PROXY}, FRONTEND_PORT)
         else:
-            _log("frontend", "npm not found", colour="Y")
+            _spawn_bg("frontend-vue", [
+                npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT),
+            ], FRONTEND_VUE_DIR, {"VITE_API_PROXY_TARGET": VITE_PROXY}, FRONTEND_VUE_PORT)
 
     time.sleep(1.5)
     print()
     print(c("G", "Startup complete."))
     print(f"  Backend:  http://localhost:{BACKEND_PORT}")
-    print(f"  Frontend: http://localhost:{FRONTEND_PORT}")
+    if legacy_frontend:
+        print(f"  Frontend: http://localhost:{FRONTEND_PORT}  [deprecated]")
+    else:
+        print(f"  Frontend: http://localhost:{FRONTEND_VUE_PORT}  (frontend-vue)")
     print(f"  Logs:     {LOG_DIR}")
     print(f"  Status:   python run.py status")
     print(f"  Stop:     python run.py stop")
@@ -666,6 +689,36 @@ def do_frontend_vue(background: bool) -> None:
         _on_sigint(None, None)
 
 
+# ── frontend (legacy Svelte, deprecated) ───────────────────────────
+def do_frontend(background: bool) -> None:
+    """Start the deprecated legacy Svelte frontend (8094) only."""
+    _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
+    npm = _find_npm()
+    if not npm:
+        _log("frontend", "npm not found", colour="Y")
+        return
+
+    args = [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT)]
+    env_extra = {"VITE_API_PROXY_TARGET": VITE_PROXY}
+
+    if background:
+        _spawn_bg("frontend", args, FRONTEND_DIR, env_extra, FRONTEND_PORT)
+        print(c("G", f"Legacy frontend started: http://localhost:{FRONTEND_PORT} [deprecated]"))
+        print(f"  Logs:     {LOG_DIR}")
+        print(f"  Stop:     python run.py stop")
+        return
+
+    # Foreground: single entry through the shared async runner.
+    signal.signal(signal.SIGINT, _on_sigint)
+    print(c("Y", "Press Ctrl+C to stop.\n"))
+    try:
+        asyncio.run(_run_foreground([("frontend", args, FRONTEND_DIR, env_extra)]))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _on_sigint(None, None)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(description="Discord-LLMs-ChatBot Local Launcher")
@@ -674,6 +727,8 @@ def main() -> None:
     p_start = sub.add_parser("start", help="Start services (default: foreground)")
     p_start.add_argument("--backend-only", action="store_true")
     p_start.add_argument("--frontend-only", action="store_true")
+    p_start.add_argument("--legacy-frontend", action="store_true",
+                         help="Use the deprecated legacy Svelte frontend (8094) instead of frontend-vue (8095)")
     p_start.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
 
     sub.add_parser("stop", help="Stop background processes")
@@ -681,8 +736,11 @@ def main() -> None:
     sub.add_parser("status", help="Show status")
     sub.add_parser("install", help="Install/sync dependencies")
 
-    p_frontend_vue = sub.add_parser("frontend-vue", help="Start the Vue 3 frontend only")
+    p_frontend_vue = sub.add_parser("frontend-vue", help="Start the Vue 3 frontend only (default, 8095)")
     p_frontend_vue.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
+
+    p_frontend = sub.add_parser("frontend", help="Start the deprecated legacy Svelte frontend only (8094)")
+    p_frontend.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
 
     args = parser.parse_args()
 
@@ -698,11 +756,13 @@ def main() -> None:
         do_start_background(False, False)
     elif args.command == "start":
         if args.background:
-            do_start_background(args.backend_only, args.frontend_only)
+            do_start_background(args.backend_only, args.frontend_only, args.legacy_frontend)
         else:
-            do_start_foreground(args.backend_only, args.frontend_only)
+            do_start_foreground(args.backend_only, args.frontend_only, args.legacy_frontend)
     elif args.command == "frontend-vue":
         do_frontend_vue(args.background)
+    elif args.command == "frontend":
+        do_frontend(args.background)
     else:
         do_start_foreground(False, False)
 

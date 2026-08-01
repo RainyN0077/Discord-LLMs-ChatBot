@@ -123,7 +123,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-_cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:8094,http://127.0.0.1:8094")
+# 默认白名单同时保留 8095（frontend-vue，默认）与 8094（旧 Svelte frontend，deprecated 并存）
+_cors_origins_env = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:8095,http://127.0.0.1:8095,http://localhost:8094,http://127.0.0.1:8094",
+)
 _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
