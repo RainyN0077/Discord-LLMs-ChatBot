@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -47,6 +47,42 @@ const themeStore = useThemeStore()
 
 const siderCollapsed = ref(false)
 const showBotModal = ref(false)
+
+/**
+ * Responsive sider collapse. naive-ui's NLayoutSider has no `breakpoint` prop
+ * (verified in node_modules LayoutSider.mjs/d.ts), so the 768px breakpoint is
+ * implemented with a matchMedia listener instead.
+ *
+ * Semantics — the viewport state is applied only when the breakpoint is
+ * *crossed*: narrow → collapse, wide → expand. Manual toggles via the sider
+ * button keep working in between crossings, so e.g. a manual collapse on a
+ * wide screen is preserved until the viewport actually crosses 768px.
+ * `isNarrowViewport` is plain bookkeeping (not reactive state) used to detect
+ * crossings; the initial matches value is applied on mount so a page that
+ * loads already-narrow starts collapsed.
+ */
+const SIDER_MOBILE_QUERY = '(max-width: 768px)'
+let isNarrowViewport = false
+let siderMql: MediaQueryList | null = null
+
+function handleViewportChange(e: MediaQueryListEvent): void {
+  if (e.matches === isNarrowViewport) return // same side — no crossing
+  isNarrowViewport = e.matches
+  siderCollapsed.value = e.matches
+}
+
+onMounted(() => {
+  if (typeof window.matchMedia !== 'function') return
+  siderMql = window.matchMedia(SIDER_MOBILE_QUERY)
+  isNarrowViewport = siderMql.matches
+  siderCollapsed.value = siderMql.matches
+  siderMql.addEventListener('change', handleViewportChange)
+})
+
+onBeforeUnmount(() => {
+  siderMql?.removeEventListener('change', handleViewportChange)
+  siderMql = null
+})
 
 // --- log footer: height (draggable 120–500, default 180) + collapsed state,
 // both persisted to localStorage so LogPanel and layout stay in sync. ---
@@ -180,10 +216,7 @@ watch(
         collapse-mode="width"
         :collapsed-width="64"
         :width="260"
-        :breakpoint="768"
         :collapsed="siderCollapsed"
-        @collapse="siderCollapsed = true"
-        @expand="siderCollapsed = false"
       >
       <div class="sider-inner">
         <div class="sider-title">
