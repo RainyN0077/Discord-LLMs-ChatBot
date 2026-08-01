@@ -12,7 +12,6 @@ from datetime import datetime
 from xml.sax.saxutils import escape as _xml_escape
 import pytz # Timezone library
 
-import discord
 import aiohttp
 
 class Stub:
@@ -23,6 +22,26 @@ def _async_stub(return_value: Any = None) -> Callable[..., Awaitable[Any]]:
     async def _fn(*args: Any, **kwargs: Any) -> Any:
         return return_value
     return _fn
+
+
+def log_task_exception(task: "asyncio.Task", *, label: str = "") -> None:
+    """done_callback 助手: 检索任务异常并记录脱敏日志, 避免 'Task exception was never retrieved'.
+
+    Args:
+        task: 已完成/已取消的 asyncio.Task
+        label: 任务描述, 用于日志上下文
+    """
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        from .security.log_sanitizer import sanitize_message
+        logger.error(
+            "Unhandled error in task %s: %s: %s",
+            label or task.get_name(), type(e).__name__,
+            sanitize_message(str(e)),
+        )
 
 def _safe_text(value) -> str:
     text = str(value or "")
@@ -57,73 +76,16 @@ def _safe_dict_list(value) -> list:
     return safe_items
 import tiktoken
 import anthropic
-from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# --- 日志系统设置 (最终优化版) ---
-import time
+# Lazy re-export of setup_logging from core_shared for backward compatibility.
+# A function wrapper avoids the circular import (core_shared needs TokenCalculator
+# from this module, so we cannot import from core_shared at module level).
 def setup_logging():
-    root_logger = logging.getLogger()
-    if root_logger.hasHandlers():
-        root_logger.handlers.clear()
-        
-    log_formatter = logging.Formatter(
-        fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%dT%H:%M:%S'
-    )
-    log_formatter.converter = time.gmtime
-
-    root_logger.setLevel(logging.INFO)
-    
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(log_formatter)
-    root_logger.addHandler(stream_handler)
-
-    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
-        uvicorn_logger = logging.getLogger(logger_name)
-        uvicorn_logger.handlers.clear()
-        uvicorn_logger.propagate = True
-        uvicorn_logger.setLevel(logging.INFO)
-    
-    try:
-        data_dir = Path.cwd() / 'data'
-        log_dir = data_dir / 'logs'
-        log_dir.mkdir(exist_ok=True, parents=True)
-        log_file = log_dir / 'bot.log'
-
-        file_handler = RotatingFileHandler(
-            log_file, 
-            maxBytes=5*1024*1024,
-            backupCount=5, 
-            encoding='utf-8'
-        )
-        file_handler.setFormatter(log_formatter)
-        root_logger.addHandler(file_handler)
-        
-        root_logger.info(f"File logging configured successfully to: {log_file}")
-        
-    except (PermissionError, IOError) as e:
-        root_logger.error(f"FATAL: Could not configure file logging due to a permission or I/O error: {e}", exc_info=True)
-    except Exception as e:
-        root_logger.error(f"FATAL: An unexpected error occurred during file logging setup: {e}", exc_info=True)
-
-    noisy_loggers = {
-        "httpx": logging.WARNING,
-        "httpcore": logging.WARNING,
-        "discord.client": logging.WARNING,
-        "discord.gateway": logging.WARNING,
-        "discord.http": logging.WARNING,
-        "discord.state": logging.WARNING,
-        "urllib3": logging.WARNING,
-        "asyncio": logging.WARNING,
-    }
-    for name, level in noisy_loggers.items():
-        logging.getLogger(name).setLevel(level)
-
-    os.environ.setdefault("LOGURU_LEVEL", "WARNING")
-    os.environ.setdefault("LOGURU_AUTOINIT", "0")
+    from .core_shared import setup_logging as _real_setup_logging
+    _real_setup_logging()
 
 
 # --- Token 计算器 ---
@@ -346,7 +308,7 @@ async def _is_internal_url(url: str) -> Tuple[bool, List[str], str]:
         logger.error(f"Unexpected error during URL validation for '{url}': {e}", exc_info=True)
         return True, [], ""
 
-def _format_with_placeholders(template_str: str, message: discord.Message, args: str) -> str:
+def _format_with_placeholders(template_str: str, message: Any, args: str) -> str:
     if not isinstance(template_str, str): return ''
     replacements = {
         "{user_input}": args,
@@ -361,7 +323,7 @@ def _format_with_placeholders(template_str: str, message: discord.Message, args:
         template_str = template_str.replace(placeholder, value)
     return template_str
 
-async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.Message, args: str) -> Optional[str]:
+async def _execute_http_request(plugin_config: Dict[str, Any], message: Any, args: str) -> Optional[str]:
     http_conf = plugin_config.get('http_request_config', {})
     url = _format_with_placeholders(http_conf.get('url', ''), message, args)
     method = http_conf.get('method', 'GET').upper()
@@ -414,7 +376,7 @@ async def _execute_http_request(plugin_config: Dict[str, Any], message: discord.
                 logger.error(f"Plugin '{plugin_name}' DNS rebinding detected: {validated_ips} -> {current_ips}")
                 return error_msg
 
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with aiohttp.ClientSession(headers=headers, timeout=aiohttp.ClientTimeout(total=30)) as session:
             request_kwargs = {}
             if method in ['POST', 'PUT', 'PATCH']:
                 try:

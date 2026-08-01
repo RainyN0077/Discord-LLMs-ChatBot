@@ -7,7 +7,7 @@ class TestChatRoutes:
         response = await app_client.post("/api/chat/direct", json={
             "messages": [{"role": "user", "content": "Hello"}],
         })
-        assert response.status_code == 401
+        assert response.status_code in (401, 403)
 
     async def test_direct_chat_empty_messages(self, app_client, auth_headers):
         response = await app_client.post("/api/chat/direct", json={

@@ -1,7 +1,9 @@
 # backend/app/llm_providers/google_provider.py
+import asyncio
 import json
 import logging
 import os
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from google import genai
@@ -22,6 +24,26 @@ class GoogleProvider(LLMProvider):
         os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
         os.environ.setdefault("GOOGLE_API_USE_CLIENT_CERTIFICATE", "false")
         self.client = genai.Client(api_key=self.api_key)
+
+    async def check_health(self) -> Dict[str, Any]:
+        """轻量健康检查：极短内容生成（max_output_tokens=1）.
+
+        失败时回退到基类 ping 检查。
+        """
+        start = time.monotonic()
+        try:
+            response = await self.client.aio.models.generate_content(
+                model=self.model, contents="ok",
+                config=types.GenerateContentConfig(max_output_tokens=1),
+            )
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": True, "latency_ms": latency_ms,
+                "model": self.model or "unknown", "error": None,
+                "provider": "google", "check_type": "lightweight",
+            }
+        except Exception:
+            return await super().check_health()
 
     @staticmethod
     def _extract_text_from_response(response: Any) -> str:
@@ -157,7 +179,7 @@ class GoogleProvider(LLMProvider):
         function_calls = getattr(response, "function_calls", None)
         return list(function_calls or [])
 
-    def _append_tool_call_turns(
+    async def _append_tool_call_turns(
         self, contents: List[types.Content], function_calls: List[Any], tool_functions: Dict[str, callable]
     ) -> List[types.Content]:
         model_parts: List[types.Part] = []
@@ -175,7 +197,10 @@ class GoogleProvider(LLMProvider):
             if function_to_call:
                 try:
                     logger.info("Executing tool '%s' with args: %s", fn_name, fn_args)
-                    function_result = function_to_call(**fn_args)
+                    if asyncio.iscoroutinefunction(function_to_call):
+                        function_result = await function_to_call(**fn_args)
+                    else:
+                        function_result = function_to_call(**fn_args)
                     parsed_result: Any = function_result
                     if isinstance(function_result, str):
                         try:
@@ -246,7 +271,7 @@ class GoogleProvider(LLMProvider):
 
                 function_calls = self._extract_function_calls(first_response)
                 if function_calls:
-                    contents = self._append_tool_call_turns(contents, function_calls, tool_functions)
+                    contents = await self._append_tool_call_turns(contents, function_calls, tool_functions)
 
             if self.stream:
                 full_response = ""

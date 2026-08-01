@@ -1,7 +1,32 @@
 // src/i18n.js
 import { writable, derived } from 'svelte/store';
-import en from './locales/en.js';
-import zh from './locales/zh.js';
+
+// --- Dynamic locale loaders (only the active language is loaded) ---
+const localeLoaders = {
+    en: () => import('./locales/en.js'),
+    zh: () => import('./locales/zh.js'),
+};
+const _translations = {};
+// 语言文件加载完成时递增，用于触发依赖翻译的 derived store 重新计算。
+// 不能用 lang.update(v => v)：Svelte store 对相同值不通知订阅者，
+// 导致首屏（preload 完成前挂载的组件）一直显示原始 key。
+const localeVersion = writable(0);
+
+async function loadLocale(langCode) {
+    if (_translations[langCode]) return;
+    if (localeLoaders[langCode]) {
+        try {
+            const mod = await localeLoaders[langCode]();
+            const raw = mod.default;
+            _translations[langCode] = langCode === 'zh'
+                ? mergeDeep(raw, zhOverrides)
+                : raw;
+            localeVersion.update((v) => v + 1);
+        } catch (err) {
+            console.error(`Failed to load locale "${langCode}":`, err);
+        }
+    }
+}
 
 function mergeDeep(base, extra) {
     if (typeof base !== 'object' || base === null) return extra;
@@ -73,8 +98,11 @@ const zhOverrides = {
             userRequestPreview: '用户请求预览',
             buildLog: '构建日志',
             previewFailed: '预览生成失败: {error}',
+            errorDetails: '错误详情: {stack}',
         },
         preset: {
+            defaultPresetName: '(默认)开箱即用',
+            presetsLoadFailed: '加载预设列表失败: {error}',
             selectPlaceholder: '选择预设',
             load: '加载',
             saveAs: '另存为...',
@@ -410,16 +438,23 @@ const zhOverrides = {
     },
 };
 
-const translations = { en, zh: mergeDeep(zh, zhOverrides) };
-
 const getInitialLang = () => {
-    if (typeof window === 'undefined') return 'en';
+    if (typeof window === 'undefined') return 'zh';
     const browserLang = navigator.language.split('-')[0];
-    return translations[browserLang] ? browserLang : 'en';
+    return localeLoaders[browserLang] ? browserLang : 'zh';
 };
 
 const storedLang = typeof window !== 'undefined' ? localStorage.getItem('lang') : null;
 export const lang = writable(storedLang || getInitialLang());
+
+// Preload the default locale immediately so translations are ready ASAP
+const initialLang = storedLang || getInitialLang();
+if (localeLoaders[initialLang]) {
+    loadLocale(initialLang).then(() => {
+        // Re-trigger reactivity once translations are loaded
+        lang.update(v => v);
+    });
+}
 
 lang.subscribe((value) => {
     if (typeof window !== 'undefined') {
@@ -427,10 +462,16 @@ lang.subscribe((value) => {
     }
 });
 
+let _pendingLang = null;
+
 export function setLang(newLang) {
-    if (translations[newLang]) {
-        lang.set(newLang);
-    }
+    if (!localeLoaders[newLang]) return;
+    _pendingLang = newLang;
+    loadLocale(newLang).then(() => {
+        if (_pendingLang === newLang) {
+            lang.set(newLang);
+        }
+    });
 }
 
 function translate(currentLang, key, vars = {}) {
@@ -439,7 +480,7 @@ function translate(currentLang, key, vars = {}) {
     }
 
     const readKey = (langCode) => {
-        let value = translations[langCode];
+        let value = _translations[langCode];
         const keys = key.split('.');
         for (const k of keys) {
             if (value && typeof value === 'object' && k in value) {
@@ -468,7 +509,7 @@ function translate(currentLang, key, vars = {}) {
     });
 }
 
-export const t = derived(lang, ($lang) => (key, vars) => translate($lang, key, vars));
+export const t = derived([lang, localeVersion], ([$lang]) => (key, vars) => translate($lang, key, vars));
 
 export const get = (key, vars) => {
     let currentLang;

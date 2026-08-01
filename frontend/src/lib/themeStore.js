@@ -1,5 +1,22 @@
 import { writable, get } from 'svelte/store';
-import { STYLES } from './themes.js';
+
+// Maximum length for custom CSS to prevent DoS (50KB)
+const MAX_CUSTOM_CSS_LENGTH = 50000;
+
+// --- Lazy theme loader ---
+let _STYLES = null;
+let _stylesPromise = null;
+
+async function getStyles() {
+    if (_STYLES) return _STYLES;
+    if (!_stylesPromise) {
+        _stylesPromise = import('./themes.js').then(mod => {
+            _STYLES = mod.STYLES;
+            return _STYLES;
+        });
+    }
+    return _stylesPromise;
+}
 
 const BASE_COLORS = {
   light: {
@@ -178,6 +195,28 @@ const BASE_COLORS = {
     '--log-time-color': '#7a8a72',
     '--sidebar-active-indicator': '#5a8a3c',
   },
+  cyberpunk: {
+    '--bg-color': '#0D0D0D',
+    '--card-bg': '#141414',
+    '--text-color': '#e5e5e5',
+    '--text-light': '#999999',
+    '--primary-color': '#FFE600',
+    '--primary-hover': '#FFC107',
+    '--border-color': 'rgba(255, 230, 0, .2)',
+    '--surface-tint': '#1a1a1a',
+    '--success-bg': 'rgba(0, 255, 136, .12)',
+    '--success-text': '#00ff88',
+    '--error-bg': 'rgba(255, 69, 58, .16)',
+    '--error-text': '#FF453A',
+    '--info-bg': 'rgba(0, 216, 255, .1)',
+    '--info-text': '#00D8FF',
+    '--save-color': '#FFE600',
+    '--save-hover': '#FFC107',
+    '--log-shell-bg': '#0a0a0a',
+    '--log-text-color': '#cccccc',
+    '--log-time-color': '#777777',
+    '--sidebar-active-indicator': '#FFE600',
+  },
 };
 
 function loadFromStorage(key, fallback) {
@@ -213,13 +252,17 @@ animationsEnabled.subscribe(enabled => {
 
 customCSS.subscribe(css => {
   if (typeof document === 'undefined') return;
+  if (css && css.length > MAX_CUSTOM_CSS_LENGTH) {
+    console.warn('Custom CSS exceeds maximum length, truncated');
+    css = css.substring(0, MAX_CUSTOM_CSS_LENGTH);
+  }
   let el = document.getElementById('custom-css');
   if (!el) {
     el = document.createElement('style');
     el.id = 'custom-css';
     document.head.appendChild(el);
   }
-  el.innerHTML = css;
+  el.textContent = css;
 });
 
 function ensureStyleElement() {
@@ -238,16 +281,22 @@ function varsToCSS(vars) {
     .join('\n');
 }
 
-function buildThemeCSS(styleId, schemeId) {
+async function buildThemeCSS(styleId, schemeId) {
+  const STYLES = await getStyles();
   const style = STYLES[styleId];
   if (!style) return '';
-  const scheme = style.schemes[schemeId] || style.schemes.default;
+  let scheme = style.schemes[schemeId];
+  if (!scheme) {
+    const schemeKeys = Object.keys(style.schemes);
+    if (schemeKeys.length === 0) return '';
+    scheme = style.schemes[schemeKeys[0]];
+  }
   const baseColors = BASE_COLORS[styleId] || BASE_COLORS.light;
 
   const merged = {
     ...baseColors,
     ...style.cssVars,
-    ...scheme.cssVars,
+    ...(scheme ? scheme.cssVars : {}),
   };
 
   const isNativeTheme = styleId === 'light' || styleId === 'dark' || styleId === 'neon';
@@ -256,10 +305,11 @@ function buildThemeCSS(styleId, schemeId) {
   return `${selector} {\n${varsToCSS(merged)}\n}`;
 }
 
-export function applyTheme(styleId, schemeId) {
+export async function applyTheme(styleId, schemeId) {
   const el = ensureStyleElement();
-  el.innerHTML = buildThemeCSS(styleId, schemeId);
+  el.innerHTML = await buildThemeCSS(styleId, schemeId);
   document.documentElement.setAttribute('data-theme', styleId);
+  document.documentElement.setAttribute('data-style', styleId);
 }
 
 export function setCustomCSSValue(css) {
@@ -276,6 +326,15 @@ export function resetToDefaults() {
 export function initTheme() {
   const styleId = get(activeStyle);
   const schemeId = get(activeScheme);
+
+  // Apply base colors synchronously to prevent flash of unstyled content
+  // while the full theme (themes.js) loads asynchronously
+  const baseColors = BASE_COLORS[styleId] || BASE_COLORS.light;
+  const el = ensureStyleElement();
+  el.innerHTML = `:root {\n${varsToCSS(baseColors)}\n}`;
+  document.documentElement.setAttribute('data-theme', styleId);
+
+  // Then load the full theme asynchronously (fire-and-forget)
   applyTheme(styleId, schemeId);
 
   const animEnabled = get(animationsEnabled);
@@ -289,7 +348,7 @@ export function initTheme() {
       el.id = 'custom-css';
       document.head.appendChild(el);
     }
-    el.innerHTML = css;
+    el.textContent = css;
   }
 }
 

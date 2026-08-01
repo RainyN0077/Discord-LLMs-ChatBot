@@ -1,17 +1,26 @@
 // frontend/src/lib/api.js
 import { get } from 'svelte/store';
-import { timezoneStore } from './stores.js';
+import { timezoneStore } from './commonStores.js';
 
 const BASE_URL = '/api';
 
-let apiSecretKey = null;
+const API_KEY_STORAGE_KEY = '_ak';
 
 export function setApiSecretKey(key) {
-    apiSecretKey = key;
+    try {
+        sessionStorage.setItem(API_KEY_STORAGE_KEY, key ? btoa(key) : '');
+    } catch (e) { /* sessionStorage不可用时降级 */ }
 }
 
-function getApiSecretKey() {
-    return apiSecretKey || null;
+export function getApiSecretKey() {
+    try {
+        const encoded = sessionStorage.getItem(API_KEY_STORAGE_KEY);
+        return encoded ? atob(encoded) : null;
+    } catch (e) { return null; }
+}
+
+export function clearApiSecretKey() {
+    try { sessionStorage.removeItem(API_KEY_STORAGE_KEY); } catch (e) {}
 }
 
 
@@ -22,7 +31,6 @@ async function apiFetch(url, options = {}) {
     // If no key and this is not a config fetch, try to fetch config first.
     if (!key && !url.endsWith('/api/config')) {
         try {
-            console.log("No API key found, attempting to fetch config first...");
             await fetchConfig();
             key = getApiSecretKey(); // Try getting the key again
         } catch (e) {
@@ -45,7 +53,7 @@ async function apiFetch(url, options = {}) {
 
     if (response.status === 403 && key && !options._noRetry) {
         console.warn('Received 403 with current key, clearing and retrying without key...');
-        apiSecretKey = null;
+        clearApiSecretKey();
         await fetchConfig();
         const newKey = getApiSecretKey();
         if (newKey) {
@@ -59,13 +67,19 @@ async function apiFetch(url, options = {}) {
 }
 
 async function handleResponse(response) {
-    // Special handling for fetching logs, which returns plain text
+    // Special handling for logs endpoints:
+    // - /api/bots/{id}/logs 返回 JSON { logs: [...] }
+    // - /api/logs           返回纯文本多行
     if (response.url.endsWith('/api/logs') || /\/api\/bots\/.+\/logs$/.test(response.url)) {
+        const isBotLogs = /\/api\/bots\/.+\/logs$/.test(response.url);
         if (!response.ok) {
             const errorText = await response.text();
-            throw new Error(JSON.parse(errorText).detail || 'Failed to fetch logs');
+            let logError;
+            try { logError = JSON.parse(errorText).detail || 'Failed to fetch logs'; }
+            catch (_) { logError = errorText || 'Failed to fetch logs'; }
+            throw new Error(logError);
         }
-        return response.text();
+        return isBotLogs ? response.json() : response.text();
     }
 
     // Standard JSON response handling for all other API requests
@@ -76,14 +90,14 @@ async function handleResponse(response) {
         try {
             // Try to parse as JSON first
             const errorJson = await response.json();
-            console.error('Full API Error JSON:', errorJson); // Add this line for debugging
             errorDetail = errorJson.detail || JSON.stringify(errorJson);
+            console.error('API Error JSON detail:', errorJson.detail || response.statusText);
         } catch (e) {
             // If JSON parsing fails, read as text from the clone
             try {
                 const errorText = await responseClone.text();
-                console.error('Full API Error Text:', errorText); // Add this line for debugging
                 errorDetail = errorText || errorDetail;
+                console.error('API Error Text:', errorDetail);
             } catch (textErr) {
                 // If reading as text also fails, stick with the status code
             }
@@ -101,9 +115,22 @@ async function handleResponse(response) {
 }
 
 export async function fetchConfig() {
-    console.log('Fetching config from backend...');
-    const tempKey = getApiSecretKey();
+    let tempKey = getApiSecretKey();
     const headers = {};
+    if (!tempKey) {
+        // 无 key 时先尝试自动认证：localhost 部署下后端直接下发密钥（傻瓜式启动），
+        // 免去手动复制 api_secret_key 的步骤。
+        try {
+            const statusRes = await fetch(`${BASE_URL}/auth/status`);
+            if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                if (statusData && statusData.api_secret_key) {
+                    tempKey = statusData.api_secret_key;
+                    setApiSecretKey(tempKey);
+                }
+            }
+        } catch (e) { /* 后端不可达等场景忽略，走下方原有 401/403 流程 */ }
+    }
     if (tempKey) {
         headers['X-API-Key'] = tempKey;
     }
@@ -116,17 +143,14 @@ export async function fetchConfig() {
     } else {
         console.warn('Config response missing api_secret_key, key will remain unset');
     }
-    console.log('Config fetched successfully.');
     return result;
 }
 
 export async function saveConfig(configData) {
-    console.log('Saving config to backend...');
     const result = await apiFetch(`${BASE_URL}/config`, {
         method: 'POST',
         body: JSON.stringify(configData),
     });
-    console.log('Config saved successfully:', result);
     return result;
 }
 
@@ -191,9 +215,7 @@ export async function testModel(provider, apiKey, baseUrl, modelName, task = 'ch
 }
 
 export async function fetchPluginConfig(pluginName) {
-    console.log(`Fetching config for plugin: ${pluginName}`);
-    const result = await apiFetch(`${BASE_URL}/plugins/${pluginName}/config`);
-    console.log(`Config for ${pluginName} fetched successfully:`, result);
+    const result = await apiFetch(`${BASE_URL}/plugins/${encodeURIComponent(pluginName)}/config`);
     return result;
 }
 
@@ -284,22 +306,21 @@ export async function deleteWorldBookItem(itemId) {
 }
 
 export async function savePluginConfig(pluginName, configData) {
-    console.log(`Saving config for plugin: ${pluginName}`, configData);
-    const result = await apiFetch(`${BASE_URL}/plugins/${pluginName}/config`, {
+    const result = await apiFetch(`${BASE_URL}/plugins/${encodeURIComponent(pluginName)}/config`, {
         method: 'POST',
         body: JSON.stringify(configData),
     });
-    console.log(`Config for ${pluginName} saved successfully:`, result);
     return result;
 }
 
 // --- Usage & Pricing API ---
-export async function fetchUsageStats(period, view) {
+export async function fetchUsageStats(period, view, signal) {
     const userTimezone = get(timezoneStore);
     return apiFetch(`${BASE_URL}/usage/stats?period=${period}&view=${view}`, {
         headers: {
             'X-Timezone': userTimezone || 'UTC'
-        }
+        },
+        signal,
     });
 }
 
@@ -327,53 +348,53 @@ export async function createBot(config) {
 }
 
 export async function deleteBot(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}`, {
         method: 'DELETE',
     });
 }
 
 export async function renameBot(botId, newId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/rename`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/rename`, {
         method: 'PUT',
         body: JSON.stringify({ new_id: newId }),
     });
 }
 
 export async function startBot(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/start`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/start`, {
         method: 'POST',
     });
 }
 
 export async function stopBot(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/stop`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/stop`, {
         method: 'POST',
     });
 }
 
 export async function restartBot(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/restart`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/restart`, {
         method: 'POST',
     });
 }
 
 export async function fetchBotConfig(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/config`);
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/config`);
 }
 
 export async function updateBotConfig(botId, config) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/config`, {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/config`, {
         method: 'PUT',
         body: JSON.stringify(config),
     });
 }
 
 export async function fetchBotLogs(botId) {
-    return apiFetch(`${BASE_URL}/bots/${botId}/logs`);
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/logs`);
 }
 
 export async function exportBotConfig(botId) {
-    const url = `${BASE_URL}/bots/${botId}/export`;
+    const url = `${BASE_URL}/bots/${encodeURIComponent(botId)}/export`;
     const key = getApiSecretKey();
     const headers = {};
     if (key) headers['X-API-Key'] = key;
@@ -418,4 +439,93 @@ export async function importBotConfig(file, overwrite = false) {
         throw new Error(err.detail || 'Import failed');
     }
     return response.json();
+}
+
+export async function fetchBotGuilds(botId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/guilds`);
+}
+
+export async function fetchGuildChannels(botId, guildId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/channels`);
+}
+
+export async function fetchGuildRoles(botId, guildId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/roles`);
+}
+
+export async function searchGuildMembers(botId, guildId, query, timeoutMs = 5000) {
+    const params = new URLSearchParams();
+    if (query) params.set('query', query);
+    params.set('timeout_ms', String(timeoutMs));
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/guilds/${encodeURIComponent(guildId)}/members?${params.toString()}`);
+}
+
+export async function fetchBotDiagnostics(botId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/diagnostics`);
+}
+
+// --- Provider Management API ---
+export async function fetchProviders(botId) {
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/providers`);
+}
+
+export async function switchProvider(botId, payload) {
+    // 后端 ProviderSwitchRequest 字段为 { provider, model, api_key, base_url? }
+    return apiFetch(`${BASE_URL}/bots/${encodeURIComponent(botId)}/providers/switch`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+    });
+}
+
+// --- Interaction History API ---
+export async function fetchInteractionTree(botId, filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.guild_id) params.set('guild_id', filters.guild_id);
+    if (filters.role_id) params.set('role_id', filters.role_id);
+    if (filters.channel_id) params.set('channel_id', filters.channel_id);
+    if (filters.member_id) params.set('member_id', filters.member_id);
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/tree?${params.toString()}`);
+}
+
+export async function fetchInteractionMembers(botId, guildId) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/members?guild_id=${encodeURIComponent(guildId)}`);
+}
+
+export async function fetchInteractionMessages(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/messages?guild_id=${encodeURIComponent(guildId)}&role_id=${encodeURIComponent(roleId)}&channel_id=${encodeURIComponent(channelId)}&member_id=${encodeURIComponent(memberId)}&date=${encodeURIComponent(date)}`);
+}
+
+export async function fetchInteractionImages(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/images?guild_id=${encodeURIComponent(guildId)}&role_id=${encodeURIComponent(roleId)}&channel_id=${encodeURIComponent(channelId)}&member_id=${encodeURIComponent(memberId)}&date=${encodeURIComponent(date)}`);
+}
+
+export async function fetchInteractionImageFile(botId, guildId, roleId, channelId, memberId, date, filename) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/image-file?guild_id=${encodeURIComponent(guildId)}&role_id=${encodeURIComponent(roleId)}&channel_id=${encodeURIComponent(channelId)}&member_id=${encodeURIComponent(memberId)}&date=${encodeURIComponent(date)}&filename=${encodeURIComponent(filename)}`);
+}
+
+export async function fetchInteractionUsage(botId) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/usage`);
+}
+
+export async function deleteInteractionRecords(botId, filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.guild_id) params.set('guild_id', filters.guild_id);
+    if (filters.channel_id) params.set('channel_id', filters.channel_id);
+    if (filters.member_id) params.set('member_id', filters.member_id);
+    if (filters.date) params.set('date', filters.date);
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/delete?${params.toString()}`, {
+        method: 'DELETE',
+    });
+}
+
+export async function pruneInteractions(botId) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/prune`, {
+        method: 'POST',
+    });
+}
+
+export async function reconstructContext(botId, guildId, roleId, channelId, memberId, date) {
+    return apiFetch(`${BASE_URL}/interactions/${encodeURIComponent(botId)}/context?guild_id=${encodeURIComponent(guildId)}&role_id=${encodeURIComponent(roleId)}&channel_id=${encodeURIComponent(channelId)}&member_id=${encodeURIComponent(memberId)}&date=${encodeURIComponent(date)}`, {
+        method: 'POST',
+    });
 }

@@ -4,11 +4,13 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Dict, Any, List, Optional, Tuple
-import discord
 
 from .persona_manager import get_highest_configured_role, get_rich_identity, find_mentioned_users_by_keywords, _format_author_id
+from .user_options_manager import is_user_blocked_from_context, is_user_whitelisted_for_context, should_filter_history, get_formatted_block_notice, resolve_user_options
 from ..utils import escape_content, matches_trigger_keywords
+from ..security.input_sanitizer import sanitize_user_input
 from .knowledge_manager import get_knowledge_manager
 
 logger = logging.getLogger(__name__)
@@ -209,8 +211,85 @@ USER_REQUEST_BLOCK_TPL = "[用户请求块]\n\n{parts}\n\n[/用户请求块]"
 DEFAULT_WORLDBOOK_MAX_ENTRIES = 20
 DEFAULT_WORLDBOOK_CHAR_LIMIT = 3000
 
+# --- Prompt template overrides ---
+# 键名与 prompts.py DEFAULT_TEMPLATES 的 14 键一致；templates 参数由调用方
+# 从 bot_config['prompt_templates'] 归一化传入（运行时与 preview 均生效），
+# 未配置时恒用下方模块常量，行为与旧版逐字节一致。
 
-async def build_context_history(client: discord.Client, bot_config: Dict[str, Any], message: discord.Message, cutoff_timestamp: Optional[datetime]) -> Tuple[List[discord.Message], List[Dict[str, str]]]:
+
+def _resolve_tpl(
+    templates: Optional[Dict[str, Any]], key: str, default: str
+) -> str:
+    """返回自定义模板覆盖值；未提供/空串/非字符串时回退模块默认常量."""
+    if templates is None:
+        return default
+    value = templates.get(key)
+    if isinstance(value, str) and value:
+        return value
+    return default
+
+
+def _format_tpl(
+    template: str, default: str, *, tpl_key: Optional[str] = None, **kwargs
+) -> str:
+    """安全格式化模板：占位符缺失/非法表达式（含属性访问）等异常时回退默认常量.
+
+    捕获 ``KeyError/IndexError/ValueError/AttributeError``（如 ``{content.upper()}``
+    对非预期对象取属性）避免消息静默丢弃或预览/chat 500。
+
+    ``tpl_key`` 为模板键名（如 ``"message_format"``），仅在调用方确认自定义模板
+    （templates 提供）时传入：回退发生时记录 warning（仅键名，不含模板内容），
+    默认路径（templates 为 None）不记录，避免每消息刷屏。
+    """
+    try:
+        return template.format(**kwargs)
+    except (KeyError, IndexError, ValueError, AttributeError) as e:
+        if tpl_key is not None:
+            if isinstance(e, KeyError) and e.args:
+                missing = e.args[0]
+            else:
+                missing = "invalid-expression"
+            logger.warning(
+                "template '%s' fallback to default (key=%s)", tpl_key, missing
+            )
+        return default.format(**kwargs)
+
+
+def resolve_prompt_templates(config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """从 bot_config 读取 ``prompt_templates`` 并归一化：非 dict（含缺省 None）一律返回 None.
+
+    所有消费点只接收 ``None`` 或 ``dict``，键值非法由 ``_resolve_tpl``/``_format_tpl``
+    回退默认常量，保证"未配置模板 = 旧行为逐字节不变"。
+    """
+    templates = config.get("prompt_templates")
+    if isinstance(templates, dict):
+        return templates
+    return None
+
+
+def format_memory_context(
+    templates: Optional[Dict[str, Any]], memory_block: str
+) -> Optional[str]:
+    """用 ``memory_context`` 模板键格式化长期记忆块；不适用时返回 None（调用方回退旧拼接）.
+
+    仅当模板键存在、为合法非空字符串、且包含 ``{data}`` 占位符且格式化无异常时生效；
+    键缺失/非字符串/空串/无占位符/占位符不匹配/格式化异常一律返回 ``None``，
+    由调用方保持原有 f-string 拼接（逐字节不变）。
+    """
+    if templates is None:
+        return None
+    value = templates.get("memory_context")
+    if not isinstance(value, str) or not value:
+        return None
+    if "{data}" not in value:
+        return None
+    try:
+        return value.format(data=memory_block)
+    except (KeyError, IndexError, ValueError, AttributeError):
+        return None
+
+
+async def build_context_history(client: Any, bot_config: Dict[str, Any], message: Any, cutoff_timestamp: Optional[datetime]) -> Tuple[List[Any], List[Dict[str, str]]]:
     history_messages, history_for_llm = [], []
     context_mode = bot_config.get('context_mode', 'none')
     if context_mode == 'none':
@@ -226,6 +305,9 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
 
     bot_user_id = _get_bot_user_id(client)
 
+    guild_id = str(message.guild.id) if message.guild else None
+    channel_id = str(message.channel.id)
+
     use_api_history = not hasattr(message.channel, 'history')
     if use_api_history:
         raw_limit = None if unlimited_message_count else max(msg_limit * 3, 50)
@@ -233,7 +315,7 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
             client, message.channel.id, message.id, raw_limit or 100, cutoff_timestamp)
     else:
         channel = message.channel
-        before_obj = discord.Object(id=message.id)
+        before_obj = SimpleNamespace(id=message.id)
         raw_limit = None if unlimited_message_count else max(msg_limit * 3, 100)
         if context_mode == 'channel':
             raw_limit = None if unlimited_message_count else min(msg_limit * 2, 100)
@@ -267,7 +349,7 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
                 ref = getattr(hist_msg, 'reference', None)
                 if ref is not None:
                     resolved = getattr(ref, 'resolved', None)
-                    if resolved is not None and not isinstance(resolved, discord.DeletedReferencedMessage):
+                    if resolved is not None and type(resolved).__name__ != 'DeletedReferencedMessage':
                         if resolved.id not in processed_ids:
                             relevant_messages.append(resolved)
                             processed_ids.add(resolved.id)
@@ -286,15 +368,22 @@ async def build_context_history(client: discord.Client, bot_config: Dict[str, An
         if not hist_msg.clean_content and not hist_msg.attachments:
             continue
 
+        if should_filter_history(bot_config, guild_id, channel_id):
+            hist_author_id = str(hist_msg.author.id)
+            if is_user_blocked_from_context(bot_config, guild_id, channel_id, hist_author_id):
+                continue
+            if not is_user_whitelisted_for_context(bot_config, guild_id, channel_id, hist_author_id):
+                continue
+
         msg_class = _classify_message_author(hist_msg, bot_user_id)
         role = "assistant" if msg_class == 'own_bot' else "user"
 
         hist_role_config = None
         if msg_class == 'user':
             hist_member = hist_msg.author
-            if isinstance(hist_member, discord.User) and hasattr(message, 'guild') and message.guild:
+            if not hasattr(hist_member, 'roles') and hasattr(message, 'guild') and message.guild and hasattr(message.guild, 'get_member'):
                 hist_member = message.guild.get_member(hist_member.id) or hist_member
-            if isinstance(hist_member, discord.Member):
+            if hasattr(hist_member, 'roles'):
                 _, hist_role_config = get_highest_configured_role(hist_member, role_based_configs) or (None, None)
 
         rich_id = get_rich_identity(hist_msg.author, user_personas, hist_role_config)
@@ -361,15 +450,33 @@ def _replies_to_bot(hist_msg: Any, bot_user_id: int) -> bool:
         return False
     return getattr(resolved.author, 'id', None) == bot_user_id
 
-def format_user_message_for_llm(
-    message: discord.Message,
-    client: discord.Client,
+async def format_user_message_for_llm(
+    message: Any,
+    client: Any,
     bot_config: Dict[str, Any],
     role_config: Optional[Dict[str, Any]],
     injected_data: Optional[str] = None,
     world_book_entries: Optional[List[Dict[str, Any]]] = None,
+    templates: Optional[Dict[str, Any]] = None,
 ) -> str:
-    """将用户的当前消息格式化为最终LLM输入块。"""
+    """将用户的当前消息格式化为最终LLM输入块。
+
+    ``templates`` 由调用方（运行时 pipeline / 路由 / preview）从
+    ``bot_config['prompt_templates']`` 归一化后传入，键名与 prompts.py
+    DEFAULT_TEMPLATES 一致；未配置（None）时恒用模块默认常量。
+    """
+    # Resolve template overrides once (None → module defaults).
+    user_message_tpl = _resolve_tpl(templates, "message_format", USER_MESSAGE_TPL)
+    image_note_tpl = _resolve_tpl(templates, "image_note", IMAGE_NOTE_TPL)
+    reply_context_tpl = _resolve_tpl(templates, "reply_context", REPLY_CONTEXT_TPL)
+    deleted_reply_tpl = _resolve_tpl(templates, "deleted_reply_context", DELETED_REPLY_CONTEXT_TPL)
+    tool_context_tpl = _resolve_tpl(templates, "tool_context", TOOL_CONTEXT_TPL)
+    worldbook_context_tpl = _resolve_tpl(templates, "worldbook_context", WORLDBOOK_CONTEXT_TPL)
+    user_request_block_tpl = _resolve_tpl(templates, "user_request_block", USER_REQUEST_BLOCK_TPL)
+
+    # F-2: 自定义模板场景跟踪回退告警（键名），默认路径（templates 为 None）不记录。
+    _track_tpl = templates is not None
+
     user_personas = bot_config.get("user_personas", {})
     role_based_configs = bot_config.get("role_based_config", {})
     
@@ -381,23 +488,28 @@ def format_user_message_for_llm(
     # [NEW] Remove custom emoji text, as they are now sent as images.
     final_text_content = re.sub(r'<a?:\w+:\d+>', '', final_text_content).strip()
 
+    # [SECURITY] Sanitize user input to filter prompt injection patterns.
+    final_text_content = sanitize_user_input(final_text_content)
+
     request_block_parts = []
     
     # 处理回复上下文 - 优雅处理已删除消息
-    if message.reference and isinstance(message.reference.resolved, discord.Message):
+    if message.reference and hasattr(message.reference.resolved, 'clean_content'):
         replied_msg = message.reference.resolved
         replied_member = replied_msg.author
-        if isinstance(replied_member, discord.User) and message.guild:
+        if not hasattr(replied_member, 'roles') and hasattr(message, 'guild') and message.guild and hasattr(message.guild, 'get_member'):
             replied_member = message.guild.get_member(replied_member.id) or replied_member
         
         replied_role_config = None
-        if isinstance(replied_member, discord.Member):
+        if hasattr(replied_member, 'roles'):
             _, replied_role_config = get_highest_configured_role(replied_member, role_based_configs) or (None, None)
 
         replied_rich_id = get_rich_identity(replied_msg.author, user_personas, replied_role_config)
         replied_author_info = _format_author_id(replied_msg.author, replied_rich_id)
         
         replied_text_content = escape_content(replied_msg.clean_content)
+        # [SECURITY] Sanitize replied message content to filter prompt injection patterns.
+        replied_text_content = sanitize_user_input(replied_text_content)
         final_replied_description = replied_text_content
         
         if replied_msg.attachments:
@@ -410,11 +522,18 @@ def format_user_message_for_llm(
                 else:
                     final_replied_description = f"[消息内容是{image_count}张图片，请查看附件]"
         
-        request_block_parts.append(REPLY_CONTEXT_TPL.format(author_info=replied_author_info, replied_content=final_replied_description))
+        request_block_parts.append(_format_tpl(
+            reply_context_tpl, REPLY_CONTEXT_TPL,
+            tpl_key="reply_context" if _track_tpl else None,
+            author_info=replied_author_info, replied_content=final_replied_description,
+        ))
     elif message.reference:
         resolved = getattr(message.reference, 'resolved', None)
-        if isinstance(resolved, discord.DeletedReferencedMessage):
-            request_block_parts.append(DELETED_REPLY_CONTEXT_TPL)
+        if type(resolved).__name__ == 'DeletedReferencedMessage':
+            request_block_parts.append(_format_tpl(
+                deleted_reply_tpl, DELETED_REPLY_CONTEXT_TPL,
+                tpl_key="deleted_reply_context" if _track_tpl else None,
+            ))
         else:
             request_block_parts.append(INACCESSIBLE_REPLY_CONTEXT_TPL)
 
@@ -424,24 +543,54 @@ def format_user_message_for_llm(
         current_image_count = len([att for att in message.attachments
                                   if att.content_type and att.content_type.startswith('image/')])
         if current_image_count > 0:
-            current_image_info = IMAGE_NOTE_TPL.format(count=current_image_count)
+            current_image_info = _format_tpl(
+                image_note_tpl, IMAGE_NOTE_TPL,
+                tpl_key="image_note" if _track_tpl else None,
+                count=current_image_count,
+            )
 
     author_rich_id = get_rich_identity(message.author, user_personas, role_config)
     author_id_str = _format_author_id(message.author, author_rich_id)
 
+    guild_id = str(message.guild.id) if message.guild else None
+    channel_id = str(message.channel.id)
+    user_id_str = str(message.author.id)
+
+    user_options_config = bot_config.get("user_options") or {}
+    if user_options_config.get("enabled"):
+        resolved = resolve_user_options(bot_config, guild_id, channel_id, user_id_str)
+        if resolved.is_blocked and resolved.mode == "blacklist":
+            block_notice = get_formatted_block_notice(
+                message.author, user_personas, role_based_configs, resolved.blacklist_mode
+            )
+            if resolved.blacklist_mode == "block_messages":
+                return _format_tpl(
+                    user_request_block_tpl, USER_REQUEST_BLOCK_TPL,
+                    tpl_key="user_request_block" if _track_tpl else None,
+                    parts=block_notice,
+                )
+            elif resolved.blacklist_mode == "deny_response":
+                request_block_parts.insert(0, block_notice)
+
     user_identity_block = f"[当前用户信息]\n[{author_id_str}]\n[/当前用户信息]"
     request_block_parts.insert(0, user_identity_block)
 
-    current_user_message_str = USER_MESSAGE_TPL.format(
+    current_user_message_str = _format_tpl(
+        user_message_tpl, USER_MESSAGE_TPL,
+        tpl_key="message_format" if _track_tpl else None,
         author_id_str=author_id_str,
         content=escape_content(final_text_content),
-        image_note=current_image_info
+        image_note=current_image_info,
     )
     request_block_parts.append(current_user_message_str)
     
     # 处理插件注入的数据
     if injected_data:
-        request_block_parts.append(TOOL_CONTEXT_TPL.format(data=injected_data))
+        request_block_parts.append(_format_tpl(
+            tool_context_tpl, TOOL_CONTEXT_TPL,
+            tpl_key="tool_context" if _track_tpl else None,
+            data=injected_data,
+        ))
 
     # --- Inject world book content ---
     all_wb_entries = []
@@ -461,13 +610,13 @@ def format_user_message_for_llm(
         relevant_user_ids.update(keyword_mentioned_ids)
 
         for user_id in relevant_user_ids:
-            user_entries = get_knowledge_manager().get_world_book_entries_for_user(user_id)
+            user_entries = await get_knowledge_manager().get_world_book_entries_for_user(user_id)
             for entry in user_entries:
                 if entry['id'] not in added_entry_ids:
                     all_wb_entries.append(entry)
                     added_entry_ids.add(entry['id'])
 
-        text_triggered_entries = get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
+        text_triggered_entries = await get_knowledge_manager().find_world_book_entries_for_text(final_text_content)
         for entry in text_triggered_entries:
             if entry['id'] not in added_entry_ids:
                 all_wb_entries.append(entry)
@@ -492,9 +641,17 @@ def format_user_message_for_llm(
 
         if lines:
             wb_content = "\n".join(lines)
-            request_block_parts.append(WORLDBOOK_CONTEXT_TPL.format(data=wb_content))
+            request_block_parts.append(_format_tpl(
+                worldbook_context_tpl, WORLDBOOK_CONTEXT_TPL,
+                tpl_key="worldbook_context" if _track_tpl else None,
+                data=wb_content,
+            ))
 
     # --- End of new section ---
 
-    return USER_REQUEST_BLOCK_TPL.format(parts="\n\n".join(request_block_parts))
+    return _format_tpl(
+        user_request_block_tpl, USER_REQUEST_BLOCK_TPL,
+        tpl_key="user_request_block" if _track_tpl else None,
+        parts="\n\n".join(request_block_parts),
+    )
 

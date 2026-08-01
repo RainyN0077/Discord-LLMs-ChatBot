@@ -1,12 +1,34 @@
 # backend/app/llm_providers/base.py
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 import logging
 
+from ..ports.llm_provider import ProviderHealth, QuotaInfo
+
 logger = logging.getLogger(__name__)
 
-class LLMProvider(ABC):
+
+def normalize_provider_name(name: Optional[str]) -> str:
+    """归一化提供商名称 — 与 factory 完全一致的归一化唯一来源.
+
+    ``None``/空值回退为 ``"openai"``；``"xai"`` 映射为 ``"grok"``（工厂内部
+    使用 grok 作为 xAI 提供商的注册名）；其余名称原样小写返回。
+
+    Args:
+        name: 配置中的提供商名称（可为 None/非 str）
+
+    Returns:
+        归一化后的提供商名称
+    """
+    normalized = (name or "openai").lower()
+    if normalized == "xai":
+        return "grok"
+    return normalized
+
+
+class LLMProvider(ProviderHealth, QuotaInfo, ABC):
     """
     抽象基类，定义了所有LLM提供商的统一接口。
     """
@@ -24,6 +46,16 @@ class LLMProvider(ABC):
         self.presence_penalty = config.get("presence_penalty")
         self.custom_headers = config.get("custom_headers", [])
         self.custom_params = {param["name"]: param["value"] for param in config.get("custom_parameters", [])}
+
+    @property
+    def provider_name(self) -> str:
+        """返回归一化提供商名称 (xai → grok)."""
+        return normalize_provider_name(self.config.get("llm_provider"))
+
+    @property
+    def model_name(self) -> str:
+        """返回生效模型名: openai_model_name 优先, 回退 model_name (factory 语义)."""
+        return (self.config.get("openai_model_name") or self.config.get("model_name") or "")
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} model={self.model!r}>"
@@ -51,10 +83,7 @@ class LLMProvider(ABC):
               - "final": 第二个元素是最终文本内容(str)
               - "usage": 第二个元素是用量数据字典(Dict[str, int])
         """
-        # 这是一个生成器，所以需要用 yield 来满足类型提示
-        # 实际实现应该在子类中，这里只是为了让 linter 满意
-        if False:
-            yield "final", "This is an abstract method and should be implemented in subclasses."
+        raise NotImplementedError("Subclasses must implement get_response_stream")
         
     def _build_api_kwargs(self, model, messages, stream, **extra):
         kwargs = {"model": model, "messages": messages, "stream": stream}
@@ -73,3 +102,64 @@ class LLMProvider(ABC):
         error_message = f"LLM_PROVIDER_ERROR: {self.__class__.__name__} encountered an error: {str(e)}"
         logger.error(f"LLM API error in {self.__class__.__name__}: {e}", exc_info=True)
         return error_message
+
+    async def check_health(self) -> Dict[str, Any]:
+        """检查 LLM 提供商健康状态.
+
+        默认实现：发送一条简单的测试消息。
+        子类可重写以实现更精确的检查（如轻量级 endpoint 探测）。
+
+        Returns:
+            {
+                "healthy": bool,
+                "latency_ms": Optional[float],
+                "model": str,
+                "error": Optional[str],
+            }
+        """
+        start = time.monotonic()
+        try:
+            test_messages = [{"role": "user", "content": "ping"}]
+            async for response_type, data in self.get_response_stream(
+                messages=test_messages, images=None, tools=[], tool_functions={},
+            ):
+                if response_type == "final":
+                    latency_ms = round((time.monotonic() - start) * 1000, 2)
+                    return {
+                        "healthy": True,
+                        "latency_ms": latency_ms,
+                        "model": self.model or "unknown",
+                        "error": None,
+                    }
+                if response_type == "usage":
+                    continue
+            return {
+                "healthy": False,
+                "latency_ms": None,
+                "model": self.model or "unknown",
+                "error": "No response from provider",
+            }
+        except Exception as e:
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": False,
+                "latency_ms": latency_ms,
+                "model": self.model or "unknown",
+                "error": str(e),
+            }
+
+    async def get_usage_stats(self) -> Dict[str, Any]:
+        """获取提供商用量统计（默认实现）.
+
+        子类可重写以返回实际统计数据。
+
+        Returns:
+            用量统计字典
+        """
+        return {
+            "total_requests": 0,
+            "total_input_tokens": 0,
+            "total_output_tokens": 0,
+            "last_request_at": None,
+            "errors_last_hour": 0,
+        }

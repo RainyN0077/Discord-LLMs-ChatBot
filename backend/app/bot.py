@@ -35,7 +35,7 @@ async def process_knowledge_tags(message: Any, text: str, bot_config: Dict[str, 
                 user_id = str(getattr(message.author, 'id', 'unknown'))
                 user_name = getattr(message.author, 'name', 'unknown')
                 try:
-                    ingest_result = get_knowledge_manager().ingest_memory_candidate(
+                    ingest_result = await get_knowledge_manager().ingest_memory_candidate(
                         content=stripped_content,
                         timestamp=timestamp,
                         user_id=user_id,
@@ -70,7 +70,7 @@ async def process_knowledge_tags(message: Any, text: str, bot_config: Dict[str, 
             if not content.strip():
                 continue
             try:
-                get_knowledge_manager().add_world_book_entry(
+                await get_knowledge_manager().add_world_book_entry(
                     keywords=keywords,
                     content=content,
                     linked_user_id=uid,

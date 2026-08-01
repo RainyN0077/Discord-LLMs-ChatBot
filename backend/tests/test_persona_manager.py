@@ -2,7 +2,6 @@
 
 pytestmark = [pytest.mark.unit]
 from unittest.mock import MagicMock
-import discord
 from app.utils import Stub
 from app.core_logic.persona_manager import (
     get_highest_configured_role,
@@ -10,64 +9,43 @@ from app.core_logic.persona_manager import (
     determine_bot_persona,
     find_mentioned_users_by_keywords,
 )
+from app.core_logic import persona_manager as pm_module
+from app.core_logic.persona_manager import build_system_prompt
+from datetime import datetime, timezone
 
 
 class TestGetHighestConfiguredRole:
-    def test_member_with_no_roles(self):
-        member = MagicMock(spec=discord.Member)
-        member.roles = []
-        member.id = 123
-        result = get_highest_configured_role(member, {"role_a": {"id": "999"}})
+    def test_empty_role_list_returns_none(self):
+        result = get_highest_configured_role([], {"role_a": {"id": "999"}})
         assert result is None
 
     def test_role_not_configured(self):
-        role1 = Stub(id=111, name="Admin")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role1]
-        member.id = 123
-        result = get_highest_configured_role(member, {"role_b": {"id": "222"}})
+        result = get_highest_configured_role(["111"], {"role_b": {"id": "222"}})
         assert result is None
 
     def test_matching_role_returns_config(self):
-        role1 = Stub(id=111, name="Admin")
-        role2 = Stub(id=222, name="Moderator")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role1, role2]
-        member.id = 123
         role_configs = {
             "mod_cfg": {"id": "222", "title": "Mod", "prompt": "You are a mod."},
         }
-        result = get_highest_configured_role(member, role_configs)
+        result = get_highest_configured_role(["111", "222"], role_configs)
         assert result is not None
-        assert result[0] == "Moderator"
         assert result[1]["title"] == "Mod"
 
     def test_highest_role_takes_priority(self):
-        role_low = Stub(id=111, name="Member")
-        role_high = Stub(id=999, name="Owner")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role_low, role_high]
-        member.id = 123
         role_configs = {
             "owner_cfg": {"id": "999", "title": "Owner", "prompt": "Owner prompt"},
             "member_cfg": {"id": "111", "title": "Member", "prompt": "Member prompt"},
         }
-        result = get_highest_configured_role(member, role_configs)
+        result = get_highest_configured_role(["111", "999"], role_configs)
         assert result is not None
-        assert result[0] == "Owner"
         assert result[1]["title"] == "Owner"
 
-    def test_non_member_input_returns_none(self):
-        user = Stub(id=123, name="User")
-        result = get_highest_configured_role(user, {})
+    def test_non_list_input_returns_none(self):
+        result = get_highest_configured_role([], {})
         assert result is None
 
     def test_empty_role_configs(self):
-        role = Stub(id=111, name="Admin")
-        member = MagicMock(spec=discord.Member)
-        member.roles = [role]
-        member.id = 123
-        result = get_highest_configured_role(member, {})
+        result = get_highest_configured_role(["111"], {})
         assert result is None
 
 
@@ -218,3 +196,78 @@ class TestFindMentionedUsersByKeywords:
         personas = {"p1": {"trigger_keywords": ["alice"]}}
         result = find_mentioned_users_by_keywords("hello alice", personas)
         assert result == set()
+
+
+class TestBuildSystemPromptTemplates:
+    """build_system_prompt 6 键（5 header + operational_instructions）消费完整性（S2）. """
+
+    async def test_header_templates_effective(self, mock_discord_bot, mock_discord_message):
+        msg = mock_discord_message(content="hi")
+        config = {
+            "system_prompt": "base",
+            "user_personas": {"p1": {"id": "123456789", "prompt": "admin persona"}},
+            "role_based_config": {},
+        }
+        templates = {
+            "system_prompt_foundation_header": "基础规则标题",
+            "system_prompt_persona_header": "人设标题",
+            "system_prompt_situation_header": "情景标题",
+            "system_prompt_participants_header": "参与者标题",
+            "system_prompt_security_header": "安全标题",
+        }
+        result = await build_system_prompt(
+            mock_discord_bot, config, "PERSONA", "SITUATION", msg, [], templates=templates
+        )
+        assert "[基础规则标题]" in result
+        assert "[人设标题]" in result
+        assert "[情景标题]" in result
+        assert "[参与者标题]" in result
+        assert "[安全标题]" in result
+        assert "[Foundation and Core Rules]" not in result
+        assert "[Current Persona for This Interaction]" not in result
+        assert "[Situational Context]" not in result
+        assert "[Context: Participant Personas]" not in result
+        assert "[Security & Operational Instructions]" not in result
+
+    async def test_operational_instructions_effective(self, mock_discord_bot, mock_discord_message):
+        msg = mock_discord_message(content="hi")
+        config = {"system_prompt": "base", "user_personas": {}, "role_based_config": {}}
+        result = await build_system_prompt(
+            mock_discord_bot, config, "", "", msg, [],
+            templates={"operational_instructions": ["指令甲", "指令乙"]},
+        )
+        assert "指令甲" in result
+        assert "指令乙" in result
+        assert "You MUST operate" not in result
+
+    @pytest.mark.parametrize("bad", [None, [], [""], ["ok", 123], "not-a-list", [123]])
+    async def test_invalid_operational_instructions_fallback(
+        self, mock_discord_bot, mock_discord_message, bad
+    ):
+        msg = mock_discord_message(content="hi")
+        config = {"system_prompt": "base", "user_personas": {}, "role_based_config": {}}
+        result = await build_system_prompt(
+            mock_discord_bot, config, "", "", msg, [],
+            templates={"operational_instructions": bad},
+        )
+        assert "1. You MUST operate" in result
+
+    async def test_none_templates_matches_defaults(
+        self, mock_discord_bot, mock_discord_message, monkeypatch
+    ):
+        class _FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2024, 1, 1, 12, 0, 0, tzinfo=tz or timezone.utc)
+
+        monkeypatch.setattr(pm_module, "datetime", _FixedDatetime)
+        msg = mock_discord_message(content="hi")
+        config = {"system_prompt": "base", "user_personas": {}, "role_based_config": {}}
+        r_none = await build_system_prompt(mock_discord_bot, config, "P", "S", msg, [], templates=None)
+        r_empty = await build_system_prompt(mock_discord_bot, config, "P", "S", msg, [], templates={})
+        assert r_none == r_empty
+        assert "[Foundation and Core Rules]" in r_none
+        assert "[Current Persona for This Interaction]" in r_none
+        assert "[Situational Context]" in r_none
+        assert "[Security & Operational Instructions]" in r_none
+        assert "1. You MUST operate" in r_none

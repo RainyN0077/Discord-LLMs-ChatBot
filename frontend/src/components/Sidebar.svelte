@@ -1,11 +1,12 @@
 <!-- src/components/Sidebar.svelte -->
 <script>
-    import { onMount, createEventDispatcher } from 'svelte';
-    import { t, get as t_get } from '../i18n.js';
-    import {
-        fetchBots, createBot, deleteBot, renameBot,
-        startBot, stopBot, restartBot,
-    } from '../lib/api.js';
+import { onMount, createEventDispatcher } from 'svelte';
+import { t, get as t_get } from '../i18n.js';
+import {
+    fetchBots, createBot, deleteBot, renameBot,
+    startBot, stopBot, restartBot,
+} from '../lib/api.js';
+import { handleError } from '../lib/errorHandler.js';
 
     export let selectedBotId = null;
 
@@ -41,7 +42,7 @@
             return;
         }
         if (!newId.match(/^[a-z0-9_-]+$/)) {
-            renameError = 'Only lowercase letters, digits, hyphens, underscores.';
+            renameError = t('sidebar.renameError');
             return;
         }
         renameError = '';
@@ -116,7 +117,7 @@
             }
         } catch (err) {
             error = String(err.message || err);
-            console.error('Operation failed:', err);
+            handleError('BotOperation', err);
         } finally {
             operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
@@ -134,7 +135,7 @@
             }
         } catch (err) {
             error = String(err.message || err);
-            console.error('Operation failed:', err);
+            handleError('BotOperation', err);
         } finally {
             operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
@@ -152,7 +153,7 @@
             }
         } catch (err) {
             error = String(err.message || err);
-            console.error('Operation failed:', err);
+            handleError('BotOperation', err);
         } finally {
             operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
@@ -171,7 +172,7 @@
             }
         } catch (err) {
             error = String(err.message || err);
-            console.error('Operation failed:', err);
+            handleError('BotOperation', err);
         } finally {
             operatingBotIds = operatingBotIds.filter(id => id !== botId);
         }
@@ -183,7 +184,7 @@
         try {
             const payload = { ...createData };
             if (!payload.bot_id || !payload.bot_id.match(/^[a-z0-9_-]+$/)) {
-                createError = 'Bot ID must contain only lowercase letters, numbers, hyphens, and underscores.';
+                createError = t('sidebar.createIdError');
                 creating = false;
                 return;
             }
@@ -243,7 +244,7 @@
                             class:active={selectedBotId === bot.bot_id}
                             class:operating={operatingBotIds.includes(bot.bot_id)}
                             on:click={() => selectBot(bot.bot_id)}
-                            on:keypress={(e) => e.key === 'Enter' && selectBot(bot.bot_id)}
+                            on:keydown={(e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), selectBot(bot.bot_id))}
                             role="button"
                             tabindex="0"
                         >
@@ -253,31 +254,31 @@
                             <div class="card-top">
                                 <span class="status-dot" class:running={bot.status === 'running'} style="color: {statusColor(bot.status)}">{statusLabel(bot.status)}</span>
                                 {#if editingBotId === bot.bot_id}
-                                    <div class="card-title-edit" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+                                    <div class="card-title-edit" role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
                                         <input
                                             class="card-title-input"
                                             data-bot={bot.bot_id}
                                             type="text"
                                             bind:value={editValue}
-                                            on:keypress={(e) => e.key === 'Enter' && handleRename(bot.bot_id, e)}
-                                            on:blur={() => editingBotId = null}
+                                            on:keydown={(e) => e.key === 'Enter' && handleRename(bot.bot_id, e)}
+                                            on:blur={() => { setTimeout(() => { if (editingBotId === bot.bot_id) editingBotId = null; }, 150); }}
                                             pattern="^[a-z0-9_-]+$"
                                         />
-                                        <button class="mini-btn confirm" on:click={(e) => handleRename(bot.bot_id, e)} title="Save">✓</button>
-                                        <button class="mini-btn cancel-edit" on:click={cancelEdit} title="Cancel">×</button>
+                                        <button class="mini-btn confirm" on:mousedown|preventDefault on:click={(e) => handleRename(bot.bot_id, e)} title={$t('sidebar.saveTitle')}>✓</button>
+                                        <button class="mini-btn cancel-edit" on:mousedown|preventDefault on:click={cancelEdit} title={$t('sidebar.cancelTitle')}>×</button>
                                         {#if renameError}
                                             <span class="rename-error">{renameError}</span>
                                         {/if}
                                     </div>
                                 {:else}
-                                    <span class="card-title" on:dblclick={(e) => startEdit(bot.bot_id, e)} title="Double-click to rename">{bot.bot_id}</span>
+                                    <span class="card-title" on:dblclick={(e) => startEdit(bot.bot_id, e)} title={$t('sidebar.renameTitle')}>{bot.bot_id}</span>
                                 {/if}
                             </div>
                             <div class="card-info-primary">
                                 <span class="bot-name-text">{bot.bot_name || bot.bot_id}</span>
                                 <span class="platform-badge" class:discord={bot.platform === 'discord' || !bot.platform} class:qq={bot.platform === 'qq'}>{bot.platform || 'discord'}</span>
                                 {#if bot.enabled === false}
-                                    <span class="disabled-badge">DISABLED</span>
+                                    <span class="disabled-badge">{$t('sidebar.disabled')}</span>
                                 {/if}
                             </div>
                             <div class="card-info-secondary">
@@ -295,7 +296,7 @@
                                     {/if}
                                 </div>
                             {/if}
-                            <div class="card-actions" role="presentation" on:click|stopPropagation on:keypress|stopPropagation>
+                            <div class="card-actions" role="presentation" on:click|stopPropagation on:keydown|stopPropagation>
                                 {#if bot.status !== 'running'}
                                     <button class="mini-btn start" on:click={(e) => handleStart(bot.bot_id, e)} title={$t('botManager.start')}>
                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
@@ -330,13 +331,13 @@
                         {#if createError}
                             <div class="create-error">{createError}</div>
                         {/if}
-                        <input type="text" bind:value={createData.bot_id} placeholder="bot-id (a-z, 0-9, -, _)" />
-                        <input type="text" bind:value={createData.bot_name} placeholder="Bot name" />
+                        <input type="text" bind:value={createData.bot_id} placeholder={$t('sidebar.botIdPlaceholder')} />
+                        <input type="text" bind:value={createData.bot_name} placeholder={$t('sidebar.botNamePlaceholder')} />
                         <select bind:value={createData.platform}>
                             <option value="discord">Discord</option>
                             <option value="qq">QQ</option>
                         </select>
-                        <input type="password" bind:value={createData.discord_token} placeholder="Discord token" />
+                        <input type="password" bind:value={createData.discord_token} placeholder={$t('sidebar.discordTokenPlaceholder')} />
                         <select bind:value={createData.llm_provider}>
                             <option value="openai">OpenAI</option>
                             <option value="anthropic">Anthropic</option>
@@ -350,8 +351,8 @@
                             <option value="zhipu">Zhipu GLM</option>
                             <option value="stepfun">StepFun</option>
                         </select>
-                        <input type="password" bind:value={createData.api_key} placeholder="LLM API key" />
-                        <input type="text" bind:value={createData.model_name} placeholder="Model name (gpt-4o)" />
+                        <input type="password" bind:value={createData.api_key} placeholder={$t('sidebar.llmApiKeyPlaceholder')} />
+                        <input type="text" bind:value={createData.model_name} placeholder={$t('sidebar.modelNamePlaceholder')} />
                         <div class="create-actions">
                             <button class="create-submit" on:click={handleCreate} disabled={creating}>
                                 {creating ? $t('botManager.creating') : $t('botManager.createBot')}

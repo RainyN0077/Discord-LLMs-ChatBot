@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from nonebot import on_message
@@ -8,7 +9,13 @@ from nonebot.internal.adapter.bot import Bot as BaseBot
 
 from app.utils import matches_trigger_keywords
 from app.handlers.message_queue import MessageQueue
-from .event_shim import event_to_message_context, MessageContext
+from app.ports.platform_message import (
+    AttachmentInfo,
+    AuthorInfo,
+    ChannelInfo,
+    GuildInfo,
+    PlatformMessage,
+)
 from .automation import track_auto_interject, track_repeat_parrot, reset_channel_automation_state
 from .pipeline import execute_llm_pipeline
 
@@ -22,6 +29,101 @@ _auto_message_counts: Dict[int, int] = {}
 _repeat_streaks: Dict[int, Dict[str, Any]] = {}
 
 _bot_instance_map: Dict[str, Any] = {}
+
+
+def _event_to_message_context(event: Any, bot: Any) -> PlatformMessage:
+    """将 Discord MessageEvent 转换为 PlatformMessage."""
+    has_author = getattr(event, "author", None) is not None
+    if has_author:
+        author = AuthorInfo(
+            id=str(event.author.id),
+            name=event.author.username,
+            display_name=(
+                getattr(event.author, "global_name", None) or event.author.username
+            ),
+            roles=[str(r.id) for r in getattr(event.author, "roles", []) or []],
+            is_bot=getattr(event.author, 'bot', False),
+        )
+    else:
+        author = AuthorInfo(id="unknown", name="Unknown")
+
+    channel = ChannelInfo(id=str(getattr(event, "channel_id", "")))
+
+    guild = None
+    guild_id = getattr(event, "guild_id", None)
+    if guild_id:
+        guild = GuildInfo(id=str(guild_id))
+
+    mentions: List[AuthorInfo] = []
+    for u in getattr(event, "mentions", []) or []:
+        mentions.append(
+            AuthorInfo(
+                id=str(u.id),
+                name=u.username,
+                display_name=getattr(u, "global_name", None) or u.username,
+            )
+        )
+
+    attachments: List[AttachmentInfo] = []
+    for a in getattr(event, "attachments", []) or []:
+        attachments.append(
+            AttachmentInfo(
+                url=str(a.url),
+                filename=getattr(a, "filename", ""),
+                content_type=getattr(a, "content_type", ""),
+            )
+        )
+
+    msg = PlatformMessage(
+        id=str(getattr(event, "id", "")),
+        content=getattr(event, "content", "") or "",
+        author=author,
+        channel=channel,
+        guild=guild,
+        mentions=mentions,
+        attachments=attachments,
+        raw=event,
+    )
+
+    # --- 向后兼容属性 ---
+    msg.embeds: List[Any] = []
+    msg.stickers: List[Any] = []
+
+    reply = getattr(event, "reply", None)
+    if reply is not None:
+        ref_author_id = "0"
+        ref_author_name = "Unknown"
+        if hasattr(reply, "author"):
+            ref_author_id = str(reply.author.id)
+            ref_author_name = reply.author.username
+        ref_author = AuthorInfo(
+            id=ref_author_id,
+            name=ref_author_name,
+            display_name=(
+                getattr(reply.author, "global_name", None) or ref_author_name
+            )
+            if hasattr(reply, "author")
+            else ref_author_name,
+            is_bot=getattr(reply.author, 'bot', False) if hasattr(reply, 'author') else False,
+        )
+        ref_channel = ChannelInfo(id=str(getattr(event, "channel_id", "")))
+
+        ref_platform_msg = PlatformMessage(
+            id=str(reply.id),
+            content=getattr(reply, "content", ""),
+            author=ref_author,
+            channel=ref_channel,
+            raw=reply,
+        )
+        ref_platform_msg.embeds = []
+        ref_platform_msg.stickers = []
+
+        msg.reply_to = ref_platform_msg
+        msg.reference = SimpleNamespace(resolved=ref_platform_msg)
+    else:
+        msg.reference = None
+
+    return msg
 
 
 def get_auto_message_counts() -> Dict[int, int]:
@@ -67,18 +169,90 @@ def _resolve_bot_id(bot: BaseBot) -> str:
     return self_id or "unknown"
 
 
-@_matcher.handle()
-async def _on_discord_message(bot: Bot, event: MessageEvent):
+async def _on_discord_message_new(bot: Bot, event: MessageEvent):
+    """新事件处理路径：通过 PlatformAdapter + MessageBus."""
+    from app.app_context import AppContext
+
+    ctx = AppContext.get()
+    if ctx.message_bus is None:
+        logger.warning("MessageBus not initialized, falling back to old path")
+        await _on_discord_message_old(bot, event)
+        return
+
+    # 注入 Bot 实例到 Runtime（NoneBotRuntime 需要 _bot 才能发送消息）
+    instance = _bot_instance_map.get(_resolve_bot_id(bot))
+    runtime = getattr(instance, '_runtime', None) if instance else None
+    if runtime is not None and hasattr(runtime, 'attach_bot'):
+        runtime.attach_bot(bot)
+
+    handled = await ctx.message_bus.publish_event(event, "discord")
+    if not handled:
+        logger.debug("MessageBus could not route event, falling back to old path")
+        await _on_discord_message_old(bot, event)
+
+
+# 保留旧路径函数，供 fallback 使用
+async def _on_discord_message_old(bot: Bot, event: MessageEvent):
+    """旧事件处理路径（原 _on_discord_message 逻辑）."""
     if event.author and event.author.id == getattr(bot, "self_id", None):
         return
 
-    message_ctx = event_to_message_context(event, bot)
+    message_ctx = _event_to_message_context(event, bot)
     instance = _bot_instance_map.get(_resolve_bot_id(bot))
     if not instance:
         logger.warning(f"No bot instance registered for bot {_get_bot_id(bot)}")
         return
 
     config = instance.config
+
+    guild_id = str(event.guild_id) if getattr(event, 'guild_id', None) else None
+    channel_id = str(event.channel_id)
+    user_id = str(event.author.id) if event.author else None
+
+    async def _record_interaction(trigger_source: str):
+        ih_config = config.get("interaction_history", {})
+        if not ih_config.get("enabled", True):
+            return
+        try:
+            from app.core_logic.interaction_recorder import get_interaction_recorder
+            recorder = get_interaction_recorder()
+            member_name = (getattr(event.author, 'display_name', None)
+                           or getattr(event.author, 'name', None)
+                           or user_id or "")
+            role_id = "default"
+            if guild_id and hasattr(event, 'author') and hasattr(event.author, 'roles'):
+                for r in reversed(list(getattr(event.author, 'roles', []))):
+                    role_id = str(r.id)
+                    break
+            content = str(getattr(event, 'content', '') or '')
+            attachments = []
+            for att in getattr(event, 'attachments', []) or []:
+                if hasattr(att, 'url'):
+                    attachments.append(str(att.url))
+            bot_id_str = _resolve_bot_id(bot)
+            await recorder.record_message(
+                bot_id=bot_id_str,
+                guild_id=guild_id or "dm",
+                channel_id=channel_id,
+                member_id=user_id or "unknown",
+                member_name=member_name,
+                role_id=role_id,
+                content=content,
+                message_id=str(getattr(event, 'message_id', '') or ''),
+                attachments=attachments,
+                is_bot_reply=False,
+                trigger_source=trigger_source,
+            )
+        except Exception:
+            logger.debug("Failed to record interaction", exc_info=True)
+
+    if user_id and config.get("user_options", {}).get("enabled"):
+        from app.core_logic.user_options_manager import is_user_blocked_from_response
+        block_result = is_user_blocked_from_response(config, guild_id, channel_id, user_id)
+        if block_result:
+            logger.info(f"[uo:gate] BLOCKED user={user_id} channel={channel_id} guild={guild_id}")
+            await _record_interaction("blocked")
+            return
 
     auto_interject_triggered = track_auto_interject(message_ctx, config, _auto_message_counts)
     repeat_parrot_content = track_repeat_parrot(message_ctx, config, _repeat_streaks)
@@ -108,6 +282,7 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
     if plugin_manager:
         plugin_result = await plugin_manager.process_message(message_ctx, plugin_runtime_config)
         if plugin_result is True:
+            await _record_interaction("plugin_consumed")
             return
 
     plugin_append_blocks: List[str] = []
@@ -119,15 +294,24 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
         plugin_append_triggered = bool(plugin_append_blocks)
 
     if not normal_triggered and repeat_parrot_content:
-        await bot.send_to(
-            channel_id=event.channel_id,
-            message=repeat_parrot_content,
-        )
+        runtime = getattr(instance, '_runtime', None)
+        if runtime is not None:
+            await runtime.send_message(
+                channel_id=str(event.channel_id),
+                content=repeat_parrot_content,
+            )
+        else:
+            await bot.send_to(
+                channel_id=event.channel_id,
+                message=repeat_parrot_content,
+            )
         logger.info(f"Repeat parrot triggered in channel {event.channel_id}.")
         reset_channel_automation_state(event.channel_id, _auto_message_counts, _repeat_streaks)
+        await _record_interaction("parrot")
         return
 
     if not (normal_triggered or auto_interject_triggered or plugin_append_triggered):
+        await _record_interaction("none")
         return
 
     trigger_sources: List[str] = []
@@ -137,6 +321,9 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
         trigger_sources.append("auto_interject")
     if plugin_append_triggered:
         trigger_sources.append("plugin_append")
+
+    trigger_source_str = ",".join(trigger_sources) if trigger_sources else "unknown"
+    await _record_interaction(trigger_source_str)
 
     channel_id_str = str(event.channel_id)
     queue = _get_queue(_resolve_bot_id(bot))
@@ -151,7 +338,15 @@ async def _on_discord_message(bot: Bot, event: MessageEvent):
 
     enqueued = await queue.enqueue(channel_id_str, ctx)
     if not enqueued:
-        await bot.send(event, "Bot is busy, please try later.", reply_message=True)
+        runtime = getattr(instance, '_runtime', None)
+        if runtime is not None:
+            await runtime.send_message(
+                channel_id=str(event.channel_id),
+                content="Bot is busy, please try later.",
+                reply_to_message_id=str(getattr(event, 'message_id', '')),
+            )
+        else:
+            await bot.send(event, "Bot is busy, please try later.", reply_message=True)
         return
 
     await _ensure_channel_processor(bot, channel_id_str)
@@ -170,6 +365,10 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
         return
 
     async def _handler(ctx: dict) -> None:
+        instance = _bot_instance_map.get(resolved_id)
+        if not instance:
+            logger.warning(f"[uo:handler] instance for bot {resolved_id} not found, skipping queued message")
+            return
         await execute_llm_pipeline(
             bot=ctx["bot"],
             event=ctx["event"],
@@ -177,7 +376,7 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
             trigger_sources=ctx["trigger_sources"],
             injected_data=ctx["injected_data"],
             plugin_append_blocks=ctx["plugin_append_blocks"],
-            instance=_bot_instance_map.get(resolved_id),
+            instance=instance,
             auto_message_counts=_auto_message_counts,
             repeat_streaks=_repeat_streaks,
         )
@@ -187,6 +386,12 @@ async def _ensure_channel_processor(bot: Bot, channel_id_str: str) -> None:
     _channel_processors[processor_key] = task
     task.add_done_callback(lambda t, k=processor_key: _channel_processors.pop(k, None))
     logger.info(f"Started queue processor for channel {channel_id_str} (bot {resolved_id})")
+
+
+@_matcher.handle()
+async def _on_discord_message(bot: Bot, event: MessageEvent):
+    """消息入口 — 通过 MessageBus 路由."""
+    await _on_discord_message_new(bot, event)
 
 
 def register_main_matcher():

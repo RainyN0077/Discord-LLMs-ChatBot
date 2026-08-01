@@ -14,7 +14,7 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 | **推理参数** | temperature · top_p · top_k · max_tokens · frequency_penalty · presence_penalty，独立模型设置页面统一管理 |
 | **自定义 HTTP 头** | 为 OpenAI 兼容提供商注入自定义请求头，适配代理/网关鉴权 |
 | **多 Bot 管理** | 单一面板管理多个 Bot，独立配置、人设、知识库、配额 |
-| **Web 控制面板** | Svelte 4 实时仪表盘，模型设置 / 行为配置 / 自动化 / 高级工具四个页面，支持主题切换 |
+| **Web 控制面板** | Vue 3.5 控制面板（`frontend-vue`，默认，8095）· 旧 Svelte 4 面板（`frontend/`，已冻结 deprecated） |
 | **分层人设系统** | 频道/服务器级别提示词 · 用户画像 · 角色行为规则 |
 | **知识引擎** | 世界书关键词注入 · 自动记忆摄取（质量评分 + 候选提升）· FTS5 全文搜索 · 向量语义召回 |
 | **插件系统** | 可扩展插件框架，HTTP 触发器、工具调用集成、外部 REST 接口 |
@@ -31,11 +31,68 @@ A multi-bot Discord / QQ chatbot powered by NoneBot2, supporting **12 LLM provid
 |-------|------------|
 | Bot Framework | NoneBot2 + Discord / QQ adapter |
 | API Server | FastAPI (Python 3.11+) |
-| Frontend | Svelte 4 + Vite |
+| Frontend | Vue 3.5 + Vite（`frontend-vue`，默认）· Svelte 4 + Vite（`frontend/`，deprecated 冻结） |
 | Cache / Lock | Redis（本地开发自动降级 mock） |
 | LLM SDKs | `openai` · `google-genai` · `anthropic` · `xai-sdk` |
 | Knowledge DB | SQLite FTS5 + embedding |
-| Container | Docker Compose（backend + frontend + redis） |
+| Container | Docker Compose（backend + redis + 旧 frontend〔deprecated，见下方说明〕） |
+
+---
+
+## 架构概览 / Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                 Web UI (Vue 3 frontend-vue)               │
+│              http://localhost:8095                        │
+│        （旧 Svelte frontend: 8094，deprecated 冻结）        │
+└────────────────────┬─────────────────────────────────────┘
+                     │ REST API (X-API-Key auth)
+                     ▼
+┌──────────────────────────────────────────────────────────┐
+│               FastAPI 路由层 (routers/)                    │
+│  config · bots · chat · memory · usage · plugins · logs   │
+│  debug · health · metrics · interactions · internal       │
+└────────┬──────────┬──────────┬──────────┬────────────────┘
+         │          │          │          │
+         ▼          ▼          ▼          ▼
+┌───────────┐ ┌──────────┐ ┌────────┐ ┌──────────────┐
+│ 配置缓存   │ │ Bot 管理器│ │ 中间件  │ │  NoneBot2     │
+│ config_   │ │bot_      │ │ 限速    │ │  Driver +     │
+│ cache.py  │ │manager.py│ │ 请求ID  │ │  Discord Adapter
+└───────────┘ └──────────┘ │ 指标    │ └──────────────┘
+                           └────────┘
+         │          │          │
+         ▼          ▼          ▼
+┌──────────────────────────────────────────────────────────┐
+│                   核心逻辑层 (core_logic/)                  │
+│  上下文构建   ·   人设管理   ·   知识引擎                    │
+│  记忆召回     ·   世界书     ·   OCR 服务                   │
+│  安全过滤     ·   交互记录    ·   自动化                     │
+└────────┬──────────────────┬───────────────────────────────┘
+         │                  │
+         ▼                  ▼
+┌─────────────────┐  ┌──────────────────────────┐
+│ LLM 提供商适配层  │  │   插件系统 (plugins/)    │
+│ (llm_providers/) │  │   HTTP 触发器 · 工具调用   │
+│ OpenAI · Gemini  │  │   外部 REST 接口          │
+│ Claude · Grok    │  └──────────────────────────┘
+│ DeepSeek · 硅基   │
+│ 火山引擎 · 百炼    │
+│ Moonshot · 智谱   │
+│ 阶跃星辰          │
+└─────────────────┘
+```
+
+**分层说明**：
+
+| 层级 | 职责 | 关键模块 |
+|------|------|---------|
+| **路由层** | API 端点定义、请求/响应序列化、鉴权 | `routers/*.py`, `dependencies.py` |
+| **管理层** | Bot 生命周期、配置缓存、中间件 | `bot_manager.py`, `config_cache.py`, `middleware/` |
+| **核心逻辑层** | 对话上下文构建、人设管理、知识库、OCR | `core_logic/`, `ocr_service.py`, `security/` |
+| **提供商适配层** | LLM API 统一接口、流式响应 | `llm_providers/factory.py`, `llm_providers/*.py` |
+| **插件系统** | 可扩展工具链、HTTP 触发器 | `plugins/`, `nb_plugins/` |
 
 ---
 
@@ -47,6 +104,8 @@ cd Discord-LLMs-ChatBot
 docker compose up --build -d
 ```
 
+> **注意**：docker-compose 中的 `frontend` service 仍是**旧 Svelte 前端（deprecated，冻结）**，访问 `http://localhost:8094`。新前端 `frontend-vue` 暂未纳入 compose，本地开发请使用 `run.py` 或 `cd frontend-vue && npm run dev`（8095）。
+
 打开 `http://localhost:8094`，在 Web UI 中：
 1. 配置 Discord Bot Token
 2. 选择 LLM 提供商，填入 API Key
@@ -55,15 +114,18 @@ docker compose up --build -d
 ### 本地开发 / Local Dev
 
 ```bash
-python run.py start                 # 后台启动
-python run.py start --foreground    # 前台模式（Ctrl+C 停止）
+python run.py start                 # 默认启动 backend + frontend-vue（8095），前台模式
+python run.py start --background    # 后台模式（日志 → .local-run/）
+python run.py start --legacy-frontend  # 改用旧 Svelte 前端（8094，deprecated）
+python run.py frontend              # 仅启动旧 Svelte 前端（8094，deprecated）
+python run.py frontend-vue          # 仅启动 frontend-vue（8095）
 python run.py stop                  # 停止所有
 python run.py restart               # 重启
 python run.py status                # 查看状态
 python run.py install               # 安装依赖
 ```
 
-`run.py` 自动处理：创建虚拟环境 → 安装 Python 依赖 → `npm install` → 启动 uvicorn（8093）+ Vite（8094）→ 管理 PID / 日志。
+`run.py` 自动处理：创建虚拟环境 → 安装 Python 依赖 → `npm install` → 启动 uvicorn（8093）+ Vite（8095，`frontend-vue`；旧 `frontend/` 需加 `--legacy-frontend` 显式启动）→ 管理 PID / 日志。
 
 ---
 
@@ -80,12 +142,21 @@ Discord-LLMs-ChatBot/
 │   ├── nb_plugins/                  # NoneBot2 插件（核心 LLM Bot + 可配置工具）
 │   ├── plugins/                     # 可扩展插件系统
 │   └── tests/                       # pytest 单元/集成测试
-├── frontend/
+├── frontend/                        # 旧 Svelte 控制面板（deprecated — 已冻结，仅维护，新功能走 frontend-vue）
 │   └── src/
 │       ├── pages/                   # ConfigPanel / ModelSettings / Debugger / PromptStudio
 │       ├── components/              # Card / Sidebar / LogPanel / KnowledgeEditor
 │       ├── lib/                     # stores / api / providerDefaults / i18n
 │       └── locales/                 # 中英文语言文件
+├── frontend-vue/                    # Vue 3 控制面板（新一代，默认启动）
+│   └── src/
+│       ├── pages/                   # Providers / ModelSettings / PromptStudio / Debugger / UserOptions
+│       ├── components/              # BotCard / LogPanel / config 配置卡片
+│       ├── stores/                  # Pinia stores（bots / logs / providers / theme）
+│       ├── api/                     # 后端 API 客户端（X-API-Key 认证）
+│       ├── locales/                 # 中英文 i18n
+│       ├── themes/                  # 设计 token（48 键 CSS 变量体系）
+│       └── styles/                  # 全局样式 + 响应式断点
 ├── simulations/                     # E2E 模拟测试
 │   ├── simulate.py                  # 验证脚本（文本 + OCR + 多 Bot）
 │   └── test_images/                 # OCR 测试图片
@@ -93,6 +164,28 @@ Discord-LLMs-ChatBot/
 ├── docker-compose.yml
 └── README.md
 ```
+
+### Vue 控制面板（frontend-vue）/ Vue Web Console (frontend-vue)
+
+**frontend-vue** 是新一代 Web 控制面板：**Vue 3.5 + Vite + naive-ui + TypeScript**，覆盖 Bot 管理、提供商切换、模型设置、提示词工坊、调试器等全部功能模块。自本版本起为**默认启动**的前端（`run.py` 默认启动 8095）。旧的 Svelte `frontend/` 已**冻结（deprecated）**：仅保留并存可用与维护，新功能一律在 `frontend-vue` 开发，迁移进度见仓库 Issue 跟踪。
+
+| 项 | 说明 |
+|----|------|
+| 技术栈 | Vue 3.5 · Vite 8 · TypeScript · naive-ui · Pinia · vue-i18n · vue-router |
+| 端口 | `8095`（环境变量 `FRONTEND_VUE_PORT`，`run.py` 已内置启动/停止/状态管理，默认启动） |
+| 目录 | `frontend-vue/src/{api,stores,components,layouts,pages,locales,styles,themes,utils}` |
+| 与 `frontend/` 关系 | 旧 `frontend/` 已 deprecated（冻结、仅维护）；需显式启动：`python run.py start --legacy-frontend` 或 `python run.py frontend`（8094） |
+
+```bash
+cd frontend-vue
+npm install          # 安装依赖
+npm run dev          # 开发服务器 → http://localhost:8095（/api 代理到 8093）
+npm run build        # 类型检查 + 生产构建（dist/）
+npm run typecheck    # vue-tsc 类型检查（0 错误标准）
+npm test             # Vitest 单元测试
+```
+
+> 详细文档（设计约定、测试说明、API 认证方式）见 [frontend-vue/README.md](frontend-vue/README.md)。
 
 ---
 
@@ -133,26 +226,44 @@ API Key     →  Fetch Models 拉取可用模型  |  切换手动输入  |  Test
 
 ## 配置参考 / Configuration
 
-### 核心字段
+### 环境变量 / Environment Variables
 
-| 字段 | 说明 | 示例 |
-|------|------|------|
-| `discord_token` | Discord Bot Token | `MTA...` |
-| `llm_provider` | LLM 提供商 | `deepseek` |
-| `api_key` | 提供商 API Key | `sk-...` |
-| `model_name` | 模型标识符 | `deepseek-v4-pro` |
-| `openai_base_url` | OpenAI 兼容端点 | 自动填入 |
-| `temperature` | 推理温度 0–2 | `0.7`（留空=默认） |
-| `max_tokens` | 最大输出 token 数 | `4096`（留空=默认） |
-| `api_secret_key` | 内部 API 鉴权密钥 | 自动生成 |
+| 变量 | 说明 | 默认值 | 敏感 |
+|------|------|--------|------|
+| `ENCRYPTION_KEY` | 凭据加密密钥（用于加密存储的 API Key 等敏感字段） | — | 🔴 **是** |
+| `DISABLE_ENCRYPTION` | 设为 `1` 启用只读迁移模式（不解密存储的凭据） | `0` | |
+| `RATE_LIMIT_PER_MINUTE` | API 全局速率限制（请求/分钟） | `60` | |
+| `REDIS_URL` | Redis 连接字符串（为空则使用本地降级 mock） | `""` | |
+| `DATA_DIR` | 数据存储根目录 | `./data` | |
+| `LOG_DIR` | 日志文件输出目录 | `./data/logs` | |
+| `KNOWLEDGE_DB` | SQLite 知识库文件路径 | `./data/knowledge.db` | |
+| `USAGE_FILE` | 用量统计数据文件 | `./data/usage_data.json` | |
+| `SCRIPTS_DIR` | 自定义脚本目录 | `./scripts` | |
+| `LLM_BASE_URL_<NAME>` | 指定 LLM 提供商的 Base URL 覆盖（如 `LLM_BASE_URL_OPENAI`） | 提供商默认值 | |
+| `CORS_ORIGINS` | 允许的 CORS 来源（逗号分隔） | `http://localhost:8095,http://127.0.0.1:8095,http://localhost:8094,http://127.0.0.1:8094`（8095 默认前端，8094 旧前端 deprecated 并存） | |
+
+> **敏感字段**：标注 🔴 的变量包含敏感信息，不应提交到版本控制或暴露在日志中。
+
+### Bot 配置核心字段 / Core Config Fields
+
+| 字段 | 说明 | 示例 | 敏感 |
+|------|------|------|------|
+| `discord_token` | Discord Bot Token | `MTA...` | 🔴 **是** |
+| `llm_provider` | LLM 提供商标识 | `deepseek` | |
+| `api_key` | 提供商 API Key | `sk-...` | 🔴 **是** |
+| `model_name` | 模型标识符 | `deepseek-v4-pro` | |
+| `openai_base_url` | OpenAI 兼容端点 URL | 自动填入 | |
+| `temperature` | 推理温度 0–2 | `0.7`（留空=默认） | |
+| `max_tokens` | 最大输出 token 数 | `4096`（留空=默认） | |
+| `api_secret_key` | API 鉴权密钥（用于 `X-API-Key` 请求头） | 自动生成 | 🔴 **是** |
 
 ### 数据持久化 / Data
 
 | 路径 | 内容 |
 |------|------|
-| `data/config.json` | 全局配置 |
-| `data/bots/<id>/config.json` | Bot 独立配置 |
-| `data/bots/<id>/knowledge.sqlite` | Bot 知识库 |
+| `data/config.json` | 全局配置（含 `api_secret_key` 🔴） |
+| `data/bots/<id>/config.json` | Bot 独立配置（含 `discord_token` 🔴、`api_key` 🔴） |
+| `data/bots/<id>/knowledge.sqlite` | Bot 知识库（记忆 + 世界书） |
 | `data/bots/<id>/usage_data.json` | Bot 用量统计 |
 | `data/logs/` | 应用日志（`/api/logs` 可查） |
 
@@ -427,3 +538,31 @@ h2 {
 - **避免使用 `!important`**——除非确有必要覆盖内联样式，否则应依赖选择器特异性
 - **选择器特异性建议**——使用类选择器（`.card`）而非标签选择器，避免与组件内部样式冲突
 - **不建议在自定义 CSS 中覆盖 `:root` 变量**——外观设置页面的配色方案已经提供了完整的变量管理。请使用 UI 风格 + 配色方案矩阵来修改主题色，仅在需要细粒度调整时使用自定义 CSS
+
+---
+
+## 部署说明 / Deployment
+
+### 多 Worker 限制 / Multi-worker Restriction
+
+⚠️ **本应用不支持多 Worker 模式。请始终使用单 Worker（`gunicorn -w 1`）启动。**
+
+**原因**：
+
+- `config_cache`（位于 `backend/app/config_cache.py`）使用进程内内存缓存（`_cache` / `_cache_mtime` 模块级全局变量）。多 Worker 下每个 Worker 进程拥有独立的缓存副本，配置修改后各 Worker 间的缓存完全不一致。
+- Redis 降级模式（Redis 不可用时）同样存在各 Worker 状态无法共享的问题。
+
+**推荐启动命令**：
+
+```bash
+# 进入 backend 目录
+cd backend
+
+# 使用 gunicorn + uvicorn worker（生产环境）
+gunicorn -c gunicorn.conf.py app.main:app
+
+# 或直接使用 uvicorn（开发环境）
+uvicorn app.main:app --host 0.0.0.0 --port 8080
+```
+
+> 完整的 gunicorn 配置参数见 `backend/gunicorn.conf.py`。

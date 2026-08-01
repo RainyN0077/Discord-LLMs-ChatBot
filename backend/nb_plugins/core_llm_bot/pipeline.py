@@ -15,19 +15,37 @@ from app.llm_providers.factory import get_llm_provider
 from app.ocr_service import is_multimodal_llm
 from app.utils import split_message, transform_memories_for_prompt
 from app.core_logic.usage_manager import UsageManager
+from app.core_logic.context_builder import format_memory_context, resolve_prompt_templates
 
-from .event_shim import MessageContext, event_to_message_context
+from app.ports.platform_message import PlatformMessage
 from .context import build_full_context
-from .rendering import render_streaming_response
+from .rendering import render_streaming_response, _render_streaming_response_old
 from .automation import reset_channel_automation_state
 
 logger = logging.getLogger(__name__)
 
 
+def _apply_memory_injection(
+    system_prompt: str, memory_knowledge: str, config: Dict[str, Any]
+) -> str:
+    """将记忆知识注入 system_prompt（S5：memory_context 模板占位符匹配才生效）.
+
+    配置了合法 ``memory_context`` 模板（含 ``{data}`` 占位符）时以其格式化结果
+    作为新前缀；否则（未配置/非法/占位符不匹配）保持旧拼接**逐字节不变**。
+    """
+    memory_block = format_memory_context(resolve_prompt_templates(config), memory_knowledge)
+    if memory_block is None:
+        return (
+            f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n"
+            f"</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+        )
+    return f"{memory_block}\n\n{system_prompt}"
+
+
 async def execute_llm_pipeline(
     bot: Bot,
     event: MessageEvent,
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     trigger_sources: List[str],
     injected_data: Optional[str],
     plugin_append_blocks: List[str],
@@ -51,8 +69,13 @@ async def execute_llm_pipeline(
 
     logger.info(f"Processing message {message_ctx.id} for bot '{instance.bot_id}'.")
 
+    runtime = getattr(instance, '_runtime', None)
+
     try:
-        await bot.trigger_typing_indicator(channel_id=event.channel_id)
+        if runtime is not None:
+            await runtime.trigger_typing_indicator(channel_id=str(getattr(event, 'channel_id', '')))
+        else:
+            await bot.trigger_typing_indicator(channel_id=event.channel_id)
     except Exception:
         pass
 
@@ -87,7 +110,7 @@ async def execute_llm_pipeline(
         if relevant_memories:
             transformed_memories = transform_memories_for_prompt(relevant_memories, target_timezone_str='UTC')
             memory_knowledge = "\n".join(transformed_memories)
-            system_prompt = f"<knowledge>\n<long_term_memory>\n{memory_knowledge}\n</long_term_memory>\n</knowledge>\n\n{system_prompt}"
+            system_prompt = _apply_memory_injection(system_prompt, memory_knowledge, config)
             logger.info("Injected %s relevant memories for bot '%s'.", len(transformed_memories), instance.bot_id)
 
     role_config = _resolve_role_config(bot, event, config)
@@ -105,7 +128,14 @@ async def execute_llm_pipeline(
         quota_error = await usage_manager.check_pre_request_quota(message_ctx.author.id, role_config, user_usage, estimated_input_tokens)
         if quota_error:
             reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-            await bot.send(event, quota_error, reply_message=True)
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=quota_error,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, quota_error, reply_message=True)
             return
 
     llm_messages = [{"role": "system", "content": system_prompt}] + history_for_llm + [{"role": "user", "content": final_formatted_content}]
@@ -114,35 +144,78 @@ async def execute_llm_pipeline(
     try:
         full_response = ""
 
-        llm_provider = get_llm_provider(config)
         tools = plugin_manager.get_all_tools() if plugin_manager else []
         tool_functions = plugin_manager.get_all_tool_functions(message_ctx, config) if plugin_manager else {}
         used_tools_in_attempt = False
+
+        pool = None
+        from app.app_context import AppContext
+        pool = AppContext.get().provider_pool
+
         try:
             logger.info(f"Attempting LLM call for message {message_ctx.id} with {len(tools)} tools.")
-            response_gen_with_tools = llm_provider.get_response_stream(
-                llm_messages, llm_images if is_multimodal_llm(config) else None,
-                tools=tools, tool_functions=tool_functions
-            )
-            full_response, usage_data = await render_streaming_response(bot, event, response_gen_with_tools)
+            if pool is not None:
+                response_gen_with_tools = await pool.execute(
+                    config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=tools, tool_functions=tool_functions,
+                )
+            else:
+                llm_provider = get_llm_provider(config)
+                response_gen_with_tools = llm_provider.get_response_stream(
+                    llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=tools, tool_functions=tool_functions
+                )
+            if runtime is not None:
+                full_response, usage_data = await render_streaming_response(
+                    runtime, str(getattr(event, 'channel_id', '')), response_gen_with_tools,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_with_tools)
             used_tools_in_attempt = bool(tools)
         except Exception as e:
             error_str = str(e).lower()
             if 'malformed' in error_str or 'tool_code' in error_str or 'function_call' in error_str:
                 logger.warning(f"Malformed tool call for message {message_ctx.id}. Retrying without tools. Error: {e}")
-                response_gen_no_tools = llm_provider.get_response_stream(
-                    llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-                )
-                full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
+                if pool is not None:
+                    response_gen_no_tools = await pool.execute(
+                        config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                        tools=[], tool_functions={},
+                    )
+                else:
+                    llm_provider = get_llm_provider(config)
+                    response_gen_no_tools = llm_provider.get_response_stream(
+                        llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
+                    )
+                if runtime is not None:
+                    full_response, usage_data = await render_streaming_response(
+                        runtime, str(getattr(event, 'channel_id', '')), response_gen_no_tools,
+                        reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                    )
+                else:
+                    full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_no_tools)
             else:
                 raise e
 
         if used_tools_in_attempt and contains_dsml_tool_blocks(full_response):
             logger.warning(f"Detected leaked DSML tool blocks in message {message_ctx.id}. Retrying without tools.")
-            response_gen_no_tools = llm_provider.get_response_stream(
-                llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
-            )
-            full_response, usage_data = await render_streaming_response(bot, event, response_gen_no_tools)
+            if pool is not None:
+                response_gen_no_tools = await pool.execute(
+                    config, llm_messages, llm_images if is_multimodal_llm(config) else None,
+                    tools=[], tool_functions={},
+                )
+            else:
+                llm_provider = get_llm_provider(config)
+                response_gen_no_tools = llm_provider.get_response_stream(
+                    llm_messages, llm_images if is_multimodal_llm(config) else None, tools=[], tool_functions={}
+                )
+            if runtime is not None:
+                full_response, usage_data = await render_streaming_response(
+                    runtime, str(getattr(event, 'channel_id', '')), response_gen_no_tools,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                full_response, usage_data = await _render_streaming_response_old(bot, event, response_gen_no_tools)
 
         error_reason = None
         if not full_response or not full_response.strip():
@@ -155,7 +228,14 @@ async def execute_llm_pipeline(
             error_msg_template = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}")
             final_error_msg = error_msg_template.format(reason=error_reason)
             reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-            await bot.send(event, final_error_msg, reply_message=True)
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=final_error_msg,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, final_error_msg, reply_message=True)
             return
 
         cleaned_response = await _process_knowledge_tags_adapted(
@@ -186,14 +266,52 @@ async def execute_llm_pipeline(
             "model": str(config.get("model_name", "")),
         })
 
+        # NOTE: runtime is already acquired earlier
+
         final_chunks = split_message(cleaned_response, 2000)
         for i, chunk in enumerate(final_chunks):
-            if i == 0 and chunk.strip():
-                await bot.send(event, chunk, reply_message=True)
-            elif i > 0:
-                await bot.send_to(channel_id=event.channel_id, message=chunk)
+            if not chunk.strip():
+                continue
+            if i == 0:
+                if runtime is not None:
+                    try:
+                        await runtime.send_message(
+                            channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                            content=chunk,
+                            reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                        )
+                    except Exception as reply_err:
+                        if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
+                            logger.warning(f"Original message deleted, sending without reply: {reply_err}")
+                            await runtime.send_message(
+                                channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                                content=chunk,
+                            )
+                        else:
+                            raise
+                else:
+                    try:
+                        await bot.send(event, chunk, reply_message=True)
+                    except Exception as reply_err:
+                        if "Unknown message" in str(reply_err) or "MESSAGE_REFERENCE_UNKNOWN" in str(reply_err):
+                            logger.warning(f"Original message deleted, sending without reply: {reply_err}")
+                            await bot.send_to(channel_id=event.channel_id, message=chunk)
+                        else:
+                            raise
+            else:
+                if runtime is not None:
+                    await runtime.send_message(
+                        channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                        content=chunk,
+                    )
+                else:
+                    await bot.send_to(channel_id=event.channel_id, message=chunk)
 
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
+
+        await _record_bot_interaction(
+            bot, config, message_ctx, cleaned_response, trigger_sources, downloaded_images
+        )
 
         if usage_data:
             input_tokens = usage_data.get("input_tokens", 0)
@@ -226,7 +344,27 @@ async def execute_llm_pipeline(
         logger.error(f"Error processing message: {e}", exc_info=True)
         error_msg = config.get("blocked_prompt_response", "Sorry, an error occurred: {reason}").format(reason="Internal Server Error")
         reset_channel_automation_state(message_ctx.channel.id, auto_message_counts, repeat_streaks)
-        await bot.send(event, error_msg, reply_message=True)
+        try:
+            if runtime is not None:
+                await runtime.send_message(
+                    channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                    content=error_msg,
+                    reply_to_message_id=str(getattr(message_ctx, 'id', None)),
+                )
+            else:
+                await bot.send(event, error_msg, reply_message=True)
+        except Exception as send_err:
+            logger.warning(f"Failed to send error reply: {send_err}")
+            try:
+                if runtime is not None:
+                    await runtime.send_message(
+                        channel_id=str(getattr(message_ctx.channel, 'id', '')),
+                        content=error_msg,
+                    )
+                else:
+                    await bot.send_to(channel_id=event.channel_id, message=error_msg)
+            except Exception:
+                logger.error("Failed to send error reply without reply reference, giving up")
 
 
 def _resolve_role_config(bot: Bot, event: MessageEvent, config: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -246,7 +384,7 @@ def _resolve_role_config(bot: Bot, event: MessageEvent, config: Dict[str, Any]) 
 async def _process_knowledge_tags_adapted(
     bot: Bot,
     event: MessageEvent,
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     text: str,
     bot_config: Dict[str, Any],
 ) -> str:
@@ -254,7 +392,7 @@ async def _process_knowledge_tags_adapted(
 
 
 async def process_knowledge_tags_from_context(
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     text: str,
     bot_config: Dict[str, Any],
 ) -> str:
@@ -276,7 +414,7 @@ async def process_knowledge_tags_from_context(
                 user_id = str(message_ctx.author.id)
                 user_name = message_ctx.author.name
                 try:
-                    ingest_result = knowledge_mgr.ingest_memory_candidate(
+                    ingest_result = await knowledge_mgr.ingest_memory_candidate(
                         content=stripped_content,
                         timestamp=timestamp,
                         user_id=user_id,
@@ -310,7 +448,7 @@ async def process_knowledge_tags_from_context(
             if not content.strip():
                 continue
             try:
-                knowledge_mgr.add_world_book_entry(
+                await knowledge_mgr.add_world_book_entry(
                     keywords=keywords,
                     content=content,
                     linked_user_id=uid,
@@ -323,3 +461,70 @@ async def process_knowledge_tags_from_context(
         cleaned_text = re.sub(r'<user_info\b.*?</user_info>', '', cleaned_text, flags=re.DOTALL)
 
     return cleaned_text.strip()
+
+
+async def _record_bot_interaction(
+    bot: Bot,
+    config: Dict[str, Any],
+    message_ctx: PlatformMessage,
+    bot_response: str,
+    trigger_sources: List[str],
+    downloaded_images: List[Dict[str, Any]],
+) -> None:
+    ih_config = config.get("interaction_history", {})
+    if not ih_config.get("enabled", True):
+        return
+    try:
+        from app.core_logic.interaction_recorder import get_interaction_recorder
+        recorder = get_interaction_recorder()
+
+        bot_id = str(getattr(bot, "self_id", "unknown"))
+        guild_id = str(message_ctx.guild.id) if message_ctx.guild else "dm"
+        channel_id = str(message_ctx.channel.id)
+
+        role_id = "default"
+        if message_ctx.guild and hasattr(message_ctx, 'author'):
+            if hasattr(message_ctx.author, 'roles'):
+                roles_list = getattr(message_ctx.author, 'roles', [])
+                if roles_list:
+                    role_id = str(roles_list[0])
+
+        trigger_source_str = ",".join(trigger_sources) if trigger_sources else "unknown"
+
+        member_name = getattr(message_ctx.author, "display_name", None) or getattr(message_ctx.author, "name", "") or str(getattr(message_ctx.author, "id", ""))
+
+        await recorder.record_message(
+            bot_id=bot_id,
+            guild_id=guild_id,
+            channel_id=channel_id,
+            member_id=str(getattr(message_ctx.author, "id", bot_id)),
+            member_name=member_name,
+            role_id=role_id,
+            content=bot_response,
+            message_id="bot_reply_" + str(message_ctx.id),
+            attachments=[],
+            is_bot_reply=True,
+            trigger_source=trigger_source_str,
+        )
+
+        if downloaded_images:
+            image_bytes_list = []
+            for img in downloaded_images:
+                img_bytes = img.get("bytes")
+                if img_bytes:
+                    image_bytes_list.append(img_bytes)
+            if image_bytes_list:
+                from datetime import datetime, timezone
+                date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                await recorder.record_images(
+                    bot_id=bot_id,
+                    guild_id=guild_id,
+                    channel_id=channel_id,
+                    member_id=str(getattr(message_ctx.author, "id", bot_id)),
+                    role_id=role_id,
+                    date_str=date_str,
+                    message_id=str(message_ctx.id),
+                    image_data_list=image_bytes_list,
+                )
+    except Exception:
+        logger.debug("Failed to record bot interaction", exc_info=True)

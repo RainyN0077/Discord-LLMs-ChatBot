@@ -9,9 +9,9 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
-from ..core_logic.context_builder import format_user_message_for_llm
+from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
 from ..dependencies import get_api_key
-from ..llm_providers.factory import get_llm_provider
+from ..llm_providers.factory import get_provider_pool
 from .. import state
 from ..models import (
     DirectChatRequest, DirectChatResponse, DirectChatDebugContext,
@@ -24,6 +24,8 @@ from ..ocr_service import (
     extract_ocr_text, get_ocr_timeout_seconds, has_ocr_model_config, is_multimodal_llm,
 )
 from ..utils import Stub, _async_stub, _safe_text
+from ..security.input_sanitizer import detect_injection, sanitize_user_input
+from ..security.output_encoder import encode_output
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +171,7 @@ async def _augment_direct_chat_user_content(
     }
 
 
-@router.post("/api/chat/direct", dependencies=[Depends(get_api_key)], response_model=DirectChatResponse)
+@router.post("/api/chat/direct", summary="直接聊天", description="向 LLM 发送消息并获取回复。支持多轮对话上下文、附件（图片 OCR / 文本文件）、调试模式（含人设注入和格式化详情）。图片附件会自动进行 OCR 识别或作为多模态输入。", dependencies=[Depends(get_api_key)], response_model=DirectChatResponse)
 async def direct_chat(request: DirectChatRequest):
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages cannot be empty.")
@@ -259,6 +261,7 @@ async def direct_chat(request: DirectChatRequest):
         system_prompt = await build_system_prompt(
             mock_bot, config, specific_persona_prompt,
             situational_prompt, prompt_message, active_directives_log,
+            templates=resolve_prompt_templates(config),
         )
         llm_messages.append({"role": "system", "content": system_prompt})
 
@@ -284,27 +287,45 @@ async def direct_chat(request: DirectChatRequest):
             mock_user_message.attachments = _build_mock_attachments(current_attachments)
             mock_user_message.reference = None
 
-            formatted_content = format_user_message_for_llm(mock_user_message, mock_bot, config, role_config)
+            formatted_content = await format_user_message_for_llm(
+                mock_user_message, mock_bot, config, role_config,
+                templates=resolve_prompt_templates(config),
+            )
+            # [SECURITY] Sanitize any user-manipulable content that entered the pipeline
+            # after format_user_message_for_llm (attachment text, OCR output).
+            if current_attachments:
+                augmented = await _augment_direct_chat_user_content(formatted_content, current_attachments, config)
+                augmented["final_content"] = sanitize_user_input(augmented["final_content"])
+                augmented["attachment_context"] = sanitize_user_input(augmented["attachment_context"])
+                # [SECURITY] Log injection attempts in attachment/OCR content
+                if detect_injection(augmented["attachment_context"]):
+                    logger.warning("Prompt injection detected in attachment content (debug_mode, idx=%d)", idx)
+                if detect_injection(augmented["final_content"]):
+                    logger.warning("Prompt injection detected in augmented content (debug_mode, idx=%d)", idx)
+                formatted_content = augmented["final_content"]
+            else:
+                augmented = {
+                    "attachment_context": "",
+                    "ocr_output": "",
+                    "attachment_names": [item["name"] for item in current_attachments],
+                    "used_multimodal_images": False,
+                    "llm_images": None,
+                }
+
             debug_detail_data = {
                 "original_content": str(msg.content or ""),
                 "formatted_content": formatted_content,
-                "attachment_context": "",
-                "ocr_output": "",
-                "attachment_names": [item["name"] for item in current_attachments],
-                "used_multimodal_images": False,
+                "attachment_context": augmented.get("attachment_context", ""),
+                "ocr_output": augmented.get("ocr_output", ""),
+                "attachment_names": augmented.get("attachment_names", []),
+                "used_multimodal_images": augmented.get("used_multimodal_images", False),
             }
-            if current_attachments:
-                augmented = await _augment_direct_chat_user_content(formatted_content, current_attachments, config)
-                formatted_content = augmented["final_content"]
-                debug_detail_data = {
-                    **debug_detail_data,
-                    "formatted_content": formatted_content,
-                    "attachment_context": augmented["attachment_context"],
-                    "ocr_output": augmented["ocr_output"],
-                    "used_multimodal_images": augmented["used_multimodal_images"],
-                }
-                if augmented["llm_images"]:
-                    llm_images = augmented["llm_images"]
+            if augmented.get("llm_images"):
+                llm_images = augmented["llm_images"]
+
+            # [SECURITY] Log injection attempts but do not block — defence in depth.
+            if detect_injection(str(msg.content or "")):
+                logger.warning("Injection pattern detected in debug_mode user message (idx=%d)", idx)
 
             formatted_user_messages.append(formatted_content)
             llm_messages.append({"role": "user", "content": formatted_content})
@@ -319,32 +340,43 @@ async def direct_chat(request: DirectChatRequest):
             if role not in {"system", "user", "assistant"}:
                 raise HTTPException(status_code=400, detail=f"Invalid role '{msg.role}'.")
             content = str(msg.content or "")
-            if role == "user" and latest_user_index == idx and decoded_attachments:
-                augmented = await _augment_direct_chat_user_content(content, decoded_attachments, config)
-                content = augmented["final_content"]
-                if augmented["llm_images"]:
-                    llm_images = augmented["llm_images"]
+            if role == "user":
+                # [SECURITY] Sanitize user input before it reaches the LLM.
+                content = sanitize_user_input(content)
+                # [SECURITY] Log injection attempts — monitoring, not blocking.
+                if detect_injection(str(msg.content or "")):
+                    logger.warning("Injection pattern detected in user message (idx=%d)", idx)
+                if latest_user_index == idx and decoded_attachments:
+                    augmented = await _augment_direct_chat_user_content(content, decoded_attachments, config)
+                    augmented["final_content"] = sanitize_user_input(augmented["final_content"])
+                    augmented["attachment_context"] = sanitize_user_input(augmented["attachment_context"])
+                    # [SECURITY] Log injection attempts in attachment/OCR content
+                    if detect_injection(augmented["attachment_context"]):
+                        logger.warning("Prompt injection detected in attachment content (idx=%d)", idx)
+                    if detect_injection(augmented["final_content"]):
+                        logger.warning("Prompt injection detected in augmented content (idx=%d)", idx)
+                    content = augmented["final_content"]
+                    if augmented["llm_images"]:
+                        llm_images = augmented["llm_images"]
             llm_messages.append({"role": role, "content": content})
 
     runtime_config = dict(config)
     runtime_config["stream_response"] = False
 
     try:
-        llm_provider = get_llm_provider(runtime_config)
-        full_response = ""
-        usage_data: Optional[Dict[str, int]] = None
-        async for response_type, data in llm_provider.get_response_stream(llm_messages, images=llm_images):
-            if response_type == "final":
-                full_response = str(data)
-            elif response_type == "usage" and isinstance(data, dict):
-                usage_data = data
-
+        pool = get_provider_pool()
+        full_response, usage_data = await pool.collect_full_response(
+            runtime_config, llm_messages, images=llm_images,
+        )
         if full_response.startswith("LLM_PROVIDER_ERROR:"):
             raise HTTPException(status_code=500, detail=full_response)
 
+        # [SECURITY] Encode LLM output to prevent HTML/JS injection in responses.
+        safe_response = encode_output(full_response)
+
         return {
             "success": True,
-            "response": full_response,
+            "response": safe_response,
             "usage": usage_data,
             "provider": str(config.get("llm_provider", "openai")),
             "model": str(config.get("model_name", "")),
@@ -354,6 +386,9 @@ async def direct_chat(request: DirectChatRequest):
         }
     except HTTPException:
         raise
+    except RuntimeError:
+        logger.warning("Direct chat rejected by provider pool")
+        raise HTTPException(status_code=503, detail="LLM provider is temporarily unavailable. Please retry later.")
     except Exception as e:
         logger.error(f"Direct chat failed: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Direct chat failed. Check backend logs for details.")

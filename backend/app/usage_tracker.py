@@ -5,73 +5,94 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, List, Optional
 import asyncio
+import functools
 from collections import defaultdict
 import pytz
 
+from .paths import DataPaths
+from .utils import log_task_exception
+
 logger = logging.getLogger(__name__)
 
+_DEFAULT_USAGE_FILE = str(DataPaths.USAGE_FILE)
+
+
+def _default_usage_data() -> Dict[str, Any]:
+    """Return the default in-memory usage data structure."""
+    return {
+        "daily": defaultdict(lambda: {
+            "requests": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "detailed": {
+                "by_user": {},
+                "by_role": {},
+                "by_channel": {},
+                "by_guild": {}
+            }
+        }),
+        "metadata": {
+            "users": {},
+            "roles": {},
+            "channels": {},
+            "guilds": {},
+            "channel_users": {}
+        }
+    }
+
+
 class UsageTracker:
-    def __init__(self, data_file="data/usage_data.json"):
+    def __init__(self, data_file=_DEFAULT_USAGE_FILE, quota_alert_manager=None):
         self.data_file = data_file
         data_dir = os.path.dirname(data_file)
         if data_dir:
             os.makedirs(data_dir, exist_ok=True)
-        self.usage_data = self._load_data()
+        # Start with defaults; actual file data is loaded later via initialize().
+        self.usage_data = _default_usage_data()
         self.lock = asyncio.Lock()
         self._save_pending = False
         self._save_dirty = False
         self._save_task = None
-        
-    def _load_data(self) -> Dict[str, Any]:
-        if os.path.exists(self.data_file):
-            try:
-                with open(self.data_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    metadata = data.get("metadata", {})
-                    if "channel_users" not in metadata:
-                        metadata["channel_users"] = {}
-                    return {
-                        "daily": defaultdict(lambda: {
-                            "requests": 0, 
-                            "input_tokens": 0, 
-                            "output_tokens": 0, 
-                            "total_tokens": 0,
-                            "detailed": {
-                                "by_user": {},
-                                "by_role": {},
-                                "by_channel": {},
-                                "by_guild": {}
-                            }
-                        }, data.get("daily", {})),
-                        "metadata": metadata
-                    }
-            except (json.JSONDecodeError, OSError) as e:
-                logger.error("Error loading usage data from %s: %s. Backing up corrupt file.", self.data_file, e)
-                try:
-                    os.replace(self.data_file, self.data_file + ".corrupt")
-                except OSError:
-                    pass
-        return {
-            "daily": defaultdict(lambda: {
-                "requests": 0, 
-                "input_tokens": 0, 
-                "output_tokens": 0, 
-                "total_tokens": 0,
-                "detailed": {
-                    "by_user": {},
-                    "by_role": {},
-                    "by_channel": {},
-                    "by_guild": {}
+        self._quota_alert_manager = quota_alert_manager
+
+    async def initialize(self) -> None:
+        """Load persisted usage data from disk (runs sync I/O in a thread)."""
+        data = await asyncio.to_thread(self._load_data_sync)
+        self.usage_data = data
+
+    def _load_data_sync(self) -> Dict[str, Any]:
+        """Synchronous JSON load — designed to run inside asyncio.to_thread()."""
+        if not os.path.exists(self.data_file):
+            return _default_usage_data()
+        try:
+            with open(self.data_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                metadata = data.get("metadata", {})
+                if "channel_users" not in metadata:
+                    metadata["channel_users"] = {}
+                return {
+                    "daily": defaultdict(lambda: {
+                        "requests": 0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "total_tokens": 0,
+                        "detailed": {
+                            "by_user": {},
+                            "by_role": {},
+                            "by_channel": {},
+                            "by_guild": {}
+                        }
+                    }, data.get("daily", {})),
+                    "metadata": metadata
                 }
-            }),
-            "metadata": {
-                "users": {},
-                "roles": {},
-                "channels": {},
-                "guilds": {},
-                "channel_users": {}
-            }
-        }
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error("Error loading usage data from %s: %s. Backing up corrupt file.", self.data_file, e)
+            try:
+                os.replace(self.data_file, self.data_file + ".corrupt")
+            except OSError:
+                pass
+            return _default_usage_data()
     
     async def save_data(self):
         async with self.lock:
@@ -101,7 +122,8 @@ class UsageTracker:
         channel_id: Optional[str] = None,
         channel_name: Optional[str] = None,
         guild_id: Optional[str] = None,
-        guild_name: Optional[str] = None
+        guild_name: Optional[str] = None,
+        bot_id: Optional[str] = None
     ):
         async with self.lock:
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -232,7 +254,31 @@ class UsageTracker:
                 guild_data["models"][model_key]["requests"] += 1
                 guild_data["models"][model_key]["input_tokens"] += input_tokens
                 guild_data["models"][model_key]["output_tokens"] += output_tokens
-            
+
+            # Capture snapshot for async quota alert (P1-5: 在锁内捕获, 锁外异步执行)
+            _quota_snapshot = (
+                (today, dict(self.usage_data["daily"].get(today, {})))
+                if self._quota_alert_manager and bot_id
+                else None
+            )
+
+        # P1-1/P1-5 修复: 在锁外部异步触发配额告警, 不阻塞关键路径
+        if _quota_snapshot is not None:
+            _today, _daily_usage = _quota_snapshot
+            _daily_quota = self._read_bot_quota_config(bot_id)
+            if _daily_quota is not None:
+                _alert_task = asyncio.create_task(
+                    self._quota_alert_manager.check_and_alert(
+                        bot_id=bot_id,
+                        user_id=user_id,
+                        daily_usage=_daily_usage,
+                        daily_quota=_daily_quota,
+                    )
+                )
+                _alert_task.add_done_callback(
+                    functools.partial(log_task_exception, label="quota alert")
+                )
+
         # 异步保存
         self._schedule_save()
 
@@ -263,6 +309,59 @@ class UsageTracker:
         except Exception as e:
             logger.error(f"Unhandled error in scheduled usage save: {e}", exc_info=True)
     
+    def _read_bot_quota_config(self, bot_id: str) -> Optional[Dict[str, Any]]:
+        """读取 Bot 配额告警配置 (None 语义).
+
+        行为变更 (H1): 旧实现 quota_alert 缺失/未启用时返回默认配额 (1M/1000),
+        导致未启用告警的 Bot 按默认配额误报 WARNING/CRITICAL (虚假告警, 本修复
+        根治)。新实现: 缺失 / enabled=False / 配置无效 → None → 不触发告警;
+        告警必须显式启用。
+
+        严格模式 (M1): 配置无效即禁用该 Bot 全部告警, 保留 warning 日志提示
+        运维修复。
+
+        空串语义 (M2): webhook_url 为空串时不输出该键, 与「未配置」同义 →
+        check_and_alert 回退全局 webhook; 全局未配置 → 仅本地日志。无法表达
+        「启用告警但禁用 webhook」—— 禁用请用 enabled=False。
+
+        Returns:
+            完整配额告警配置 dict (token_limit / request_limit / webhook_url /
+            warning_threshold / critical_threshold, 不含 enabled), 或 None.
+        """
+        try:
+            from .app_context import AppContext
+            from .alerting.quota_alert import QuotaAlertConfig
+            from pydantic import ValidationError
+
+            ctx = AppContext.get()
+            if ctx.bot_manager is None:
+                return None
+            instance = ctx.bot_manager.get(bot_id)
+            if instance is None:
+                return None
+            config = instance.config
+            if not config:
+                return None
+            quota_alert = config.get("quota_alert") or {}
+            if not quota_alert.get("enabled", False):
+                return None
+            cfg = QuotaAlertConfig.model_validate(quota_alert)
+        except ValidationError:
+            logger.warning(
+                "Invalid quota_alert config for bot '%s'; quota alerts skipped", bot_id,
+            )
+            return None
+        except Exception:
+            logger.warning(
+                "Failed to read quota config for bot '%s'; quota alerts skipped",
+                bot_id, exc_info=True,
+            )
+            return None
+        result = cfg.model_dump(exclude={"enabled"})
+        if not result.get("webhook_url"):
+            result.pop("webhook_url", None)
+        return result
+
     async def close(self) -> None:
         if hasattr(self, '_save_task') and self._save_task and not self._save_task.done():
             self._save_task.cancel()
@@ -349,5 +448,5 @@ class UsageTracker:
                 "metadata": self.usage_data["metadata"]
             }
 
-# 全局实例
-usage_tracker = UsageTracker()
+# Module-level singleton removed (G3).
+# Use AppContext.get().usage_tracker or Depends(get_usage_tracker_dep) instead.

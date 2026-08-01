@@ -3,26 +3,29 @@ import json
 import logging
 import os
 import secrets
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .ocr_service import DEFAULT_OCR_PROMPT_TEMPLATE, OCR_TIMEOUT_SECONDS
+from .paths import DataPaths
+from .security.secrets_manager import SecretsManager
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = Path.cwd() / "data"
-DATA_DIR.mkdir(exist_ok=True)
-CONFIG_FILE = DATA_DIR / "config.json"
-BOTS_DIR = DATA_DIR / "bots"
-BOTS_DIR.mkdir(exist_ok=True)
+DATA_DIR = DataPaths.DATA_DIR
+CONFIG_FILE = DataPaths.CONFIG_FILE
+BOTS_DIR = DataPaths.BOTS_DIR
 DEFAULT_BOT_ID = "main"
 
 _cache: Optional[Dict[str, Any]] = None
 _cache_mtime: float = 0.0
+_cache_lock: threading.RLock = threading.RLock()
+_secrets_manager = SecretsManager()
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     'bot_id': '', 'bot_name': 'Unnamed Bot', 'platform': 'discord', 'enabled': True,
-    'discord_token': '', 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
+    'discord_token': '', 'discord_intents': {'guilds': True, 'guild_messages': True, 'direct_messages': True, 'message_content': True, 'members': True}, 'llm_provider': 'openai', 'api_key': '', 'base_url': None,
     'openai_base_url': None, 'anthropic_base_url': None, 'grok_base_url': None,
     'deepseek_base_url': '', 'siliconflow_base_url': '', 'volcengine_base_url': '',
     'dashscope_base_url': '', 'moonshot_base_url': '', 'zhipu_base_url': '',
@@ -86,10 +89,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     'auto_memory_recall_char_limit': 2200,
     'auto_memory_recall_max_age_days': 365,
     'user_personas': {}, 'role_based_config': {}, 'scoped_prompts': {'guilds': {}, 'channels': {}},
+    'user_options': {
+        'enabled': False,
+        'member_search_timeout_ms': 5000,
+        'rules': {}
+    },
+    'interaction_history': {
+        'enabled': True,
+        'max_storage_bytes': 524288000,
+        'auto_prune': True,
+    },
     'context_mode': 'channel',
     'channel_context_settings': {'message_limit': 10, 'char_limit': 4000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'memory_context_settings': {'message_limit': 15, 'char_limit': 6000, 'unlimited_context_length': False, 'unlimited_message_count': False},
     'custom_parameters': [], 'plugins': {},
+    'runtime_type': 'nonebot',
     'api_secret_key': '',
 }
 
@@ -105,54 +119,79 @@ def _set_defaults_recursive(default: dict, config: dict) -> None:
 
 def load_config() -> Dict[str, Any]:
     global _cache, _cache_mtime
-    try:
-        mtime = os.path.getmtime(CONFIG_FILE)
-    except OSError:
-        mtime = 0.0
+    with _cache_lock:
+        try:
+            mtime = os.path.getmtime(CONFIG_FILE)
+        except OSError:
+            mtime = 0.0
 
-    if _cache is not None and mtime == _cache_mtime:
-        return _cache
+        if _cache is not None and mtime == _cache_mtime:
+            return _cache
 
-    if not os.path.exists(CONFIG_FILE):
-        logger.warning(f"Config file not found at {CONFIG_FILE}. Creating a default one.")
-        save_config(DEFAULT_CONFIG)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = os.path.getmtime(CONFIG_FILE)
-        return _cache
+        if not os.path.exists(CONFIG_FILE):
+            logger.warning(f"Config file not found at {CONFIG_FILE}. Creating a default one.")
+            save_config(DEFAULT_CONFIG)
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = os.path.getmtime(CONFIG_FILE)
+            return _cache
 
-    try:
-        with open(CONFIG_FILE, "r", encoding='utf-8') as f:
-            data = json.load(f)
-        _set_defaults_recursive(DEFAULT_CONFIG, data)
-        if not data.get("api_secret_key"):
-            data["api_secret_key"] = secrets.token_hex(32)
-            logger.warning("api_secret_key was empty in config.json, generated a new one")
-        save_config(data)
-        return data
-    except json.JSONDecodeError as e:
-        logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
-    except Exception as e:
-        logger.error(f"FATAL: Unexpected error loading config.json: {e}", exc_info=True)
-        _cache = dict(DEFAULT_CONFIG)
-        _cache_mtime = 0.0
-        return _cache
+        try:
+            with open(CONFIG_FILE, "r", encoding='utf-8') as f:
+                data = json.load(f)
+            data = _secrets_manager.decrypt_dict(data)
+            _set_defaults_recursive(DEFAULT_CONFIG, data)
+            if not data.get("api_secret_key"):
+                data["api_secret_key"] = secrets.token_hex(32)
+                logger.warning("api_secret_key was empty in config.json, generated a new one")
+            if _secrets_manager.write_enabled:
+                # 正常模式: 写回（encrypt_dict 幂等，自动完成嵌套明文加密写回）
+                save_config(data)
+            else:
+                # 迁移模式 (MEDIUM-5): 只读加载，不写盘
+                migrated = _secrets_manager.last_migrated_paths
+                if migrated:
+                    logger.info(
+                        "Migration mode: nested plaintext fields %s left in place (no write-back)",
+                        migrated,
+                    )
+                else:
+                    logger.info("Migration mode: config loaded read-only, no write-back")
+            return data
+        except json.JSONDecodeError as e:
+            logger.error(f"FATAL: config.json is corrupted. Error: {e}. Using defaults.")
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
+        except ValueError as e:
+            logger.error(
+                f"FATAL: config decryption failed: {e}. "
+                "Set DISABLE_ENCRYPTION=1 to read plaintext configs for migration."
+            )
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
+        except Exception as e:
+            logger.error(f"FATAL: Unexpected error loading config.json: {e}", exc_info=True)
+            _cache = dict(DEFAULT_CONFIG)
+            _cache_mtime = 0.0
+            return _cache
 
 
 def save_config(config_data: Dict[str, Any]) -> None:
     global _cache, _cache_mtime
-    with open(CONFIG_FILE, "w", encoding='utf-8') as f:
-        json.dump(config_data, f, indent=2, ensure_ascii=False)
-    _cache = config_data
-    _cache_mtime = os.path.getmtime(CONFIG_FILE)
+    with _cache_lock:
+        encrypted_data = _secrets_manager.encrypt_dict(config_data)
+        with open(CONFIG_FILE, "w", encoding='utf-8') as f:
+            json.dump(encrypted_data, f, indent=2, ensure_ascii=False)
+        _cache = config_data
+        _cache_mtime = os.path.getmtime(CONFIG_FILE)
 
 
 def invalidate_cache() -> None:
     global _cache, _cache_mtime
-    _cache = None
-    _cache_mtime = 0.0
+    with _cache_lock:
+        _cache = None
+        _cache_mtime = 0.0
 
 
 def get_bot_dir(bot_id: str) -> Path:

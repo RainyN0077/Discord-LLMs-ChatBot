@@ -1,9 +1,11 @@
 # backend/app/llm_providers/anthropic_provider.py
+import asyncio
 import anthropic
 import base64
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional
 
 from .base import LLMProvider
@@ -22,6 +24,23 @@ class AnthropicProvider(LLMProvider):
         # Anthropic's API requires max_tokens, so we set a default if not provided.
         if "max_tokens" not in self.custom_params:
             self.custom_params["max_tokens"] = 4096
+
+    async def check_health(self) -> Dict[str, Any]:
+        """轻量健康检查：模型列表 API，0 token 消耗.
+
+        失败时回退到基类 ping 检查。
+        """
+        start = time.monotonic()
+        try:
+            await self.client.models.list(limit=1)
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": True, "latency_ms": latency_ms,
+                "model": self.model or "unknown", "error": None,
+                "provider": "anthropic", "check_type": "lightweight",
+            }
+        except Exception:
+            return await super().check_health()
 
     def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Dict[str, Any]]:
         """
@@ -132,7 +151,10 @@ class AnthropicProvider(LLMProvider):
                 function_to_call = tool_functions.get(tool_name)
                 if function_to_call:
                     try:
-                        function_response = function_to_call(**tool_input)
+                        if asyncio.iscoroutinefunction(function_to_call):
+                            function_response = await function_to_call(**tool_input)
+                        else:
+                            function_response = function_to_call(**tool_input)
                         tool_results.append({
                             "type": "tool_result",
                             "tool_use_id": tool_call_id,

@@ -7,9 +7,36 @@
     let cssText = $customCSS;
     $: cssText = $customCSS;
 
+    let showCyberpunkWarning = false;
+    let pendingStyleId = null;
+
     function handleStyleSelect(styleId) {
+        if (styleId === 'cyberpunk') {
+            pendingStyleId = styleId;
+            showCyberpunkWarning = true;
+            return;
+        }
+        applyStyle(styleId);
+    }
+
+    function applyStyle(styleId) {
         activeStyle.set(styleId);
-        activeScheme.set('default');
+        const schemes = STYLES[styleId]?.schemes || {};
+        const schemeIds = Object.keys(schemes);
+        activeScheme.set(schemeIds.length > 0 ? schemeIds[0] : 'default');
+    }
+
+    function confirmCyberpunk() {
+        showCyberpunkWarning = false;
+        if (pendingStyleId) {
+            applyStyle(pendingStyleId);
+            pendingStyleId = null;
+        }
+    }
+
+    function cancelCyberpunk() {
+        showCyberpunkWarning = false;
+        pendingStyleId = null;
     }
 
     function handleSchemeSelect(schemeId) {
@@ -42,6 +69,7 @@
                 dawn: '#e67e22',
                 midnight: '#7c8aff',
                 nature: '#5a8a3c',
+                cyberpunk: '#FFE600',
             };
             return defaults[styleId] || '#888';
         }
@@ -144,6 +172,25 @@
         </button>
     </div>
 </div>
+
+{#if showCyberpunkWarning}
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="cyberpunk-warning-overlay" role="dialog" aria-modal="true" on:click={cancelCyberpunk} on:keydown={(e) => e.key === 'Escape' && cancelCyberpunk()}>
+        <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+        <div class="cyberpunk-warning-dialog" on:click|stopPropagation on:keydown|stopPropagation>
+            <h3 class="cyberpunk-warning-title">{$t('appearance.cyberpunkWipTitle')}</h3>
+            <p class="cyberpunk-warning-body">{$t('appearance.cyberpunkWipBody')}</p>
+            <div class="cyberpunk-warning-actions">
+                <button class="btn-confirm" on:click={confirmCyberpunk}>
+                    {$t('appearance.cyberpunkWipConfirm')}
+                </button>
+                <button class="btn-cancel" on:click={cancelCyberpunk}>
+                    {$t('appearance.cyberpunkWipCancel')}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .appearance-page {
@@ -387,5 +434,90 @@
         .style-card {
             padding: .5rem .35rem;
         }
+    }
+
+    .cyberpunk-warning-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, .6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+        animation: overlay-in .18s ease-out both;
+    }
+
+    .cyberpunk-warning-dialog {
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow), 0 0 40px rgba(255, 230, 0, .08);
+        padding: 1.5rem 2rem;
+        max-width: 460px;
+        width: 90%;
+        animation: dialog-in .2s cubic-bezier(.34, 1.56, .64, 1) both;
+    }
+
+    .cyberpunk-warning-title {
+        margin: 0 0 .75rem 0;
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: var(--text-color);
+    }
+
+    .cyberpunk-warning-body {
+        margin: 0 0 1.25rem 0;
+        font-size: .88rem;
+        line-height: 1.6;
+        color: var(--text-light);
+    }
+
+    .cyberpunk-warning-actions {
+        display: flex;
+        gap: .5rem;
+        justify-content: flex-end;
+    }
+
+    .btn-confirm {
+        background: var(--primary-color);
+        color: #0D0D0D;
+        border: none;
+        padding: .5rem 1.2rem;
+        border-radius: var(--radius-md);
+        font-size: .85rem;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: var(--shadow-soft);
+        transition: all .2s ease;
+    }
+
+    .btn-confirm:hover {
+        background: var(--primary-hover);
+    }
+
+    .btn-cancel {
+        background: var(--panel-muted-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
+        padding: .5rem 1.2rem;
+        border-radius: var(--radius-md);
+        font-size: .85rem;
+        cursor: pointer;
+        box-shadow: none;
+        transition: all .2s ease;
+    }
+
+    .btn-cancel:hover {
+        background: var(--panel-hover-bg);
+    }
+
+    @keyframes overlay-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes dialog-in {
+        from { opacity: 0; transform: scale(.92) translateY(12px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
     }
 </style>

@@ -2,8 +2,9 @@
 <script>
     import { onMount, onDestroy, afterUpdate } from 'svelte';
     import { t } from '../i18n.js';
-    import { rawLogs, timezoneStore } from '../lib/stores.js';
+    import { rawLogs, timezoneStore } from '../lib/commonStores.js';
     import { fetchBotLogs, fetchLogs } from '../lib/api.js';
+    import { parseLogs, LEVEL_REGEX_BRACKET, LogPoller } from '../lib/logParser.js';
 
     export let botId = null;
 
@@ -13,80 +14,46 @@
     const LOG_LINE_LIMIT_OPTIONS = [200, 500, 1000, 2000];
     let autoScroll = true;
     let logOutputElement;
-    let logInterval;
     let renderedLogLimit = 1000;
     let hiddenLogCount = 0;
     let panelHeight = 280;
     let isDragging = false;
-
-    const formatTimestamp = (utcString, timeZone) => {
-        if (!utcString) return '...';
-        try {
-            return new Intl.DateTimeFormat('sv-SE', {
-                year: 'numeric', month: '2-digit', day: '2-digit',
-                hour: '2-digit', minute: '2-digit', second: '2-digit',
-                hour12: false, timeZone: timeZone
-            }).format(new Date(utcString));
-        } catch (e) {
-            return utcString.replace('T', ' ').substring(0, 19);
-        }
-    };
-
-    const timestampRegex = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z)/;
-    const levelRegex = /\]\s+-\s+(INFO|WARNING|ERROR|CRITICAL)\s+-\s+/;
 
     $: _rawLogs = $rawLogs;
     $: _timezone = $timezoneStore;
     $: _limit = renderedLogLimit;
 
     $: parsedLogs = (() => {
-        const allLines = (_rawLogs || '').split('\n').filter(line => line.trim() !== '');
-        hiddenLogCount = Math.max(0, allLines.length - _limit);
-        const visibleLines = hiddenLogCount > 0 ? allLines.slice(-_limit) : allLines;
-        var _parseIdx = 0;
-        return visibleLines.map(line => {
-            const tsMatch = line.match(timestampRegex);
-            const lvMatch = line.match(levelRegex);
-            const originalTimestamp = tsMatch ? tsMatch[1] : null;
-            const level = lvMatch ? lvMatch[1] : 'UNKNOWN';
-            let messageText = line;
-            if (lvMatch) {
-                messageText = line.substring(lvMatch.index + lvMatch[0].length);
-            } else if (tsMatch) {
-                messageText = line.substring(tsMatch[0].length).trim();
-            }
-            return {
-                level, message: messageText, _uid: _parseIdx++,
-                originalLine: line,
-                formattedTimestamp: originalTimestamp ? formatTimestamp(originalTimestamp, _timezone) : '...'
-            };
+        const result = parseLogs(_rawLogs, _timezone, {
+            limit: _limit,
+            levelRegex: LEVEL_REGEX_BRACKET
         });
+        hiddenLogCount = result.hiddenLogCount;
+        return result.parsedLogs;
     })();
 
     $: filteredLogs = logLevelFilter === 'ALL' ? parsedLogs : parsedLogs.filter(log => log.level === logLevelFilter);
 
-    async function getLogs() {
-        try {
-            let logsText;
-            if (botId) {
-                const result = await fetchBotLogs(botId);
-                if (Array.isArray(result)) {
-                    logsText = result.join('\n');
-                } else if (result && typeof result === 'object' && Array.isArray(result.logs)) {
-                    logsText = result.logs.join('\n');
-                } else if (typeof result === 'string') {
-                    logsText = result;
-                } else {
-                    logsText = '';
-                }
+    const poller = new LogPoller(async () => {
+        let logsText;
+        if (botId) {
+            const result = await fetchBotLogs(botId);
+            if (Array.isArray(result)) {
+                logsText = result.join('\n');
+            } else if (result && typeof result === 'object' && Array.isArray(result.logs)) {
+                logsText = result.logs.join('\n');
+            } else if (typeof result === 'string') {
+                logsText = result;
             } else {
-                logsText = await fetchLogs();
+                logsText = '';
             }
-            rawLogs.set(logsText);
-        } catch(e) {
-            console.error('Log fetch error:', e);
+        } else {
+            logsText = await fetchLogs();
         }
-    }
+        rawLogs.set(logsText);
+    }, {
+        onError: (e) => console.error('Log fetch error:', e)
+    });
 
     onMount(() => {
         try {
@@ -96,16 +63,22 @@
             if (savedHeight > 100 && savedHeight < 800) panelHeight = savedHeight;
         } catch (e) {}
 
-        getLogs();
-        logInterval = setInterval(getLogs, 5000);
+        poller.start();
     });
 
     $: if (typeof window !== 'undefined' && LOG_LINE_LIMIT_OPTIONS.includes(renderedLogLimit)) {
         localStorage.setItem('logPanel.maxLines', String(renderedLogLimit));
     }
 
+    function cleanupDragListeners() {
+        isDragging = false;
+        document.removeEventListener('mousemove', handleDragMove);
+        document.removeEventListener('mouseup', handleDragEnd);
+    }
+
     onDestroy(() => {
-        if (logInterval) clearInterval(logInterval);
+        poller.stop();
+        cleanupDragListeners();
     });
 
     afterUpdate(() => {
@@ -128,9 +101,7 @@
     }
 
     function handleDragEnd() {
-        isDragging = false;
-        document.removeEventListener('mousemove', handleDragMove);
-        document.removeEventListener('mouseup', handleDragEnd);
+        cleanupDragListeners();
         localStorage.setItem('logPanel.height', String(panelHeight));
     }
 </script>

@@ -32,10 +32,20 @@ services:
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.1,backend,frontend,redis}
     # --- 新增部分结束 ---
 
+  # deprecated: 旧 Svelte 前端，保留兼容；新前端 frontend-vue 见 README
   frontend:
     build: ./frontend
     restart: always
     ports:
-      - "8094:80"
+      - "8094:8080"
+    depends_on:
+      - backend
+
+  # 新一代 Vue 控制面板（默认前端）；旧 frontend 为 deprecated 保留兼容
+  frontend-vue:
+    build: ./frontend-vue
+    restart: always
+    ports:
+      - "8095:8080"
     depends_on:
       - backend

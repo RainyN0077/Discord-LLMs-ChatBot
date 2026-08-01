@@ -28,6 +28,33 @@ class RoleConfig(BaseModel):
     display_color: str = "#ffffff"
 
 
+class UserBlocklistEntry(BaseModel):
+    user_id: str
+    user_display_name: str = ""
+    blacklist_mode: Literal["negative_portrait", "block_messages", "deny_response"] = "deny_response"
+    negative_portrait: str = ""
+
+
+class UserOptionRule(BaseModel):
+    scope_type: Literal["global", "guild", "channel", "dm"] = "global"
+    scope_id: str = ""
+    mode: Literal["blacklist", "whitelist"] = "blacklist"
+    whitelist_behavior: Literal["messages_only", "triggers_only"] = "triggers_only"
+    users: Dict[str, UserBlocklistEntry] = Field(default_factory=dict)
+
+
+class UserOptionsConfig(BaseModel):
+    enabled: bool = False
+    member_search_timeout_ms: int = Field(5000, ge=1000, le=30000)
+    rules: Dict[str, UserOptionRule] = Field(default_factory=dict)
+
+
+class InteractionHistoryConfig(BaseModel):
+    enabled: bool = True
+    max_storage_bytes: int = Field(524288000, ge=10485760)
+    auto_prune: bool = True
+
+
 class ContextSettings(BaseModel):
     message_limit: int = Field(ge=0)
     char_limit: int = Field(ge=0)
@@ -100,6 +127,7 @@ class Config(BaseModel):
     platform: Literal["discord", "qq"] = "discord"
     enabled: bool = True
     discord_token: str
+    discord_intents: Dict[str, bool] = Field(default_factory=dict)
     llm_provider: str
     api_key: str
     base_url: Optional[str] = None
@@ -155,12 +183,16 @@ class Config(BaseModel):
     world_book_dedup_threshold: Optional[float] = Field(0.0, ge=0, le=1)
     user_personas: Dict[str, Persona] = Field(default_factory=dict)
     role_based_config: Dict[str, RoleConfig] = Field(default_factory=dict)
+    user_options: UserOptionsConfig = Field(default_factory=UserOptionsConfig)
+    interaction_history: InteractionHistoryConfig = Field(default_factory=InteractionHistoryConfig)
     scoped_prompts: ScopedPrompts = Field(default_factory=ScopedPrompts)
     context_mode: str
     channel_context_settings: ContextSettings
     memory_context_settings: ContextSettings
     custom_parameters: List[CustomParameter] = Field(default_factory=list)
     plugins: Dict[str, PluginConfig] = Field(default_factory=dict)
+    quota_alert: Optional[Dict[str, Any]] = None
+    prompt_templates: Optional[Dict[str, Any]] = None
     api_secret_key: str
 
 
@@ -185,6 +217,7 @@ class DebuggerRequest(BaseModel):
     guild_id: Optional[str] = None
     role_id: Optional[str] = None
     message_content: str
+    bot_id: Optional[str] = None
 
 
 class ModelTestRequest(BaseModel):
@@ -348,6 +381,59 @@ class PricingConfig(BaseModel):
     model: str
     input_price_per_1k: float
     output_price_per_1k: float
+
+
+# ---------------------------------------------------------------------------
+# Provider management models (Wave 4, 1.3.6)
+# ---------------------------------------------------------------------------
+
+
+class ProviderInfo(BaseModel):
+    """单个 Provider 信息及健康状态."""
+    name: str
+    model: str
+    healthy: Optional[bool] = None
+    latency_ms: Optional[float] = None
+    configured: bool = False
+    is_current: bool = False
+
+
+class ProviderSwitchRequest(BaseModel):
+    """Provider 切换请求（P1-6 修复：增加约束防注入）."""
+    provider: str = Field(
+        ..., min_length=1, max_length=64,
+        pattern=r'^[a-z][a-z0-9_]*$',
+        description="Provider name, e.g. 'openai', 'anthropic'",
+    )
+    model: str = Field(
+        ..., min_length=1, max_length=128,
+        description="Model name, e.g. 'gpt-4o', 'claude-sonnet-4-20250514'",
+    )
+    api_key: str = Field(
+        ..., min_length=8, max_length=2048,
+        description="API key for the new provider",
+    )
+    base_url: Optional[str] = Field(
+        None, max_length=2048,
+        pattern=r'^https?://[a-zA-Z0-9.-]+(?::\d{1,5})?(?:/.*)?$',
+        description="Optional base URL override for the provider",
+    )
+
+
+class ProviderListResponse(BaseModel):
+    """GET /providers 响应."""
+    current_provider: str
+    current_model: str
+    providers: List[ProviderInfo]
+
+
+class ProviderSwitchResponse(BaseModel):
+    """POST /providers/switch 响应."""
+    message: str
+    previous_provider: str
+    current_provider: str
+    current_model: str
+    status: str
 
 
 TEXT_ATTACHMENT_EXTENSIONS = {

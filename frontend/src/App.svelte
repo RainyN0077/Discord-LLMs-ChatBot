@@ -4,16 +4,59 @@
     import { fade, fly } from 'svelte/transition';
     import { loadFromIndexedDB } from './lib/fontStorage.js';
     import { t, setLang, lang, get as t_get } from './i18n.js';
-    import { customFontName, activePage } from './lib/stores.js';
+    import { customFontName, activePage } from './lib/commonStores.js';
     import { setApiSecretKey } from './lib/api.js';
     import { initTheme, startThemeSync, stopThemeSync, animationsEnabled } from './lib/themeStore.js';
     import './styles/typography.css';
     import Sidebar from './components/Sidebar.svelte';
-    import ConfigPanel from './pages/ConfigPanel.svelte';
-    import ModelSettings from './pages/ModelSettings.svelte';
-    import AppearanceSettings from './pages/AppearanceSettings.svelte';
-    import Debugger from './pages/Debugger.svelte';
     import LogPanel from './components/LogPanel.svelte';
+
+    // --- Lazy page loaders (code-split each page into its own chunk) ---
+    const pageLoaders = {
+        config: () => import('./pages/ConfigPanel.svelte'),
+        models: () => import('./pages/ModelSettings.svelte'),
+        appearance: () => import('./pages/AppearanceSettings.svelte'),
+        debug: () => import('./pages/Debugger.svelte'),
+        userOptions: () => import('./pages/UserOptions.svelte'),
+        promptStudio: () => import('./pages/PromptStudio.svelte'),
+        providers: () => import('./pages/Providers.svelte'),
+    };
+    let configPromise;
+    let modelsPromise;
+    let appearancePromise;
+    let debugPromise;
+    let userOptionsPromise;
+    let promptStudioPromise;
+    let providersPromise;
+
+    const pageCache = {};
+
+    function loadPage(key) {
+        if (!pageCache[key]) {
+            pageCache[key] = pageLoaders[key]().catch(err => {
+                delete pageCache[key]; // allow retry on next navigation
+                throw err;
+            });
+        }
+        return pageCache[key];
+    }
+
+    $: {
+        // Only load the currently active page — do NOT preload all pages
+        const page = $activePage;
+        if (pageLoaders[page]) {
+            const promise = loadPage(page);
+            switch (page) {
+                case 'config': configPromise = promise; break;
+                case 'models': modelsPromise = promise; break;
+                case 'appearance': appearancePromise = promise; break;
+                case 'debug': debugPromise = promise; break;
+                case 'userOptions': userOptionsPromise = promise; break;
+                case 'promptStudio': promptStudioPromise = promise; break;
+                case 'providers': providersPromise = promise; break;
+            }
+        }
+    }
 
     let selectedBotId = null;
     let sidebarVisible = true;
@@ -24,6 +67,11 @@
     }
 
     function applyFont(fontDataUrl, fontName) {
+        // Validate font URL: must be a data:, blob:, https:, or http: URL
+        if (typeof fontDataUrl !== 'string' || !/^(data:|blob:|https?:)\/\//i.test(fontDataUrl)) {
+            console.error('Invalid font URL: rejected for security.');
+            return;
+        }
         const styleId = 'custom-font-style';
         let styleElement = document.getElementById(styleId);
         if (!styleElement) {
@@ -31,7 +79,7 @@
             styleElement.id = styleId;
             document.head.appendChild(styleElement);
         }
-        styleElement.innerHTML = `
+        styleElement.textContent = `
             @font-face {
                 font-family: 'CustomUserFont';
                 src: url(${fontDataUrl});
@@ -41,6 +89,11 @@
             }
         `;
         customFontName.set(fontName);
+    }
+
+    // Sync <html lang> attribute with current language
+    $: if (typeof document !== 'undefined') {
+        document.documentElement.lang = $lang === 'zh' ? 'zh-CN' : 'en';
     }
 
     onMount(async () => {
@@ -107,6 +160,23 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
                     {$t('debugger.title')}
                 </button>
+                <button class:active={$activePage === 'userOptions'} on:click={() => activePage.set('userOptions')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    {$t('appNav.userOptions')}
+                </button>
+                <button class:active={$activePage === 'promptStudio'} on:click={() => activePage.set('promptStudio')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" y1="13" x2="8" y2="13"/>
+                        <line x1="16" y1="17" x2="8" y2="17"/>
+                    </svg>
+                    {$t('appNav.promptStudio')}
+                </button>
+                <button class:active={$activePage === 'providers'} on:click={() => activePage.set('providers')}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                    {$t('appNav.providers')}
+                </button>
             </nav>
             <div class="lang-switcher">
                 <button class:active={$lang === 'zh'} on:click={() => setLang('zh')}>ZH</button>
@@ -123,19 +193,73 @@
             {#key $activePage}
                 {#if $activePage === 'config'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
-                        <ConfigPanel {applyFont} botId={selectedBotId} />
+                        {#await configPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} {applyFont} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'models'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
-                        <ModelSettings botId={selectedBotId} />
+                        {#await modelsPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'appearance'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;">
-                        <AppearanceSettings />
+                        {#await appearancePromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
+                    </div>
+                {:else if $activePage === 'providers'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        {#await providersPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {:else if $activePage === 'debug'}
                     <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
-                        <Debugger />
+                        {#await debugPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
+                    </div>
+                {:else if $activePage === 'userOptions'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        {#await userOptionsPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
+                    </div>
+                {:else if $activePage === 'promptStudio'}
+                    <div in:fly={{ x: 12, duration: animOn ? 180 : 0, opacity: 0 }} out:fade={{ duration: animOn ? 120 : 0 }} style="flex:1;display:flex;flex-direction:column;min-height:0;overflow:auto;">
+                        {#await promptStudioPromise}
+                            <div class="page-loader"><div class="page-spinner" /><span>{$t('generic.loading') || 'Loading…'}</span></div>
+                        {:then Module}
+                            <svelte:component this={Module.default} botId={selectedBotId} />
+                        {:catch err}
+                            <div class="page-error" role="alert"><p>Failed to load page.</p><pre>{err.message}</pre></div>
+                        {/await}
                     </div>
                 {/if}
             {/key}
@@ -361,5 +485,45 @@
         .header-actions {
             gap: .25rem;
         }
+    }
+
+    /* --- Lazy page loading states --- */
+    .page-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        padding: 3rem 1rem;
+        color: var(--text-light);
+        font-size: 0.85rem;
+        flex: 1;
+    }
+    .page-spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid var(--border-color);
+        border-top-color: var(--primary-color);
+        border-radius: 50%;
+        animation: page-spin 0.7s linear infinite;
+    }
+    @keyframes page-spin {
+        to { transform: rotate(360deg); }
+    }
+    .page-error {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 2rem 1rem;
+        color: var(--error-text);
+        text-align: center;
+        flex: 1;
+    }
+    .page-error pre {
+        font-size: 0.75rem;
+        max-width: 100%;
+        overflow-x: auto;
+        color: var(--text-light);
     }
 </style>

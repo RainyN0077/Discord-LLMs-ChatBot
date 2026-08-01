@@ -5,12 +5,13 @@ import re
 from typing import Dict, Any, Optional, Tuple, List
 from tavily import TavilyClient
 
-from .base import BasePlugin
+from app.ports.plugin_base import PluginBase
+from app.ports.platform_message import PlatformMessage
 
 logger = logging.getLogger(__name__)
 
 
-class SearchPlugin(BasePlugin):
+class SearchPlugin(PluginBase):
     """
     A plugin that uses the Tavily API to perform web searches and injects the results
     into the LLM context.
@@ -73,7 +74,7 @@ class SearchPlugin(BasePlugin):
             logger.warning(f"Search query rewrite failed, fallback to raw query. Error: {e}")
             return query
 
-    async def handle_message(self, message: Any, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
+    async def handle_message(self, message: PlatformMessage, bot_config: Dict[str, Any]) -> Optional[Tuple[str, List[str]] | bool]:
         """Handles incoming messages and injects search results when triggered."""
         if not self.enabled:
             return None
@@ -124,13 +125,16 @@ class SearchPlugin(BasePlugin):
 
         try:
             logger.info(f"Performing Tavily search for query: '{final_query}'")
-            search_result = await asyncio.to_thread(
-                self.client.search,
-                query=final_query,
-                search_depth=self.search_depth,
-                max_results=self.max_results,
-                include_domains=self.include_domains,
-                exclude_domains=self.exclude_domains,
+            search_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    self.client.search,
+                    query=final_query,
+                    search_depth=self.search_depth,
+                    max_results=self.max_results,
+                    include_domains=self.include_domains,
+                    exclude_domains=self.exclude_domains,
+                ),
+                timeout=30,
             )
         except Exception as e:
             logger.error(f"Tavily API error: {e}", exc_info=True)

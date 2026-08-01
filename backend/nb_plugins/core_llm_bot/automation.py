@@ -5,11 +5,11 @@ from app.handlers.automation import (
     track_repeat_parrot as _track_repeat_parrot,
     reset_channel_automation_state as _reset_channel_automation_state,
 )
-from .event_shim import MessageContext
+from app.ports.platform_message import PlatformMessage
 
 
 def track_auto_interject(
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     bot_config: Dict[str, Any],
     auto_message_counts: Dict[int, int],
 ) -> bool:
@@ -17,7 +17,7 @@ def track_auto_interject(
 
 
 def track_repeat_parrot(
-    message_ctx: MessageContext,
+    message_ctx: PlatformMessage,
     bot_config: Dict[str, Any],
     repeat_streaks: Dict[int, Dict[str, Any]],
 ) -> Optional[str]:

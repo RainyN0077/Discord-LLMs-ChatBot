@@ -1,7 +1,9 @@
+import asyncio
 import base64
 import json
 import logging
 import os
+import time
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, Union
 
 from xai_sdk.chat import image as xai_image
@@ -10,7 +12,12 @@ from xai_sdk.chat import tool as xai_tool
 from xai_sdk.chat import tool_result as xai_tool_result
 from xai_sdk.proto import chat_pb2
 
-from ..xai_sdk_utils import create_xai_async_client, xai_sampling_usage_to_dict
+from ..xai_sdk_utils import (
+    create_xai_async_client,
+    create_xai_sync_client,
+    list_xai_language_model_names,
+    xai_sampling_usage_to_dict,
+)
 from .base import LLMProvider
 
 logger = logging.getLogger(__name__)
@@ -22,6 +29,26 @@ class XAIProvider(LLMProvider):
         os.environ.setdefault("GRPC_VERBOSITY", "ERROR")
         base_url = config.get("grok_base_url") or self.base_url
         self.client = create_xai_async_client(api_key=self.api_key, base_url=base_url)
+
+    async def check_health(self) -> Dict[str, Any]:
+        """轻量健康检查：模型列表查询，0 token 消耗.
+
+        失败时回退到基类 ping 检查。
+        使用 asyncio.to_thread 避免同步 SDK 阻塞事件循环。
+        """
+        start = time.monotonic()
+        try:
+            # xAI SDK 的 list_language_models 是同步的，使用 to_thread 避免阻塞
+            sync_client = create_xai_sync_client(api_key=self.api_key)
+            models = await asyncio.to_thread(list_xai_language_model_names, sync_client)
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": len(models) > 0, "latency_ms": latency_ms,
+                "model": self.model or "unknown", "error": None,
+                "provider": "grok", "check_type": "lightweight",
+            }
+        except Exception:
+            return await super().check_health()
 
     @staticmethod
     def _stringify_content(content: Any) -> str:
@@ -172,7 +199,7 @@ class XAIProvider(LLMProvider):
         except Exception:
             return str(result)
 
-    def _append_tool_results(self, chat: Any, response: Any, tool_functions: Dict[str, callable]) -> None:
+    async def _append_tool_results(self, chat: Any, response: Any, tool_functions: Dict[str, callable]) -> None:
         chat.append(response)
 
         for tool_call in response.tool_calls:
@@ -192,7 +219,10 @@ class XAIProvider(LLMProvider):
             if function_to_call:
                 try:
                     logger.info("Executing xAI tool '%s' with args: %s", function_name, function_args)
-                    tool_output = function_to_call(**function_args)
+                    if asyncio.iscoroutinefunction(function_to_call):
+                        tool_output = await function_to_call(**function_args)
+                    else:
+                        tool_output = function_to_call(**function_args)
                 except Exception as tool_error:
                     logger.error("Error executing xAI tool %s: %s", function_name, tool_error)
                     tool_output = f"Error: {tool_error}"
@@ -232,7 +262,7 @@ class XAIProvider(LLMProvider):
                 usage_data = self._merge_usage(usage_data, first_usage)
 
                 if first_response.tool_calls:
-                    self._append_tool_results(chat, first_response, tool_functions)
+                    await self._append_tool_results(chat, first_response, tool_functions)
                 else:
                     yield "final", first_text
                     if usage_data:

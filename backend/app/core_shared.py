@@ -2,16 +2,26 @@ import logging
 import os
 import re
 import socket
+import time
 import uuid
 from datetime import datetime, timezone
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO
 
 import redis
 
+from .paths import DataPaths
+from .security.log_sanitizer import SanitizingFilter
 from .utils import TokenCalculator
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Register the secret-sanitising filter on the root logger so every log
+# message in the application is automatically redacted.
+# ---------------------------------------------------------------------------
+logging.getLogger().addFilter(SanitizingFilter())
 
 try:
     import fcntl
@@ -26,52 +36,69 @@ except ImportError:
 INSTANCE_ID = os.getenv("BOT_INSTANCE_ID") or f"{socket.gethostname()}-{os.getpid()}-{uuid.uuid4().hex[:6]}"
 
 redis_client = None
+_last_redis_attempt: float = 0.0
+REDIS_RETRY_INTERVAL = 30  # seconds between reconnection attempts
 
 
 def get_redis():
-    global redis_client
+    """Return the global Redis client, or ``None`` if Redis is unavailable.
+
+    **Graceful degradation** — when Redis cannot be reached the first time
+    (or the connection has been lost) the function logs a warning and returns
+    ``None``.  Callers **must** check for ``None`` and degrade cache/queue
+    operations accordingly.
+
+    **Auto-reconnect** — every ``REDIS_RETRY_INTERVAL`` seconds the function
+    attempts to re-establish the connection.  A quick ``PING`` health-check
+    is also performed on every call so that a stale connection is detected
+    early.
+    """
+    global redis_client, _last_redis_attempt
+
+    # ---- Health check on existing connection ----
     if redis_client is not None:
-        return redis_client
+        try:
+            redis_client.ping()
+            return redis_client
+        except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
+            logger.warning(
+                "[instance=%s] Redis ping failed: %s. Marking as disconnected.",
+                INSTANCE_ID, e,
+            )
+            redis_client = None
+
+    # ---- Throttled reconnection ----
+    now = time.monotonic()
+    if now - _last_redis_attempt < REDIS_RETRY_INTERVAL:
+        return None  # degraded mode
+    _last_redis_attempt = now
+
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
     try:
-        REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
-        REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
-        _redis_client = redis.Redis(
+        _client = redis.Redis(
             host=REDIS_HOST, port=REDIS_PORT, db=0, decode_responses=True,
             socket_connect_timeout=2, socket_timeout=2,
         )
-        _redis_client.ping()
-        redis_client = _redis_client
-        logger.info(f"[instance={INSTANCE_ID}] Successfully connected to Redis at {REDIS_HOST}:{REDIS_PORT}")
+        _client.ping()
+        redis_client = _client
+        logger.info(
+            "[instance=%s] Redis connected at %s:%s",
+            INSTANCE_ID, REDIS_HOST, REDIS_PORT,
+        )
+        return redis_client
     except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
-        logger.error(f"[instance={INSTANCE_ID}] Could not connect to Redis at {REDIS_HOST}:{REDIS_PORT}. Error: {e}")
-        if os.getenv("FAIL_ON_REDIS_ERROR", "false").lower() == "true":
-            logger.critical(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is true. Terminating application.")
-            raise RuntimeError("Redis connection failed.")
-        else:
-            class MockRedis:
-                def __init__(self):
-                    self._store = {}
-                def set(self, key, value, *args, **kwargs):
-                    self._store[key] = value
-                    return True
-                def get(self, key):
-                    return self._store.get(key)
-                def ping(self):
-                    return True
-                def delete(self, key):
-                    return self._store.pop(key, None) is not None
-                def exists(self, key):
-                    return key in self._store
-            redis_client = MockRedis()
-            logger.warning(f"[instance={INSTANCE_ID}] FAIL_ON_REDIS_ERROR is not set to true. Using a mock Redis client.")
-    return redis_client
+        logger.warning(
+            "[instance=%s] Redis at %s:%s unavailable: %s. "
+            "Running in degraded mode (cache/queue operations will no-op).",
+            INSTANCE_ID, REDIS_HOST, REDIS_PORT, e,
+        )
+        return None
 
 token_calculator = TokenCalculator()
 
-from .config_cache import DATA_DIR
-
-
 def _get_bot_lock_path(bot_id: str):
+    from .config_cache import DATA_DIR
     return DATA_DIR / f"discord_bot_{bot_id}.lock"
 
 
@@ -191,3 +218,94 @@ def _parse_user_info_fields(inner_text: str) -> Dict[str, str]:
         result[key] = val.strip()
         pos = next_semi + 1
     return result
+
+
+# ---------------------------------------------------------------------------
+# Unified logging setup  (moved from utils.py)
+# ---------------------------------------------------------------------------
+
+def setup_logging():
+    """Configure the root logger once.
+
+    * Clears any pre-existing handlers.
+    * Adds a coloured/generic ``StreamHandler`` and a ``RotatingFileHandler``.
+    * Registers the :class:`SanitizingFilter` (also registered at module-level
+      for early coverage, but this ensures it is present after setup).
+    * Silences noisy third-party loggers.
+    """
+
+    root_logger = logging.getLogger()
+    if root_logger.hasHandlers():
+        root_logger.handlers.clear()
+
+    log_formatter = logging.Formatter(
+        fmt='%(asctime)s.%(msecs)03dZ [%(name)-18s] - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%dT%H:%M:%S',
+    )
+    log_formatter.converter = time.gmtime
+
+    root_logger.setLevel(logging.INFO)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(log_formatter)
+    root_logger.addHandler(stream_handler)
+
+    # ---- Uvicorn loggers (let them propagate to the root) ----
+    for logger_name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+        uvicorn_logger = logging.getLogger(logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
+        uvicorn_logger.setLevel(logging.INFO)
+
+    # ---- Rotating file handler ----
+    try:
+        log_dir = DataPaths.LOG_DIR
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / 'bot.log'
+
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=5 * 1024 * 1024,
+            backupCount=5,
+            encoding='utf-8',
+        )
+        file_handler.setFormatter(log_formatter)
+        root_logger.addHandler(file_handler)
+
+        root_logger.info("File logging configured successfully to: %s", log_file)
+
+    except (PermissionError, IOError) as e:
+        root_logger.error(
+            "Could not configure file logging: %s", e, exc_info=True,
+        )
+    except Exception as e:
+        root_logger.error(
+            "Unexpected error during file logging setup: %s", e, exc_info=True,
+        )
+
+    # ---- SanitizingFilter (belt-and-suspenders with module-level registration) ----
+    # Check if already registered to avoid duplicates.
+    has_sanitizer = any(
+        isinstance(f, SanitizingFilter)
+        for f in root_logger.filters
+    )
+    if not has_sanitizer:
+        root_logger.addFilter(SanitizingFilter())
+
+    # ---- Noisy loggers ----
+    noisy_loggers = {
+        "httpx": logging.WARNING,
+        "httpcore": logging.WARNING,
+        "discord.client": logging.WARNING,
+        "discord.gateway": logging.WARNING,
+        "discord.http": logging.WARNING,
+        "discord.state": logging.WARNING,
+        "urllib3": logging.WARNING,
+        "asyncio": logging.WARNING,
+    }
+    for name, level in noisy_loggers.items():
+        logging.getLogger(name).setLevel(level)
+
+    # Discourage loguru from interfering when NoneBot initialises.
+    os.environ.setdefault("LOGURU_LEVEL", "WARNING")
+    os.environ.setdefault("LOGURU_AUTOINIT", "0")

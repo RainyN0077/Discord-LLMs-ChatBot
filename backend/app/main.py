@@ -1,38 +1,34 @@
 import asyncio
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .app_context import AppContext
 from .bot_manager import BotManager
 from .config_bridge import generate_env_file
+from .middleware.rate_limit import register_rate_limit_middleware
+from .usage_tracker import UsageTracker
 from .utils import setup_logging
-from . import state
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    ctx = AppContext.get()
+
+    from .paths import DataPaths
+    DataPaths.ensure_dirs()
     setup_logging()
 
     generate_env_file()
 
     import nonebot
     nonebot.init()
-    state.nonebot_driver = nonebot.get_driver()
-
-    from loguru import logger as loguru_logger
-    loguru_logger.remove()
-    loguru_logger.add(
-        sys.stderr,
-        level="WARNING",
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>",
-        colorize=True,
-    )
+    ctx.nonebot_driver = nonebot.get_driver()
 
     from .discord_patch import apply_component_emoji_fix
     apply_component_emoji_fix()
@@ -43,8 +39,48 @@ async def lifespan(app: FastAPI):
 
     nonebot.load_plugins("nb_plugins")
 
-    state.bot_manager = BotManager()
-    await state.bot_manager.load_all()
+    from .adapters.message_bus_impl import DefaultMessageBus
+    from .adapters.discord_platform_adapter import DiscordPlatformAdapter
+
+    ctx.message_bus = DefaultMessageBus()
+    ctx.message_bus.register_platform_adapter("discord", DiscordPlatformAdapter())
+    logger.info("MessageBus initialized with Discord platform adapter")
+
+    ctx.bot_manager = BotManager()
+    await ctx.bot_manager.load_all()
+
+    from .adapters.discord_platform_adapter import DiscordPlatformAdapter
+    from .adapters.factory import create_bot_runtime
+    for bot_id, instance in ctx.bot_manager.get_all_instances().items():
+        try:
+            runtime = create_bot_runtime(bot_id, instance.config)
+            ctx.message_bus.register_bot_runtime(bot_id, runtime)
+            # 冗余注册：处理先有 self_id 后 attach 的场景
+            if runtime.self_id:
+                DiscordPlatformAdapter.register_self_id_mapping(
+                    runtime.self_id, bot_id
+                )
+        except Exception as e:
+            logger.warning("Failed to create BotRuntime for '%s': %s", bot_id, e)
+
+    logger.info("Using ProviderPool for LLM provider management")
+    from .llm_providers.provider_pool import ProviderPool
+    ctx.provider_pool = ProviderPool(
+        max_concurrent_per_provider=5,
+        circuit_breaker_threshold=3,
+        circuit_breaker_reset_seconds=60.0,
+        health_check_interval_seconds=300.0,
+    )
+    logger.info("ProviderPool initialized")
+
+    from .alerting.quota_alert import QuotaAlertManager
+    ctx.quota_alert_manager = QuotaAlertManager()
+    logger.info("QuotaAlertManager initialized")
+
+    ctx.usage_tracker = UsageTracker(
+        quota_alert_manager=ctx.quota_alert_manager,
+    )
+    await ctx.usage_tracker.initialize()
 
     generate_env_file()
 
@@ -55,12 +91,43 @@ async def lifespan(app: FastAPI):
     yield
     if hasattr(driver, '_shutdown'):
         await driver._shutdown()
-    await state.bot_manager.shutdown()
+    if ctx.usage_tracker:
+        await ctx.usage_tracker.close()
+    if ctx.quota_alert_manager is not None:
+        await ctx.quota_alert_manager.close()
+    await ctx.bot_manager.shutdown()
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Discord LLM ChatBot API",
+    description=(
+        "REST API for the Discord LLM ChatBot — a multi-bot Discord/QQ chatbot "
+        "powered by NoneBot2, supporting 12 LLM providers with a web control panel, "
+        "persistent knowledge engine, OCR image recognition, plugin system, and "
+        "multi-instance management.\n\n"
+        "## Authentication\n"
+        "Most endpoints require an `X-API-Key` header matching the configured "
+        "`api_secret_key`.  The `/health` and `/metrics` endpoints are "
+        "unauthenticated for load-balancer / orchestrator access.\n\n"
+        "## Internal Endpoints\n"
+        "Endpoints under `/internal` are for inter-process communication between "
+        "NoneBot subprocesses and the management server.  They require an "
+        "`X-Internal-Token` header.\n\n"
+        "## Rate Limiting\n"
+        "Global rate limiting is applied (default: 60 requests/minute).  "
+        "Configured via the `RATE_LIMIT_PER_MINUTE` environment variable."
+    ),
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
+)
 
-_cors_origins_env = os.getenv("CORS_ORIGINS", "http://localhost:8094,http://127.0.0.1:8094")
+# 默认白名单同时保留 8095（frontend-vue，默认）与 8094（旧 Svelte frontend，deprecated 并存）
+_cors_origins_env = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:8095,http://127.0.0.1:8095,http://localhost:8094,http://127.0.0.1:8094",
+)
 _cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
@@ -69,6 +136,17 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-API-Key", "X-Timezone"],
 )
+
+register_rate_limit_middleware(app)
+
+# ---------------------------------------------------------------------------
+# Observability middleware
+# ---------------------------------------------------------------------------
+from .middleware.request_id import RequestIDMiddleware
+from .middleware.metrics import MetricsMiddleware
+
+app.add_middleware(RequestIDMiddleware)
+app.add_middleware(MetricsMiddleware)
 
 from .routers.config import router as config_router
 from .routers.chat import router as chat_router
@@ -80,6 +158,11 @@ from .routers.models_test import router as models_test_router
 from .routers.logs import router as logs_router
 from .routers.bots import router as bots_router
 from .routers.state import router as state_router
+from .routers.user_options import router as user_options_router
+from .routers.interactions import router as interactions_router
+from .routers.internal import internal_router
+from .routers.providers import router as providers_router
+from .routers.prompts import router as prompts_router
 
 app.include_router(config_router)
 app.include_router(chat_router)
@@ -91,3 +174,15 @@ app.include_router(models_test_router)
 app.include_router(logs_router)
 app.include_router(bots_router)
 app.include_router(state_router)
+app.include_router(user_options_router)
+app.include_router(interactions_router)
+app.include_router(internal_router)
+app.include_router(providers_router)
+app.include_router(prompts_router)
+
+# ---------------------------------------------------------------------------
+# Observability routes (unauthenticated)
+# ---------------------------------------------------------------------------
+from .routers.health import router as health_router
+
+app.include_router(health_router)

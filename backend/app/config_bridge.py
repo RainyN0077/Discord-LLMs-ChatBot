@@ -43,13 +43,19 @@ def generate_env_file() -> None:
         if platform == "discord":
             token = config.get("discord_token", "")
             if token:
+                default_intents = {
+                    "guilds": True,
+                    "guild_messages": True,
+                    "direct_messages": True,
+                    "message_content": True,
+                    "members": True,
+                }
+                user_intents = config.get("discord_intents", {})
+                intents = {**default_intents, **user_intents}
+                intents = {k: bool(v) for k, v in intents.items()}
                 discord_bots.append({
                     "token": token,
-                    "intent": {
-                        "guild_messages": True,
-                        "direct_messages": True,
-                        "message_content": True,
-                    }
+                    "intent": intents,
                 })
         elif platform == "qq":
             token = config.get("qq_token") or config.get("discord_token", "")

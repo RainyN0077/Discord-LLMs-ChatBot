@@ -562,3 +562,488 @@ input[type="checkbox"] {
 [data-style="minimal"] button {
     box-shadow: none;
 }
+
+/* ================================================================
+   CYBERPUNK 2077 THEME — all rules scoped to :root[data-style="cyberpunk"]
+   ================================================================ */
+
+/* --- Keyframe Animations --- */
+
+@keyframes cp-scanline-flicker {
+    0%, 100% { opacity: .03; }
+    50% { opacity: .05; }
+    92% { opacity: .03; }
+    93% { opacity: .08; }
+    94% { opacity: .03; }
+}
+
+@keyframes cp-neon-pulse {
+    0%, 100% { box-shadow: 0 0 4px var(--pulse-color, var(--primary-color)); }
+    50% { box-shadow: 0 0 18px var(--pulse-color, var(--primary-color)), 0 0 32px var(--pulse-color, var(--primary-color)); }
+}
+
+@keyframes cp-card-glitch {
+    0%, 100% { transform: translate(0); }
+    20% { transform: translate(-1px, 0); }
+    40% { transform: translate(1px, 0); }
+    60% { transform: translate(0, -1px); }
+    80% { transform: translate(0, 1px); }
+}
+
+@keyframes cp-border-scan {
+    0% { border-color: var(--border-color); }
+    50% { border-color: var(--primary-color); }
+    100% { border-color: var(--border-color); }
+}
+
+@keyframes cp-text-interference {
+    0%, 90%, 100% { opacity: 1; }
+    91% { opacity: .7; }
+    92% { opacity: 1; }
+    93% { opacity: .5; }
+    94% { opacity: 1; }
+}
+
+@keyframes cp-rgb-split {
+    0%, 95%, 100% { text-shadow: 2px 0 rgba(255,0,0,.2), -2px 0 rgba(0,255,255,.2); }
+    96% { text-shadow: 4px 0 rgba(255,0,0,.5), -4px 0 rgba(0,255,255,.5); }
+    98% { text-shadow: -3px 1px rgba(255,0,0,.4), 3px -1px rgba(0,255,255,.4); }
+}
+
+@keyframes cp-bracket-pulse {
+    0%, 100% { opacity: .4; }
+    50% { opacity: .9; }
+}
+
+@keyframes cp-dot-blink {
+    0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+    35% { opacity: .3; box-shadow: 0 0 12px currentColor; }
+    50% { opacity: .5; box-shadow: 0 0 6px currentColor; }
+    80% { opacity: 1; box-shadow: 0 0 3px currentColor; }
+    85% { opacity: .2; box-shadow: 0 0 14px currentColor; }
+}
+
+@keyframes cp-hud-sweep {
+    0% { background-position: -100% 0, 0 0; }
+    100% { background-position: 200% 0, 0 0; }
+}
+
+/* --- 3a. Global Scanline Overlay --- */
+
+:root[data-style="cyberpunk"] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(255, 230, 0, .015) 2px,
+        rgba(255, 230, 0, .015) 4px
+    );
+    animation: cp-scanline-flicker 4s infinite;
+}
+
+/* --- 3b/3c/3e. Card: clip-path + double border + holographic glow + border scan + HUD sweep --- */
+
+:root[data-style="cyberpunk"] .card {
+    position: relative;
+    border-radius: 0;
+    clip-path: polygon(
+        12px 0, calc(100% - 12px) 0,
+        100% 12px, 100% calc(100% - 12px),
+        calc(100% - 12px) 100%, 12px 100%,
+        0 calc(100% - 12px), 0 12px
+    );
+    border: 1px solid var(--border-color);
+    outline: 1px solid rgba(255, 230, 0, .08);
+    outline-offset: -4px;
+    background:
+        linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%) 0 0 / 100% 1px no-repeat,
+        radial-gradient(ellipse at 50% 30%, rgba(255, 230, 0, .03), transparent 60%),
+        var(--card-bg);
+    animation: cp-hud-sweep 8s linear infinite, cp-border-scan 4s infinite;
+    transition: box-shadow .3s cubic-bezier(.34, 1.56, .64, 1), transform .2s ease;
+}
+
+:root[data-style="cyberpunk"] .card::before {
+    display: block;
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    z-index: 1;
+    top: 8px;
+    left: 8px;
+    width: 14px;
+    height: 14px;
+    border-top: 2px solid var(--primary-color);
+    border-left: 2px solid var(--primary-color);
+    animation: cp-bracket-pulse 3s infinite;
+    background: transparent;
+    inset: auto;
+}
+
+:root[data-style="cyberpunk"] .card::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+    z-index: 1;
+    bottom: 8px;
+    right: 8px;
+    width: 14px;
+    height: 14px;
+    border-bottom: 2px solid var(--primary-color);
+    border-right: 2px solid var(--primary-color);
+    animation: cp-bracket-pulse 3s infinite;
+    animation-delay: .8s;
+    background: transparent;
+}
+
+:root[data-style="cyberpunk"] .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 28px rgba(255, 230, 0, .12), 0 8px 32px rgba(0, 0, 0, .4);
+    animation: cp-hud-sweep 8s linear infinite, cp-border-scan 4s infinite, cp-card-glitch .3s steps(3) 1;
+}
+
+:root[data-style="cyberpunk"] .card:hover::before,
+:root[data-style="cyberpunk"] .card:hover::after {
+    animation: cp-neon-pulse 2s ease-in-out infinite;
+}
+
+/* --- Card interact utility override --- */
+
+:root[data-style="cyberpunk"] .card-interact:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 28px rgba(255, 230, 0, .12), 0 8px 32px rgba(0, 0, 0, .4);
+}
+
+:root[data-style="cyberpunk"][data-theme] .card-interact:hover {
+    box-shadow: 0 0 28px rgba(255, 230, 0, .12), 0 8px 32px rgba(0, 0, 0, .4);
+}
+
+/* --- 3f. Angled Heading --- */
+
+:root[data-style="cyberpunk"] .card h2 {
+    position: relative;
+    padding-left: 1rem;
+    border-bottom-color: var(--border-color);
+}
+
+:root[data-style="cyberpunk"] .card h2::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    bottom: 2px;
+    width: 4px;
+    background: var(--primary-color);
+    box-shadow: 0 0 8px var(--primary-color), 0 0 16px var(--primary-color);
+    transform: skewX(-12deg);
+    border: none;
+    animation: none;
+    inset: auto;
+    display: block;
+}
+
+/* --- 3g. Panel Bottom Data Line --- */
+
+:root[data-style="cyberpunk"] .card > :last-child::after {
+    content: '';
+    display: block;
+    margin-top: .75rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--primary-color), transparent);
+    opacity: .4;
+}
+
+/* --- 3h. Button Clip-path --- */
+
+:root[data-style="cyberpunk"] button:not(.mini-btn):not(.collapse-btn):not(.style-card):not(.scheme-chip):not(.log-collapse-btn):not(.log-filter-group *) {
+    clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+    padding: .9rem 1.6rem;
+}
+
+:root[data-style="cyberpunk"] button:not(.mini-btn):not(.collapse-btn):not(.style-card):not(.scheme-chip):not(.log-collapse-btn):not(.log-filter-group *):hover {
+    box-shadow: 0 0 16px var(--primary-color), 0 4px 12px rgba(0, 0, 0, .3);
+}
+
+/* --- 3i. Page Nav/Tabs --- */
+
+:root[data-style="cyberpunk"] .page-nav button,
+:root[data-style="cyberpunk"] .tabs button {
+    clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+    position: relative;
+}
+
+:root[data-style="cyberpunk"] .page-nav button:not(:last-child)::after,
+:root[data-style="cyberpunk"] .tabs button:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    right: -1px;
+    top: 20%;
+    height: 60%;
+    width: 1px;
+    background: var(--primary-color);
+    opacity: .25;
+    box-shadow: 0 0 4px var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .page-nav button.active {
+    --pulse-color: var(--primary-color);
+    animation: cp-neon-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 12px var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .tabs button.active {
+    --pulse-color: var(--primary-color);
+    animation: cp-neon-pulse 2s ease-in-out infinite;
+    box-shadow: 0 0 12px var(--primary-color);
+}
+
+/* --- 3j. Header Customization --- */
+
+:root[data-style="cyberpunk"] .app-logo {
+    text-shadow:
+        2px 0 rgba(255, 0, 0, .2),
+        -2px 0 rgba(0, 255, 255, .2);
+    animation: cp-text-interference 5s infinite, cp-rgb-split 6s infinite;
+}
+
+:root[data-style="cyberpunk"] .app-header {
+    border-bottom: 2px solid transparent;
+    border-image: linear-gradient(90deg, transparent, var(--primary-color), transparent) 1;
+    position: relative;
+}
+
+:root[data-style="cyberpunk"] .app-header::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(255, 230, 0, .01) 3px,
+        rgba(255, 230, 0, .01) 4px
+    );
+    opacity: .5;
+}
+
+/* --- 3k. Input Controls --- */
+
+:root[data-style="cyberpunk"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-style="cyberpunk"] select,
+:root[data-style="cyberpunk"] textarea {
+    clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+    border-width: 1.5px;
+}
+
+:root[data-style="cyberpunk"] input:not([type="checkbox"]):not([type="radio"]):focus,
+:root[data-style="cyberpunk"] select:focus,
+:root[data-style="cyberpunk"] textarea:focus {
+    box-shadow: 0 0 14px var(--primary-color), 0 0 0 2px rgba(255, 230, 0, .15);
+    border-color: var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] select {
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M0 0l6 8 6-8z' fill='%23FFE600'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right .8rem center;
+    background-size: 12px 8px;
+    padding-right: 2rem;
+}
+
+:root[data-style="cyberpunk"] .css-editor {
+    background: #0a0a0a;
+    border-color: var(--border-color);
+}
+
+/* --- 3l. Scrollbar --- */
+
+:root[data-style="cyberpunk"] *::-webkit-scrollbar-track {
+    background: rgba(20, 20, 20, .8);
+}
+
+:root[data-style="cyberpunk"] *::-webkit-scrollbar-thumb {
+    background: rgba(255, 230, 0, .2);
+    border-radius: 6px;
+    box-shadow: 0 0 6px rgba(255, 230, 0, .1);
+}
+
+:root[data-style="cyberpunk"] *::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 230, 0, .35);
+    box-shadow: 0 0 12px rgba(255, 230, 0, .2);
+}
+
+:root[data-style="cyberpunk"] * {
+    scrollbar-color: rgba(255, 230, 0, .2) rgba(20, 20, 20, .8);
+    scrollbar-width: thin;
+}
+
+/* --- 3m. Sidebar --- */
+
+:root[data-style="cyberpunk"] .sidebar {
+    background:
+        repeating-linear-gradient(
+            0deg,
+            transparent,
+            transparent 2px,
+            rgba(255, 230, 0, .012) 2px,
+            rgba(255, 230, 0, .012) 3px
+        ),
+        var(--sidebar-bg);
+    border-right: 1px solid var(--sidebar-border);
+    position: relative;
+}
+
+:root[data-style="cyberpunk"] .sidebar::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 8%;
+    width: 2px;
+    height: 84%;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        var(--primary-color) 8%,
+        transparent 25%,
+        transparent 75%,
+        var(--primary-color) 92%,
+        transparent
+    );
+    opacity: .4;
+    pointer-events: none;
+}
+
+:root[data-style="cyberpunk"] .sidebar-header {
+    border-bottom: 1px solid var(--primary-color);
+    box-shadow: 0 1px 8px rgba(255, 230, 0, .08);
+}
+
+:root[data-style="cyberpunk"] .bot-card {
+    transition: box-shadow .2s ease, border-color .2s ease, background .2s ease;
+}
+
+:root[data-style="cyberpunk"] .bot-card:hover {
+    box-shadow: 0 0 12px var(--primary-color), inset 0 0 8px rgba(255, 230, 0, .04);
+    border-color: var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .bot-card.active {
+    --pulse-color: var(--primary-color);
+    position: relative;
+    box-shadow: 0 0 14px var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .bot-card.active::before {
+    content: '';
+    position: absolute;
+    left: -2px;
+    top: 8px;
+    bottom: 8px;
+    width: 4px;
+    background: var(--primary-color);
+    border-radius: 0 3px 3px 0;
+    box-shadow: 0 0 10px var(--primary-color), 0 0 20px var(--primary-color);
+    animation: cp-neon-pulse 2s ease-in-out infinite;
+}
+
+:root[data-style="cyberpunk"] .platform-badge {
+    background: rgba(255, 230, 0, .08);
+    border: 1px solid var(--primary-color);
+    box-shadow: 0 0 4px rgba(255, 230, 0, .12);
+}
+
+:root[data-style="cyberpunk"] .create-btn {
+    clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+/* --- 3n. Footer / Log Panel --- */
+
+:root[data-style="cyberpunk"] .resize-handle {
+    background: var(--primary-color);
+    opacity: .5;
+    box-shadow: 0 0 6px var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .resize-handle:hover {
+    opacity: .9;
+    box-shadow: 0 0 12px var(--primary-color);
+}
+
+:root[data-style="cyberpunk"] .log-panel {
+    border-top: 2px solid transparent;
+    border-image: linear-gradient(90deg, transparent, var(--primary-color), transparent) 1;
+}
+
+/* --- 3o. Status Labels --- */
+
+:root[data-style="cyberpunk"] .disabled-badge {
+    clip-path: polygon(4px 0, calc(100% - 4px) 0, 100% 4px, 100% calc(100% - 4px), calc(100% - 4px) 100%, 4px 100%, 0 calc(100% - 4px), 0 4px);
+    border: 1px solid var(--error-text);
+}
+
+/* --- 3p. Status Dot Blink --- */
+
+:root[data-style="cyberpunk"] .status-dot.running {
+    animation: cp-dot-blink 1.5s infinite;
+    color: var(--primary-color);
+}
+
+/* --- 3r. Disable Conflicting neon/minimal styles --- */
+
+:root[data-style="cyberpunk"] body::before {
+    display: none;
+}
+
+:root[data-style="cyberpunk"] .card::before {
+    display: block;
+}
+
+/* --- 3s. Cyberpunk Flat Colors: override gradient backgrounds --- */
+
+:root[data-style="cyberpunk"] button:not(.mini-btn):not(.collapse-btn):not(.style-card):not(.scheme-chip):not(.log-collapse-btn):not(.log-filter-group *) {
+    background: var(--primary-color);
+    color: #0D0D0D;
+}
+
+:root[data-style="cyberpunk"] button:not(.mini-btn):not(.collapse-btn):not(.style-card):not(.scheme-chip):not(.log-collapse-btn):not(.log-filter-group *):hover {
+    background: var(--primary-hover);
+    color: #0D0D0D;
+}
+
+:root[data-style="cyberpunk"] .create-submit {
+    background: var(--save-color);
+    color: #0D0D0D;
+}
+
+:root[data-style="cyberpunk"] .create-submit:hover {
+    background: var(--save-hover);
+}
+
+:root[data-style="cyberpunk"] .page-nav button.active,
+:root[data-style="cyberpunk"] .lang-switcher button.active {
+    background: var(--tab-active-bg);
+    color: var(--tab-active-text);
+}
+
+:root[data-style="cyberpunk"] .app-header {
+    background: var(--bg-color);
+}
+
+:root[data-style="cyberpunk"] .btn-reset-all {
+    background: transparent !important;
+    color: var(--error-text);
+    border: 1px solid var(--error-text);
+}
+
+:root[data-style="cyberpunk"] .btn-reset-all:hover {
+    background: var(--error-bg) !important;
+    color: var(--error-text);
+}

@@ -1,9 +1,11 @@
 # backend/app/lll_providers/openai_provider.py
+import asyncio
 import openai
 import base64
 import json
 import logging
 import os
+import time
 from typing import Any, Dict, List, AsyncGenerator, Tuple, Optional, Union
 
 from .base import LLMProvider
@@ -25,6 +27,23 @@ class OpenAIProvider(LLMProvider):
                 value = h.get("value", "")
                 if name and value:
                     self.client.default_headers[name] = value
+
+    async def check_health(self) -> Dict[str, Any]:
+        """轻量健康检查：模型列表 API，0 token 消耗.
+
+        失败时回退到基类 ping 检查。
+        """
+        start = time.monotonic()
+        try:
+            await self.client.models.list()
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            return {
+                "healthy": True, "latency_ms": latency_ms,
+                "model": self.model or "unknown", "error": None,
+                "provider": "openai", "check_type": "lightweight",
+            }
+        except Exception:
+            return await super().check_health()
 
     def _prepare_messages(self, messages: List[Dict[str, Any]], images: Optional[List[bytes]]) -> List[Dict[str, Any]]:
         """
@@ -58,6 +77,10 @@ class OpenAIProvider(LLMProvider):
         
         llm_messages = self._prepare_messages(messages, images)
         api_kwargs = self._build_api_kwargs(self.model, llm_messages, self.stream)
+        if self.stream:
+            # Include usage data in the final streamed chunk so it is reliably
+            # available without depending on chunk.usage being set separately.
+            api_kwargs["stream_options"] = {"include_usage": True}
         if tools:
             api_kwargs["tools"] = tools
             api_kwargs["tool_choice"] = "auto"
@@ -102,7 +125,10 @@ class OpenAIProvider(LLMProvider):
                         function_to_call = tool_functions.get(function_name)
                         try:
                             function_args = json.loads(tool_call['function']['arguments'])
-                            function_response = function_to_call(**function_args)
+                            if asyncio.iscoroutinefunction(function_to_call):
+                                function_response = await function_to_call(**function_args)
+                            else:
+                                function_response = function_to_call(**function_args)
                             llm_messages.append({ "tool_call_id": tool_call['id'], "role": "tool", "name": function_name, "content": function_response })
                         except Exception as e:
                             logger.error(f"Error executing tool {function_name}: {e}")
@@ -134,7 +160,10 @@ class OpenAIProvider(LLMProvider):
                         function_to_call = tool_functions.get(function_name)
                         try:
                             function_args = json.loads(tool_call.function.arguments)
-                            function_response = function_to_call(**function_args)
+                            if asyncio.iscoroutinefunction(function_to_call):
+                                function_response = await function_to_call(**function_args)
+                            else:
+                                function_response = function_to_call(**function_args)
                             llm_messages.append({ "tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": function_response })
                         except Exception as e:
                              llm_messages.append({ "tool_call_id": tool_call.id, "role": "tool", "name": function_name, "content": f"Error: {e}"})

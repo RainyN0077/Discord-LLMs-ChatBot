@@ -2,6 +2,10 @@
 import { writable, derived, get } from 'svelte/store';
 import { get as t_get } from '../i18n.js';
 import { saveConfig as apiSaveConfig, fetchConfig as apiFetchConfig, updateBotConfig, fetchBotConfig } from './api.js';
+import { handleError } from './errorHandler.js';
+import { statusMessage, statusType, isLoading, showStatus, rawLogs, timezoneStore, activePage, customFontName, promptTemplates } from './commonStores.js';
+
+export { rawLogs, timezoneStore, activePage, customFontName, showStatus, statusMessage, statusType, isLoading, promptTemplates };
 
 // --- Default State ---
 const defaultConfig = {
@@ -69,16 +73,16 @@ const defaultConfig = {
     user_personas: {},
     role_based_config: {},
     scoped_prompts: { guilds: {}, channels: {} },
+    interaction_history: { enabled: true, max_storage_bytes: 524288000, auto_prune: true },
     context_mode: 'channel',
     channel_context_settings: { message_limit: 10, char_limit: 4000, unlimited_context_length: false, unlimited_message_count: false },
     memory_context_settings: { message_limit: 15, char_limit: 6000, unlimited_context_length: false, unlimited_message_count: false },
     custom_parameters: [],
     plugins: {},
-    api_secret_key: ''
+    api_secret_key: '',
+    provider_mode: 'nonebot'
 };
 
-
-export const activePage = writable('config');
 
 // --- NEW: Granular, Independent Stores ---
 export const coreConfig = writable({
@@ -118,7 +122,7 @@ export const coreConfig = writable({
     rerank_base_url: '',
     rerank_port: '',
     rerank_model_name: 'gpt-4.1-mini',
-    api_secret_key: ''
+    provider_mode: 'nonebot'
 });
 
 export const behaviorConfig = writable({
@@ -165,33 +169,19 @@ export const userPersonas = writable({});
 export const roleConfigs = writable({});
 export const scopedPrompts = writable({ guilds: {}, channels: {} });
 export const customParameters = writable([]);
+export const userOptionsConfig = writable({
+    enabled: false,
+    member_search_timeout_ms: 5000,
+    rules: {}
+});
+export const interactionHistoryConfig = writable({
+    enabled: true,
+    max_storage_bytes: 524288000,
+    auto_prune: true,
+});
 
 
-// --- General Purpose Stores (Unchanged) ---
-export const statusMessage = writable('');
-export const statusType = writable('info');
-export const isLoading = writable(false);
-export const customFontName = writable('');
-export const rawLogs = writable('');
-export const promptTemplates = writable({});
-
-// --- Timezone Store (Unchanged) ---
-const getInitialTimezone = () => {
-    if (typeof window !== 'undefined') {
-        const savedTimezone = localStorage.getItem('timezone');
-        if (savedTimezone) return savedTimezone;
-        return Intl.DateTimeFormat().resolvedOptions().timeZone;
-    }
-    return 'UTC';
-};
-export const timezoneStore = writable(getInitialTimezone());
-if (typeof window !== 'undefined') {
-    timezoneStore.subscribe(value => {
-        localStorage.setItem('timezone', value);
-    });
-}
-
-// --- NEW: Refactored Derived Stores ---
+// --- Refactored Derived Stores ---
 // These now depend on smaller stores, reducing computation
 export const roleBasedConfigArray = derived(roleConfigs, $rc => 
     Object.entries($rc || {}).map(([key, value]) => ({ ...value, _key: key }))
@@ -212,19 +202,6 @@ export function setKeywords(value) {
     behaviorConfig.update(c => ({...c, trigger_keywords: value.split(',').map(k => k.trim()).filter(Boolean)}));
 }
 
-// --- Global Actions (Status Message) ---
-let statusTimeout;
-export function showStatus(message, type = 'info', duration = 5000) {
-    clearTimeout(statusTimeout);
-    statusMessage.set(message);
-    statusType.set(type);
-    if (type !== 'info' && type !== 'loading-special' && duration > 0) {
-        statusTimeout = setTimeout(() => {
-            statusMessage.update(current => (current === message ? '' : current));
-        }, duration);
-    }
-}
-
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -239,6 +216,7 @@ export function mapConfigToStores(config) {
     // Distribute config data into the granular stores
     coreConfig.set({
         discord_token: config.discord_token,
+        discord_intents: config.discord_intents || { guilds: true, guild_messages: true, direct_messages: true, message_content: true, members: true },
         llm_provider: config.llm_provider,
         api_key: config.api_key,
         base_url: config.base_url,
@@ -274,7 +252,7 @@ export function mapConfigToStores(config) {
         rerank_base_url: config.rerank_base_url || '',
         rerank_port: config.rerank_port || '',
         rerank_model_name: config.rerank_model_name || 'gpt-4.1-mini',
-        api_secret_key: config.api_secret_key
+        provider_mode: config.provider_mode || 'nonebot'
     });
     behaviorConfig.set({
         bot_nickname: config.bot_nickname || config.bot_name || 'Bot',
@@ -328,6 +306,8 @@ export function mapConfigToStores(config) {
     roleConfigs.set(config.role_based_config || {});
     scopedPrompts.set(config.scoped_prompts || { guilds: {}, channels: {} });
     customParameters.set(config.custom_parameters || []);
+    userOptionsConfig.set(config.user_options || { enabled: false, member_search_timeout_ms: 5000, rules: {} });
+    interactionHistoryConfig.set(config.interaction_history || { enabled: true, max_storage_bytes: 524288000, auto_prune: true });
 }
 
 export async function loadBotConfigToStores(botId) {
@@ -363,7 +343,7 @@ export async function fetchConfig(options = {}) {
                 continue;
             }
 
-            console.error('Config fetch error in store:', e);
+            handleError('ConfigFetch', e);
             showStatus(t_get('status.loadFailed', { error: e.message }), 'error');
             isLoading.set(false);
             return null;
@@ -384,7 +364,7 @@ export async function syncUserPersonasFromBackend(options = {}) {
         }
         return loadedConfig.user_personas || {};
     } catch (e) {
-        console.error('User portraits sync error:', e);
+        handleError('PersonaSync', e);
         if (!silent) {
             showStatus(t_get('personaHub.syncPortraitsFailed', { error: e.message }), 'error');
         }
@@ -405,6 +385,8 @@ export async function saveConfig(botId = null) {
         user_personas: get(userPersonas),
         role_based_config: get(roleConfigs),
         scoped_prompts: get(scopedPrompts),
+        user_options: get(userOptionsConfig),
+        interaction_history: get(interactionHistoryConfig),
         custom_parameters: get(customParameters).map(p => {
             let value = p.value;
             if (p.type === 'number') value = parseFloat(p.value) || 0;
@@ -413,46 +395,47 @@ export async function saveConfig(botId = null) {
         })
     };
 
+    // Deep-clone to avoid mutating store internals (get(store) returns store's internal reference)
+    const configToSave = structuredClone(finalConfig);
+
     // Backward compatibility: keep legacy base_url aligned with OpenAI custom endpoint.
-    finalConfig.base_url = finalConfig.openai_base_url || '';
+    configToSave.base_url = configToSave.openai_base_url || '';
 
     // Process user_personas to convert trigger_keywords from string to array
-    if (finalConfig.user_personas) {
-        Object.values(finalConfig.user_personas).forEach(persona => {
+    if (configToSave.user_personas) {
+        Object.values(configToSave.user_personas).forEach(persona => {
             if (typeof persona.trigger_keywords === 'string') {
                 persona.trigger_keywords = persona.trigger_keywords.split(',').map(k => k.trim()).filter(Boolean);
             }
         });
     }
     
-    // Cleanup logic remains the same
+    // Cleanup _key properties from the cloned copy only — never mutate store internals
     const cleanup = (obj) => {
         if (typeof obj !== 'object' || obj === null) return;
         Object.values(obj).forEach(item => {
             if (typeof item === 'object' && item !== null) delete item._key;
         });
     };
-    cleanup(finalConfig.plugins);
-    cleanup(finalConfig.role_based_config);
-    cleanup(finalConfig.user_personas);
-    if(finalConfig.scoped_prompts) {
-      cleanup(finalConfig.scoped_prompts.guilds);
-      cleanup(finalConfig.scoped_prompts.channels);
+    cleanup(configToSave.plugins);
+    cleanup(configToSave.role_based_config);
+    cleanup(configToSave.user_personas);
+    if(configToSave.scoped_prompts) {
+      cleanup(configToSave.scoped_prompts.guilds);
+      cleanup(configToSave.scoped_prompts.channels);
     }
-
-    console.log('Final config to save:', finalConfig);
 
     try {
         if (botId) {
-            finalConfig.bot_id = botId;
-            await updateBotConfig(botId, finalConfig);
+            configToSave.bot_id = botId;
+            await updateBotConfig(botId, configToSave);
         } else {
-            await apiSaveConfig(finalConfig);
+            await apiSaveConfig(configToSave);
             await fetchConfig(); // Resync after saving
         }
         showStatus(t_get('status.saveSuccess'), 'success');
     } catch (e) {
-        console.error('Save error:', e);
+        handleError('ConfigSave', e);
         showStatus(t_get('status.saveFailed', { error: e.message }), 'error');
     } finally {
         isLoading.set(false);

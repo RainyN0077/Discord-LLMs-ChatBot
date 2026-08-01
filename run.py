@@ -3,21 +3,25 @@
 Unified launcher for Discord-LLMs-ChatBot local development.
 
 Usage:
-  python run.py                 Start backend + frontend (foreground, Ctrl+C to stop)
+  python run.py                 Start backend + frontend-vue (foreground, Ctrl+C to stop)
   python run.py start           Same as above
   python run.py start --background   Detached mode (logs to .local-run/)
   python run.py start --backend-only
-  python run.py start --frontend-only
+  python run.py start --frontend-only        Start frontend-vue only (default)
+  python run.py start --legacy-frontend      Use the deprecated legacy Svelte frontend (8094)
+  python run.py frontend        Start the deprecated legacy Svelte frontend only (8094)
+  python run.py frontend-vue    Start the Vue 3 frontend only (8095)
   python run.py stop            Stop background processes
   python run.py restart         Restart background processes
   python run.py status          Show process / port status
   python run.py install         Install/sync dependencies only
 
 Environment variables:
-  BACKEND_PORT   default 8093
-  FRONTEND_PORT  default 8094
-  REDIS_HOST     default localhost
-  REDIS_PORT     default 6379
+  BACKEND_PORT     default 8093
+  FRONTEND_PORT    default 8094  (legacy Svelte frontend, deprecated)
+  FRONTEND_VUE_PORT default 8095 (new Vue 3 frontend, default)
+  REDIS_HOST       default localhost
+  REDIS_PORT       default 6379
 """
 
 import argparse
@@ -37,14 +41,23 @@ except ImportError:
 ROOT_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = ROOT_DIR / "backend"
 FRONTEND_DIR = ROOT_DIR / "frontend"
+FRONTEND_VUE_DIR = ROOT_DIR / "frontend-vue"
 RUN_DIR = ROOT_DIR / ".local-run"
 LOG_DIR = RUN_DIR / "logs"
 
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8093"))
 FRONTEND_PORT = int(os.getenv("FRONTEND_PORT", "8094"))
+FRONTEND_VUE_PORT = int(os.getenv("FRONTEND_VUE_PORT", "8095"))
 VITE_PROXY = os.getenv("VITE_API_PROXY_TARGET", f"http://localhost:{BACKEND_PORT}")
 
 IS_WINDOWS = os.name == "nt"
+PY_VER = sys.version_info
+
+
+def _check_python_compat() -> None:
+    if PY_VER >= (3, 14):
+        _log("compat", f"Python {PY_VER.major}.{PY_VER.minor} detected – requires websockets>=15.0", colour="Y")
+        _log("compat", "If you see 'proxy' keyword error, run: pip install 'websockets>=15.0'", colour="Y")
 
 # ── tiny colour helpers ──────────────────────────────────────────────
 _COL = {
@@ -158,11 +171,13 @@ def _is_alive(pid: int) -> bool:
 
 
 def _kill(pid: int) -> bool:
+    """Kill a process by PID. Returns True if the process was killed."""
     if not _is_alive(pid):
         return False
     try:
         if IS_WINDOWS:
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True)
+            # /T kills the entire process tree (critical for uvicorn --reload)
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
         else:
             os.kill(pid, signal.SIGTERM)
             time.sleep(0.3)
@@ -173,9 +188,51 @@ def _kill(pid: int) -> bool:
         return False
 
 
+def _kill_port(port: int) -> bool:
+    """Kill whichever process is listening on the given port. Returns True if a process was killed."""
+    if not _port_open(port):
+        return False
+    try:
+        if IS_WINDOWS:
+            # Find PID listening on the port
+            r = subprocess.run(
+                ["cmd.exe", "/c", f'netstat -ano | findstr ":{port} " | findstr "LISTENING"'],
+                capture_output=True, text=True,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                lines = r.stdout.strip().splitlines()
+                killed_pids = set()
+                for line in lines:
+                    parts = line.strip().split()
+                    if parts:
+                        pid_str = parts[-1]
+                        if pid_str.isdigit() and pid_str not in killed_pids:
+                            killed_pids.add(pid_str)
+                            subprocess.run(
+                                ["taskkill", "/F", "/T", "/PID", pid_str],
+                                capture_output=True,
+                            )
+                return len(killed_pids) > 0
+        else:
+            r = subprocess.run(
+                ["lsof", "-ti", f":{port}"], capture_output=True, text=True
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                for pid_str in r.stdout.strip().splitlines():
+                    pid = int(pid_str)
+                    os.kill(pid, signal.SIGTERM)
+                    time.sleep(0.3)
+                    if _is_alive(pid):
+                        os.kill(pid, signal.SIGKILL)
+                return True
+    except (OSError, subprocess.SubprocessError, ValueError):
+        pass
+    return False
+
+
 async def _wait_for_backend(timeout: float = 60.0) -> bool:
     """Wait for backend HTTP server to respond (application ready)."""
-    url = f"http://localhost:{BACKEND_PORT}/"
+    url = f"http://127.0.0.1:{BACKEND_PORT}/"
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
@@ -185,7 +242,7 @@ async def _wait_for_backend(timeout: float = 60.0) -> bool:
         if _port_open(BACKEND_PORT):
             if httpx:
                 try:
-                    async with httpx.AsyncClient(timeout=2.0) as client:
+                    async with httpx.AsyncClient(timeout=1.0) as client:
                         r = await client.get(url)
                         if r.status_code < 500:
                             return True
@@ -201,7 +258,7 @@ async def _wait_for_backend(timeout: float = 60.0) -> bool:
 
 def _wait_for_backend_sync(timeout: float = 60.0) -> bool:
     """Synchronous version for background mode."""
-    url = f"http://localhost:{BACKEND_PORT}/"
+    url = f"http://127.0.0.1:{BACKEND_PORT}/"
     deadline = time.monotonic() + timeout
 
     while time.monotonic() < deadline:
@@ -226,6 +283,7 @@ def _wait_for_backend_sync(timeout: float = 60.0) -> bool:
 
 # ── commands ─────────────────────────────────────────────────────────
 def do_install() -> None:
+    _check_python_compat()
     vp = _ensure_venv()
     _log("1/3", "Upgrading pip / setuptools / wheel")
     subprocess.run([str(vp), "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"], check=True)
@@ -234,41 +292,72 @@ def do_install() -> None:
         _log("2/3", f"Installing {req}")
         subprocess.run([str(vp), "-m", "pip", "install", "-r", str(req)], check=True)
     if _find_npm():
-        _log("3/3", "npm install")
+        _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — installing for compatibility only", colour="Y")
+        _log("3/3", "npm install (legacy frontend, deprecated)")
         subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_DIR), check=True)
+    if _find_npm() and FRONTEND_VUE_DIR.exists():
+        _log("3/3", "npm install (frontend-vue)")
+        subprocess.run(["cmd.exe", "/c", "npm", "install"], cwd=str(FRONTEND_VUE_DIR), check=True) if IS_WINDOWS else subprocess.run(["npm", "install"], cwd=str(FRONTEND_VUE_DIR), check=True)
     print(c("G", "\nAll dependencies installed."))
 
 
 def do_status() -> None:
     bp = _read_pid("backend")
     fp = _read_pid("frontend")
+    vp = _read_pid("frontend-vue")
     ba = bp and _is_alive(bp)
     fa = fp and _is_alive(fp)
+    va = vp and _is_alive(vp)
     bu = _port_open(BACKEND_PORT)
     fu = _port_open(FRONTEND_PORT)
+    vu = _port_open(FRONTEND_VUE_PORT)
     print(f"  Backend  : {'RUNNING' if ba else 'STOPPED'}  (PID {bp or '-'}, port {BACKEND_PORT} {'open' if bu else 'free'})")
-    print(f"  Frontend : {'RUNNING' if fa else 'STOPPED'}  (PID {fp or '-'}, port {FRONTEND_PORT} {'open' if fu else 'free'})")
-    if not ba and not fa:
+    print(f"  Frontend : {'RUNNING' if fa else 'STOPPED'}  (PID {fp or '-'}, port {FRONTEND_PORT} {'open' if fu else 'free'})  [deprecated]")
+    print(f"  Frontend-vue: {'RUNNING' if va else 'STOPPED'}  (PID {vp or '-'}, port {FRONTEND_VUE_PORT} {'open' if vu else 'free'})  [default]")
+    if not ba and not fa and not va:
         print(f"\n  Run:  python run.py")
 
 
 def do_stop() -> None:
+    """Stop all managed processes. Falls back to port-based killing if PID is stale."""
     stopped = 0
-    for name in ("backend", "frontend"):
+
+    # Phase 1: kill by tracked PID
+    # NOTE: "frontend" is the deprecated legacy Svelte frontend — kept managed for compatibility
+    for name in ("backend", "frontend", "frontend-vue"):
         pid = _read_pid(name)
         if pid:
             if _kill(pid):
                 _log("stop", f"{name} (PID {pid})", colour="G")
                 stopped += 1
+            elif _is_alive(pid):
+                _log("stop", f"{name} PID {pid} — failed to kill, trying port fallback", colour="Y")
             else:
-                _log("stop", f"{name} PID {pid} already gone", colour="Y")
+                _log("stop", f"{name} PID {pid} already gone (stale pid file)", colour="Y")
             _clear_pid(name)
 
-    for name in ("backend", "frontend"):
-        _clear_pid(name)
-
-    if not stopped:
-        _log("stop", "No managed processes found", colour="Y")
+    # Phase 2: port-based fallback — kill anything still listening
+    port_map = {
+        "backend": BACKEND_PORT,
+        "frontend": FRONTEND_PORT,
+        "frontend-vue": FRONTEND_VUE_PORT,
+    }
+    for name, port in port_map.items():
+        if _port_open(port):
+            _log("stop", f"Port {port} ({name}) still occupied — killing by port", colour="Y")
+            if _kill_port(port):
+                _log("stop", f"{name} killed by port {port}", colour="G")
+                stopped += 1
+                # Wait for port to release — retry up to 3s
+                for _ in range(30):
+                    if not _port_open(port):
+                        break
+                    time.sleep(0.1)
+                else:
+                    _log("stop", f"Port {port} still occupied after kill — may need manual intervention", colour="R")
+            else:
+                _log("stop", f"Could not free port {port} ({name})", colour="R")
+            _clear_pid(name)
 
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -316,7 +405,7 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
     for entry in procs:
         if entry[0] == "backend":
             backend_entry = entry
-        elif entry[0] == "frontend":
+        elif entry[0] in ("frontend", "frontend-vue"):
             frontend_entry = entry
 
     if backend_entry:
@@ -350,7 +439,8 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
         )
         CHILD_PROCS.append(proc)
         _log(tag, f"Started (PID {proc.pid})", colour="G")
-        tasks.append(asyncio.create_task(_stream(proc, tag, "W")))
+        stream_tag = "vue" if tag == "frontend-vue" else tag
+        tasks.append(asyncio.create_task(_stream(proc, stream_tag, "W")))
 
     if not tasks:
         return
@@ -364,20 +454,63 @@ async def _run_foreground(procs: list[tuple[str, list[str], Path, dict]]) -> Non
             t.cancel()
 
 
+_shutting_down = False
+_SIGINT_FORCE_TIMEOUT = 5  # seconds before force-kill after first SIGINT
+
+
 def _on_sigint(signum, frame):
-    print(f"\n{c('Y', 'Shutting down...')}")
+    global _shutting_down
+    if _shutting_down:
+        # Second Ctrl+C: immediate force-kill
+        print(f"\n{c('R', 'Force quitting...')}")
+        for p in CHILD_PROCS:
+            try:
+                if IS_WINDOWS:
+                    subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
+                else:
+                    p.kill()
+            except Exception:
+                pass
+        os._exit(1)
+
+    _shutting_down = True
+    print(f"\n{c('Y', 'Shutting down... (press Ctrl+C again to force)')}")
+
+    # Phase 1: graceful terminate (SIGTERM / CTRL_BREAK_EVENT)
+    for p in CHILD_PROCS:
+        try:
+            if IS_WINDOWS:
+                # Send CTRL_BREAK_EVENT to the process group (uvicorn handles this)
+                try:
+                    p.send_signal(signal.CTRL_BREAK_EVENT)
+                except Exception:
+                    subprocess.run(["taskkill", "/PID", str(p.pid)], capture_output=True)
+            else:
+                p.terminate()
+        except Exception:
+            pass
+
+    # Phase 2: after timeout, force kill
+    time.sleep(_SIGINT_FORCE_TIMEOUT)
     for p in CHILD_PROCS:
         try:
             if IS_WINDOWS:
                 subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)], capture_output=True)
             else:
-                p.terminate()
+                p.kill()
         except Exception:
             pass
-    sys.exit(0)
+
+    # Also clean up via port as final fallback
+    _kill_port(BACKEND_PORT)
+    _kill_port(FRONTEND_PORT)
+    _kill_port(FRONTEND_VUE_PORT)
+
+    os._exit(0)
 
 
-def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
+def do_start_foreground(backend_only: bool, frontend_only: bool, legacy_frontend: bool = False) -> None:
+    _check_python_compat()
     signal.signal(signal.SIGINT, _on_sigint)
 
     vp = _ensure_venv()
@@ -401,7 +534,10 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
 
     if not backend_only:
         npm = _find_npm()
-        if npm:
+        if not npm:
+            _log("frontend", "npm not found", colour="Y")
+        elif legacy_frontend:
+            _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
             procs.append((
                 "frontend",
                 [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT)],
@@ -409,7 +545,12 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
                 {"VITE_API_PROXY_TARGET": VITE_PROXY},
             ))
         else:
-            _log("frontend", "npm not found", colour="Y")
+            procs.append((
+                "frontend-vue",
+                [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT)],
+                FRONTEND_VUE_DIR,
+                {"VITE_API_PROXY_TARGET": VITE_PROXY},
+            ))
 
     print(c("Y", "Press Ctrl+C to stop all processes.\n"))
 
@@ -427,7 +568,7 @@ def do_start_foreground(backend_only: bool, frontend_only: bool) -> None:
 def _spawn_bg(name: str, args: list[str], cwd: Path, env_extra: dict, port: int) -> subprocess.Popen | None:
     kwargs: dict = {"cwd": str(cwd), "env": dict(os.environ, **env_extra)}
     if IS_WINDOWS:
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+        kwargs["creationflags"] = subprocess.DETACHED_PROCESS
         kwargs["startupinfo"] = subprocess.STARTUPINFO(
             dwFlags=subprocess.STARTF_USESHOWWINDOW, wShowWindow=0,
         )
@@ -450,8 +591,25 @@ def _spawn_bg(name: str, args: list[str], cwd: Path, env_extra: dict, port: int)
     return proc
 
 
-def do_start_background(backend_only: bool, frontend_only: bool) -> None:
+def do_start_background(backend_only: bool, frontend_only: bool, legacy_frontend: bool = False) -> None:
     do_stop()
+
+    # Wait for ports to actually release before starting new processes
+    frontend_port = FRONTEND_PORT if legacy_frontend else FRONTEND_VUE_PORT
+    ports_to_check = []
+    if not frontend_only:
+        ports_to_check.append(("backend", BACKEND_PORT))
+    if not backend_only:
+        ports_to_check.append(("frontend", frontend_port))
+
+    for name, port in ports_to_check:
+        for _ in range(50):  # up to 5 seconds
+            if not _port_open(port):
+                break
+            time.sleep(0.1)
+        else:
+            _log(name, f"Port {port} still occupied — starting anyway, may fail", colour="Y")
+
     vp = _ensure_venv()
 
     if not frontend_only:
@@ -477,21 +635,88 @@ def do_start_background(backend_only: bool, frontend_only: bool) -> None:
 
     if not backend_only:
         npm = _find_npm()
-        if npm:
+        if not npm:
+            _log("frontend", "npm not found", colour="Y")
+        elif legacy_frontend:
+            _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
             _spawn_bg("frontend", [
                 npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT),
             ], FRONTEND_DIR, {"VITE_API_PROXY_TARGET": VITE_PROXY}, FRONTEND_PORT)
         else:
-            _log("frontend", "npm not found", colour="Y")
+            _spawn_bg("frontend-vue", [
+                npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT),
+            ], FRONTEND_VUE_DIR, {"VITE_API_PROXY_TARGET": VITE_PROXY}, FRONTEND_VUE_PORT)
 
     time.sleep(1.5)
     print()
     print(c("G", "Startup complete."))
     print(f"  Backend:  http://localhost:{BACKEND_PORT}")
-    print(f"  Frontend: http://localhost:{FRONTEND_PORT}")
+    if legacy_frontend:
+        print(f"  Frontend: http://localhost:{FRONTEND_PORT}  [deprecated]")
+    else:
+        print(f"  Frontend: http://localhost:{FRONTEND_VUE_PORT}  (frontend-vue)")
     print(f"  Logs:     {LOG_DIR}")
     print(f"  Status:   python run.py status")
     print(f"  Stop:     python run.py stop")
+
+
+# ── frontend-vue (Vue 3) ─────────────────────────────────────────────
+def do_frontend_vue(background: bool) -> None:
+    """Start the new frontend-vue (Vue 3) dev server only."""
+    npm = _find_npm()
+    if not npm:
+        _log("frontend-vue", "npm not found", colour="Y")
+        return
+
+    args = [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_VUE_PORT)]
+    env_extra = {"VITE_API_PROXY_TARGET": VITE_PROXY}
+
+    if background:
+        _spawn_bg("frontend-vue", args, FRONTEND_VUE_DIR, env_extra, FRONTEND_VUE_PORT)
+        print(c("G", f"Frontend-vue started: http://localhost:{FRONTEND_VUE_PORT}"))
+        print(f"  Logs:     {LOG_DIR}")
+        print(f"  Stop:     python run.py stop")
+        return
+
+    # Foreground: single entry through the shared async runner.
+    signal.signal(signal.SIGINT, _on_sigint)
+    print(c("Y", "Press Ctrl+C to stop.\n"))
+    try:
+        asyncio.run(_run_foreground([("frontend-vue", args, FRONTEND_VUE_DIR, env_extra)]))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _on_sigint(None, None)
+
+
+# ── frontend (legacy Svelte, deprecated) ───────────────────────────
+def do_frontend(background: bool) -> None:
+    """Start the deprecated legacy Svelte frontend (8094) only."""
+    _log("frontend", "Legacy Svelte frontend is DEPRECATED (frozen) — use frontend-vue instead", colour="Y")
+    npm = _find_npm()
+    if not npm:
+        _log("frontend", "npm not found", colour="Y")
+        return
+
+    args = [npm, "run", "dev", "--", "--host", "0.0.0.0", "--port", str(FRONTEND_PORT)]
+    env_extra = {"VITE_API_PROXY_TARGET": VITE_PROXY}
+
+    if background:
+        _spawn_bg("frontend", args, FRONTEND_DIR, env_extra, FRONTEND_PORT)
+        print(c("G", f"Legacy frontend started: http://localhost:{FRONTEND_PORT} [deprecated]"))
+        print(f"  Logs:     {LOG_DIR}")
+        print(f"  Stop:     python run.py stop")
+        return
+
+    # Foreground: single entry through the shared async runner.
+    signal.signal(signal.SIGINT, _on_sigint)
+    print(c("Y", "Press Ctrl+C to stop.\n"))
+    try:
+        asyncio.run(_run_foreground([("frontend", args, FRONTEND_DIR, env_extra)]))
+    except KeyboardInterrupt:
+        pass
+    finally:
+        _on_sigint(None, None)
 
 
 # ── CLI ──────────────────────────────────────────────────────────────
@@ -502,12 +727,20 @@ def main() -> None:
     p_start = sub.add_parser("start", help="Start services (default: foreground)")
     p_start.add_argument("--backend-only", action="store_true")
     p_start.add_argument("--frontend-only", action="store_true")
+    p_start.add_argument("--legacy-frontend", action="store_true",
+                         help="Use the deprecated legacy Svelte frontend (8094) instead of frontend-vue (8095)")
     p_start.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
 
     sub.add_parser("stop", help="Stop background processes")
     sub.add_parser("restart", help="Restart background processes")
     sub.add_parser("status", help="Show status")
     sub.add_parser("install", help="Install/sync dependencies")
+
+    p_frontend_vue = sub.add_parser("frontend-vue", help="Start the Vue 3 frontend only (default, 8095)")
+    p_frontend_vue.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
+
+    p_frontend = sub.add_parser("frontend", help="Start the deprecated legacy Svelte frontend only (8094)")
+    p_frontend.add_argument("--background", action="store_true", help="Detached mode (logs → .local-run/)")
 
     args = parser.parse_args()
 
@@ -523,9 +756,13 @@ def main() -> None:
         do_start_background(False, False)
     elif args.command == "start":
         if args.background:
-            do_start_background(args.backend_only, args.frontend_only)
+            do_start_background(args.backend_only, args.frontend_only, args.legacy_frontend)
         else:
-            do_start_foreground(args.backend_only, args.frontend_only)
+            do_start_foreground(args.backend_only, args.frontend_only, args.legacy_frontend)
+    elif args.command == "frontend-vue":
+        do_frontend_vue(args.background)
+    elif args.command == "frontend":
+        do_frontend(args.background)
     else:
         do_start_foreground(False, False)
 

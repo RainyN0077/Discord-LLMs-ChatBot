@@ -1,11 +1,11 @@
 from typing import Any, Dict, Optional
 
-from .event_shim import MessageContext
+from app.ports.platform_message import PlatformMessage
 from app.handlers.image_processor import collect_and_download_images as _collect_and_download_images
 from app.handlers.image_processor import process_ocr_for_images as _process_ocr_for_images
 
 
-async def collect_and_download_images(message_ctx: MessageContext) -> list:
+async def collect_and_download_images(message_ctx: PlatformMessage) -> list:
     return await _collect_and_download_images(message_ctx)
 
 

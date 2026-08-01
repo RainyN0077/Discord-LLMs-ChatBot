@@ -6,10 +6,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from ..bot import strip_dsml_tool_blocks, strip_thinking_sections
 from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
-from ..core_logic.context_builder import format_user_message_for_llm
+from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
 from ..debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
 from ..dependencies import get_api_key
-from ..llm_providers.factory import get_llm_provider
+from ..llm_providers.factory import get_provider_pool
 from ..models import (
     DebuggerRequest, DebugCaptureSummary, DebugCaptureDetail,
     DebugSanitizeRequest, DebugSanitizeResponse,
@@ -21,9 +21,34 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _resolve_debug_config(bot_id: Optional[str]) -> dict:
+    """解析调试所用的 Bot 配置.
+
+    Args:
+        bot_id: 指定 Bot ID 时使用该 Bot 的配置；缺省时回退到全局配置（向后兼容）。
+
+    Returns:
+        配置字典（dict 形式）.
+
+    Raises:
+        HTTPException: Bot 不存在（404）或 Bot 管理器未初始化（503）
+    """
+    if not bot_id:
+        return load_config()
+
+    from .. import state
+    mgr = state.bot_manager
+    if mgr is None:
+        raise HTTPException(status_code=503, detail="Bot manager not initialized")
+    instance = mgr.get(bot_id)
+    if instance is None:
+        raise HTTPException(status_code=404, detail=f"Bot '{bot_id}' not found.")
+    return instance.config
+
+
 @router.post("/api/debug/simulate", dependencies=[Depends(get_api_key)])
 async def simulate_debugger_run(request: DebuggerRequest):
-    config = load_config()
+    config = _resolve_debug_config(request.bot_id)
 
     role_config = None
     role_name = None
@@ -76,19 +101,28 @@ async def simulate_debugger_run(request: DebuggerRequest):
         situational_prompt,
         mock_message,
         active_directives_log,
+        templates=resolve_prompt_templates(config),
     )
-    formatted_content = format_user_message_for_llm(mock_message, mock_bot, config, role_config)
+    formatted_content = await format_user_message_for_llm(
+        mock_message, mock_bot, config, role_config,
+        templates=resolve_prompt_templates(config),
+    )
 
     llm_messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": formatted_content},
     ]
 
-    llm_provider = get_llm_provider(config)
-    llm_response = ""
-    async for response_type, data in llm_provider.get_response_stream(llm_messages):
-        if response_type in ("partial", "final"):
-            llm_response = str(data)
+    try:
+        pool = get_provider_pool()
+        generator = await pool.execute(config, llm_messages)
+        llm_response = ""
+        async for response_type, data in generator:
+            if response_type in ("partial", "final"):
+                llm_response = str(data)
+    except RuntimeError:
+        logger.warning("Debug simulate rejected by provider pool")
+        raise HTTPException(status_code=503, detail="LLM provider is temporarily unavailable. Please retry later.")
 
     return {
         "generated_system_prompt": system_prompt,

@@ -20,13 +20,15 @@ def collect_image_descriptors(msg: Any, source_label: str) -> List[Dict[str, str
             "source": str(source_label),
         })
 
+    # PlatformMessage has attachments as List[AttachmentInfo]; Discord native has them as well.
     for attachment in msg.attachments:
         content_type = str(attachment.content_type or "").lower()
         ct = content_type.split(";")[0].strip()
         if ct and (ct.startswith("image/") or ct in {"application/pdf"}):
             add_descriptor(attachment.url, "attachment")
 
-    for embed in msg.embeds:
+    # embeds/stickers may not exist on PlatformMessage from all code paths.
+    for embed in getattr(msg, 'embeds', []):
         if embed.type == "image" and embed.url:
             add_descriptor(embed.url, "embed")
         elif embed.thumbnail and embed.thumbnail.url:
@@ -34,13 +36,13 @@ def collect_image_descriptors(msg: Any, source_label: str) -> List[Dict[str, str
         elif embed.image and embed.image.url:
             add_descriptor(embed.image.url, "embed_image")
 
-    for sticker in (msg.stickers or []):
+    for sticker in (getattr(msg, 'stickers', None) or []):
         if hasattr(sticker, "url") and sticker.url:
             add_descriptor(sticker.url, "sticker")
 
     custom_emoji_pattern = r'<(a?:\w+:\d+)>'
     import re
-    for match in re.finditer(custom_emoji_pattern, msg.content or ""):
+    for match in re.finditer(custom_emoji_pattern, str(getattr(msg, 'content', '') or "")):
         emoji_str = match.group(1)
         parts = emoji_str.split(":")
         if len(parts) >= 3:
@@ -54,9 +56,18 @@ def collect_image_descriptors(msg: Any, source_label: str) -> List[Dict[str, str
 
 async def collect_and_download_images(message: Any) -> List[Dict[str, Any]]:
     image_descriptors = collect_image_descriptors(message, "Current message")
-    if hasattr(message, 'reference') and message.reference and hasattr(message.reference, 'resolved') and message.reference.resolved:
-        replied_msg = message.reference.resolved
-        replied_images = collect_image_descriptors(replied_msg, f"Replied message from {replied_msg.author}")
+
+    # Handle both Discord native (reference.resolved) and PlatformMessage (reply_to)
+    replied_msg = None
+    if hasattr(message, 'reply_to') and message.reply_to is not None:
+        replied_msg = message.reply_to
+    elif hasattr(message, 'reference') and message.reference is not None:
+        resolved = getattr(message.reference, 'resolved', None)
+        if resolved is not None:
+            replied_msg = resolved
+
+    if replied_msg is not None:
+        replied_images = collect_image_descriptors(replied_msg, f"Replied message from {getattr(replied_msg, 'author', 'unknown')}")
         image_descriptors.extend(replied_images)
         if replied_images:
             logger.info(f"Found {len(replied_images)} images in replied message from {getattr(replied_msg, 'author', 'unknown')}")
