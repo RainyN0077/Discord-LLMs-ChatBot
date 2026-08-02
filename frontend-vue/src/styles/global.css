@@ -27,7 +27,7 @@
   --font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell,
     "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
-  --font-mono: "Fira Code", "Courier New", Consolas, monospace;
+  --font-mono: "JetBrains Mono", "Fira Code", "Courier New", Consolas, monospace;
   --radius-md: 10px;
   --radius-lg: 16px;
   /* Log palette — dark is the default theme. */
@@ -112,6 +112,15 @@ body {
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.55);
+}
+
+/* Keyboard focus visibility (demo-page parity). naive-ui keeps its own
+   focus rings on inputs/buttons; this is a plain enhancement for keyboard
+   users across every style (15 styles benefit, color follows the active
+   style's --primary-color). */
+:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 /* FX: effect toggles (grid / scanline / glow / blink / glassblur)
@@ -706,4 +715,1137 @@ body {
 :root[data-style='glass']:not([data-effects~='glassblur']) .n-layout-sider {
   background-color: var(--bg-color);
   border-color: var(--border-color);
+}
+
+/* ================================================================
+   NEW STYLES FX — shared infrastructure (Wave 1)
+   ================================================================ */
+
+/* .fv-decor container (injected by App.vue) + child layers: hidden by
+   default; per-style positive hooks flip the matching layer on. Only
+   the effects gate visibility — style switching isolation is guaranteed
+   structurally because every hook anchors on [data-style='<id>']. */
+.fv-decor {
+  pointer-events: none;
+}
+
+.fv-decor .fv-layer {
+  display: none;
+}
+
+/* UX §5 #1 — style-switch smoothness: body/.n-layout fade their
+   background color, .fv-decor children fade opacity. All transitions
+   are killed under [data-animations='off'] (precedent: the existing
+   page-transition off rules L70-79). */
+body,
+.n-layout {
+  transition: background-color 0.3s ease;
+}
+
+.fv-decor .fv-layer {
+  transition: opacity 0.3s ease;
+}
+
+:root[data-animations='off'] body,
+:root[data-animations='off'] .n-layout,
+:root[data-animations='off'] .fv-decor * {
+  transition: none;
+}
+
+/* ================================================================
+   AURORA FX  (style: aurora — effects: aurora / glassblur / glow)
+   Ported from examples/full-ui/aurora.html (token values verbatim).
+   The aurora layer is a single blur(60px) fixed div inside .fv-decor;
+   gradient colors are decoration-layer constants (the 48-key closure
+   forbids new cssVars). Every positive hook ships a matching off rule
+   on :not([data-effects~='<id>']); animations are doubly gated on
+   [data-animations='on'].
+   ================================================================ */
+
+/* Style-level color repair (not an effect): aurora needs the opaque
+   body base with the three radial halos (aurora.html L27). */
+:root[data-style='aurora'] body {
+  background:
+    radial-gradient(640px 420px at 12% 0%, rgba(34, 211, 238, .16), transparent 60%),
+    radial-gradient(700px 460px at 88% 4%, rgba(167, 139, 250, .14), transparent 62%),
+    radial-gradient(620px 420px at 84% 96%, rgba(244, 114, 182, .10), transparent 60%),
+    var(--bg-color);
+  background-attachment: fixed;
+}
+
+/* FX: aurora — aurora drift layer (single blur(60px) layer, demo value).
+   The gradient is static; the 18s drift animates transform only
+   (translate3d/scale — compositor-run, zero repaint), replacing the
+   demo's background-position animation (paint-type, fullscreen
+   re-raster every frame). transform-origin: center keeps the layer
+   anchored while it drifts inside the inset: -12% overscan. */
+:root[data-style='aurora'][data-effects~='aurora'] .fv-aurora {
+  display: block;
+  position: fixed;
+  inset: -12%;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, rgba(34, 211, 238, .16) 0%, transparent 28%, rgba(167, 139, 250, .15) 42%, transparent 62%, rgba(244, 114, 182, .12) 78%, transparent 100%);
+  background-size: 230% 230%;
+  filter: blur(60px);
+  opacity: .45;
+  transform-origin: center;
+}
+
+:root[data-style='aurora'][data-animations='on'][data-effects~='aurora'] .fv-aurora {
+  animation: fx-aurora-drift 18s ease-in-out infinite alternate;
+}
+
+/* fx-off (aurora.html L94): static aurora stays visible at .15 opacity,
+   only the drift animation dies. display:block overrides the .fv-layer
+   base hidden state so the static layer actually renders. */
+:root[data-style='aurora']:not([data-effects~='aurora']) .fv-aurora {
+  display: block;
+  animation: none;
+  opacity: .15;
+}
+
+@keyframes fx-aurora-drift {
+  0% { transform: translate3d(-4%, -2%, 0) scale(1); }
+  50% { transform: translate3d(2%, 4%, 0) scale(1.05); }
+  100% { transform: translate3d(4%, -3%, 0) scale(1); }
+}
+
+/* FX: aurora — bleed the main layout so the fixed layers show through
+   (naive paints an opaque bodyColor background otherwise). */
+:root[data-style='aurora'][data-effects~='aurora'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='aurora']:not([data-effects~='aurora']) .n-layout {
+  background-color: var(--bg-color);
+}
+
+/* FX: aurora — translucent cool-grey scrollbars (aurora.html L30).
+   Off rules restore the base palette from the top of this file. */
+:root[data-style='aurora'][data-effects~='aurora'] *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .28);
+  border-radius: 4px;
+}
+
+:root[data-style='aurora'][data-effects~='aurora'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .5);
+}
+
+:root[data-style='aurora'][data-effects~='aurora'] * {
+  scrollbar-color: rgba(148, 163, 184, .28) transparent;
+  scrollbar-width: thin;
+}
+
+:root[data-style='aurora']:not([data-effects~='aurora']) *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .35);
+  border-radius: 4px;
+}
+
+:root[data-style='aurora']:not([data-effects~='aurora']) *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .55);
+}
+
+:root[data-style='aurora']:not([data-effects~='aurora']) * {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+/* FX: glassblur — frosted surfaces (demo fx-off-glassblur target set:
+   topbar / sider / log-footer / cards / popovers). Mapped to the
+   production header / sider only: the log footer and naive cards sit on
+   an opaque layout background, so their backdrop-filter is never visible
+   while still costing per-surface GPU compositing (glass precedent
+   L684-698 — same narrowing). */
+:root[data-style='aurora'][data-effects~='glassblur'] .n-layout-header,
+:root[data-style='aurora'][data-effects~='glassblur'] .n-layout-sider {
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+:root[data-style='aurora'][data-effects~='glassblur'] .n-layout-header {
+  background-color: rgba(7, 11, 22, .6);
+  border-color: rgba(255, 255, 255, .08);
+}
+
+:root[data-style='aurora'][data-effects~='glassblur'] .n-layout-sider {
+  background-color: rgba(8, 14, 28, .38);
+  border-color: rgba(255, 255, 255, .07);
+}
+
+:root[data-style='aurora']:not([data-effects~='glassblur']) .n-layout-header,
+:root[data-style='aurora']:not([data-effects~='glassblur']) .n-layout-sider {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-style='aurora']:not([data-effects~='glassblur']) .n-layout-header {
+  background-color: var(--bg-color);
+  border-color: var(--border-color);
+}
+
+:root[data-style='aurora']:not([data-effects~='glassblur']) .n-layout-sider {
+  background-color: var(--sidebar-bg);
+  border-color: var(--border-color);
+}
+
+/* FX: glow — gradient text on the active nav item (design §2.3).
+   Gradient colors (#22d3ee → #a78bfa) are decoration constants, not
+   cssVars. Off rule: gradient degrades to solid primary color with no
+   glow (static-fallback rule, full-ui-design.md §8.2 ②). */
+:root[data-style='aurora'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+:root[data-style='aurora'][data-effects~='glow'] .n-menu-item-content--selected::after {
+  content: '';
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #22d3ee, #a78bfa);
+  box-shadow: 0 0 8px rgba(167, 139, 250, .4);
+  pointer-events: none;
+}
+
+:root[data-style='aurora'][data-effects~='glow'] .n-button {
+  box-shadow: 0 4px 16px rgba(34, 211, 238, .12);
+}
+
+:root[data-style='aurora'][data-effects~='glow'] .n-button:not(:disabled):hover {
+  box-shadow: 0 8px 24px rgba(99, 102, 241, .25);
+}
+
+:root[data-style='aurora']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header {
+  background: none;
+  color: var(--primary-color);
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
+}
+
+:root[data-style='aurora']:not([data-effects~='glow']) .n-menu-item-content--selected::after {
+  display: none;
+}
+
+:root[data-style='aurora']:not([data-effects~='glow']) .n-button,
+:root[data-style='aurora']:not([data-effects~='glow']) .n-button:not(:disabled):hover {
+  box-shadow: none;
+}
+
+/* FX: glow — status dot halo + pulse (design §2.3: .page-title glow
+   maps to the status dot). The dot keeps its scoped animation in other
+   styles; here the aurora variant with the cyan halo takes over while
+   both gates ([data-animations='on'] and the glow effect) match. */
+@keyframes fx-aurora-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+:root[data-style='aurora'][data-animations='on'][data-effects~='glow'] .bot-card .status-dot.running {
+  animation: fx-aurora-dot-pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(94, 234, 212, .5);
+}
+
+:root[data-style='aurora']:not([data-effects~='glow']) .bot-card .status-dot.running {
+  animation: none;
+  box-shadow: none;
+}
+
+/* ================================================================
+   SYNTHWAVE FX  (style: synthwave — effects: sunset / grid / scanline / glow)
+   Ported from examples/full-ui/synthwave.html (token values verbatim:
+   sun L59-73, grid L75-86 with 56px cells, scanline L88-98, glow keyframes
+   L100-111, scrollbar L113-116, fx-off rules L488-490).
+   Background layers (sun + grid) sit at z-index 0 with a transparent
+   .n-layout so they bleed through; scanline is a fullscreen overlay at
+   z-index 999 (below naive overlays ≥2000, design §2.1 INFO-2).
+   ================================================================ */
+
+/* Style-level color repair (not an effect): opaque synthwave base. */
+:root[data-style='synthwave'] body {
+  background: var(--bg-color);
+}
+
+/* FX: sunset — 460px radial sun (gold → pink), blur(26px), 12s drift */
+:root[data-style='synthwave'][data-effects~='sunset'] .fv-sun {
+  display: block;
+  position: fixed;
+  left: 50%;
+  top: 28%;
+  width: 460px;
+  height: 460px;
+  margin: -230px 0 0 -230px;
+  z-index: 0;
+  pointer-events: none;
+}
+
+:root[data-style='synthwave'][data-effects~='sunset'] .fv-sun::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, #ffd319, #ff6ec7 45%, transparent 70%);
+  filter: blur(26px);
+}
+
+:root[data-style='synthwave'][data-animations='on'][data-effects~='sunset'] .fv-sun::before {
+  animation: fx-sun-drift 12s ease-in-out infinite;
+}
+
+@keyframes fx-sun-drift {
+  0%, 100% { transform: scale(1) translateY(0); opacity: .85; }
+  50% { transform: scale(1.06) translateY(-16px); opacity: 1; }
+}
+
+/* fx-off-sunset (synthwave.html L488): the sun stays as a static layer
+   at .12 opacity, only its 12s drift animation dies. display:block
+   overrides the .fv-layer base hidden state so the static sun renders. */
+:root[data-style='synthwave']:not([data-effects~='sunset']) .fv-sun {
+  display: block;
+}
+
+:root[data-style='synthwave']:not([data-effects~='sunset']) .fv-sun::before {
+  animation: none;
+  opacity: .12;
+}
+
+/* FX: grid — bottom 30% perspective floor grid, 56px cells (synthwave.html
+   L81 measured `background-size: 56px 56px`), pink/cyan lines, 55deg tilt */
+:root[data-style='synthwave'][data-effects~='grid'] .fv-grid {
+  display: block;
+  position: fixed;
+  left: -30%;
+  right: -30%;
+  bottom: -60px;
+  height: 30%;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 110, 199, .16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45, 226, 230, .16) 1px, transparent 1px);
+  background-size: 56px 56px;
+  transform: perspective(600px) rotateX(55deg);
+  transform-origin: center bottom;
+  -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, .85), transparent 88%);
+  mask-image: linear-gradient(to top, rgba(0, 0, 0, .85), transparent 88%);
+}
+
+/* fx-off-grid (synthwave.html L489): the grid layer fades to 0 opacity
+   (layer stays mounted, no repaint). The base .fv-layer display:none
+   still hides it at the cascade level; opacity:0 mirrors the demo value. */
+:root[data-style='synthwave']:not([data-effects~='grid']) .fv-grid {
+  opacity: 0;
+}
+
+/* FX: sunset/grid — bleed the main layout so the fixed layers show through
+   (transparent whenever either background layer is on) */
+:root[data-style='synthwave'][data-effects~='sunset'] .n-layout,
+:root[data-style='synthwave'][data-effects~='grid'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='synthwave']:not([data-effects~='sunset']):not([data-effects~='grid']) .n-layout {
+  background-color: var(--bg-color);
+}
+
+/* FX: scanline — 2px cyan-pink sweep line, 8s top-to-bottom.
+   z-index 999 stays below naive overlays (dialog/message ≥2000),
+   per design §2.1 INFO-2 (pixel precedent). */
+:root[data-style='synthwave'][data-effects~='scanline'] .fv-scanline {
+  display: block;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 999;
+  pointer-events: none;
+  opacity: .55;
+  background: linear-gradient(90deg, transparent, rgba(45, 226, 230, .4), rgba(255, 110, 199, .5), transparent);
+  box-shadow: 0 0 14px rgba(255, 110, 199, .25);
+}
+
+:root[data-style='synthwave'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+  animation: fx-scan-sweep 8s linear infinite;
+}
+
+@keyframes fx-scan-sweep {
+  0% { transform: translateY(-24px); }
+  100% { transform: translateY(106vh); }
+}
+
+:root[data-style='synthwave']:not([data-effects~='scanline']) .fv-scanline {
+  display: none;
+}
+
+/* FX: glow — nav active item pink glow text + underline bar + button pulse.
+   Design §2.3 / §8.2 MIGRATION EXEMPTION: synthwave glow-off only kills the
+   animation (animation:none) — the static glow stays (no static fallback
+   degradation, unlike aurora). */
+:root[data-style='synthwave'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: 0 0 10px rgba(255, 110, 199, .6);
+}
+
+:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  animation: fx-sw-neon-pulse 5s ease-in-out infinite;
+}
+
+@keyframes fx-sw-neon-pulse {
+  0%, 100% { text-shadow: 0 0 8px rgba(255, 110, 199, .55), 0 0 24px rgba(255, 110, 199, .28), 0 0 48px rgba(255, 110, 199, .12); }
+  50% { text-shadow: 0 0 12px rgba(255, 110, 199, .95), 0 0 32px rgba(255, 110, 199, .5), 0 0 64px rgba(255, 110, 199, .22); }
+}
+
+:root[data-style='synthwave'][data-effects~='glow'] .n-menu-item-content--selected::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 70%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary-color);
+  box-shadow: 0 0 8px var(--primary-color), 0 0 16px rgba(255, 110, 199, .5);
+  pointer-events: none;
+}
+
+:root[data-style='synthwave'][data-effects~='glow'] .n-button {
+  box-shadow: 0 0 10px rgba(255, 110, 199, .35);
+}
+
+:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .n-button {
+  animation: fx-sw-glow-box 5s ease-in-out infinite;
+}
+
+@keyframes fx-sw-glow-box {
+  0%, 100% { box-shadow: 0 0 10px rgba(255, 110, 199, .35); }
+  50% { box-shadow: 0 0 22px rgba(255, 110, 199, .65); }
+}
+
+:root[data-style='synthwave'][data-effects~='glow'] .bot-card .status-dot.running {
+  box-shadow: 0 0 8px rgba(255, 110, 199, .8);
+}
+
+:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .bot-card .status-dot.running {
+  animation: fx-sw-dot-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes fx-sw-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+/* glow-off (migration exemption): kill animations only, keep static glow */
+:root[data-style='synthwave']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header {
+  animation: none;
+}
+
+:root[data-style='synthwave']:not([data-effects~='glow']) .n-menu-item-content--selected::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 70%;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--primary-color);
+  box-shadow: 0 0 8px var(--primary-color), 0 0 16px rgba(255, 110, 199, .5);
+  pointer-events: none;
+}
+
+:root[data-style='synthwave']:not([data-effects~='glow']) .n-button {
+  animation: none;
+  box-shadow: 0 0 10px rgba(255, 110, 199, .35);
+}
+
+:root[data-style='synthwave']:not([data-effects~='glow']) .bot-card .status-dot.running {
+  animation: none;
+  box-shadow: 0 0 8px rgba(255, 110, 199, .8);
+}
+
+/* FX: sunset — purple scrollbars (synthwave.html L113-116). Off rules
+   restore the base palette from the top of this file. */
+:root[data-style='synthwave'][data-effects~='sunset'] *::-webkit-scrollbar-thumb {
+  background: rgba(179, 163, 217, .28);
+  border-radius: 4px;
+}
+
+:root[data-style='synthwave'][data-effects~='sunset'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(179, 163, 217, .5);
+}
+
+:root[data-style='synthwave'][data-effects~='sunset'] * {
+  scrollbar-color: rgba(179, 163, 217, .28) transparent;
+  scrollbar-width: thin;
+}
+
+:root[data-style='synthwave']:not([data-effects~='sunset']) *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .35);
+  border-radius: 4px;
+}
+
+:root[data-style='synthwave']:not([data-effects~='sunset']) *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .55);
+}
+
+:root[data-style='synthwave']:not([data-effects~='sunset']) * {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+/* ================================================================
+   MATRIX FX  (style: matrix — effects: grid / scanline / glow / blink)
+   Ported from examples/full-ui/matrix.html (token values verbatim:
+   grid L55-62 with 42px cells, scanline L64-74, blink L200-206,
+   nav glow L109, scrollbar L76-79, fx-off rules L608-613).
+   The site-wide mono font (dual-channel, design §2.4) is applied to
+   non-naive text via body; naive components follow STYLE_FONT_STACKS.
+   ================================================================ */
+
+/* Style-level color repair (not an effect): opaque matrix base. */
+:root[data-style='matrix'] body {
+  background: var(--bg-color);
+  font-family: var(--font-mono);
+}
+
+/* FX: grid — fullscreen 42px grid lines (matrix.html L55-62) */
+:root[data-style='matrix'][data-effects~='grid'] .fv-grid {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(0, 255, 136, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 255, 136, .045) 1px, transparent 1px);
+  background-size: 42px 42px;
+  background-attachment: fixed;
+}
+
+:root[data-style='matrix']:not([data-effects~='grid']) .fv-grid {
+  display: none;
+}
+
+:root[data-style='matrix'][data-effects~='grid'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='matrix']:not([data-effects~='grid']) .n-layout {
+  background-color: var(--bg-color);
+}
+
+/* FX: scanline — 2px green sweep line, 7s top-to-bottom.
+   z-index 999 stays below naive overlays (dialog/message ≥2000),
+   per design §2.1 INFO-2 (pixel precedent). */
+:root[data-style='matrix'][data-effects~='scanline'] .fv-scanline {
+  display: block;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 999;
+  pointer-events: none;
+  opacity: .5;
+  background: linear-gradient(90deg, transparent, rgba(0, 255, 136, .35), transparent);
+  box-shadow: 0 0 12px rgba(0, 255, 136, .2);
+}
+
+:root[data-style='matrix'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+  animation: fx-mx-scan 7s linear infinite;
+}
+
+@keyframes fx-mx-scan {
+  0% { transform: translateY(-20px); }
+  100% { transform: translateY(105vh); }
+}
+
+:root[data-style='matrix']:not([data-effects~='scanline']) .fv-scanline {
+  display: none;
+}
+
+/* FX: glow — nav active item green text glow (matrix.html L109) with the
+   demo's `[` / `]` character brackets (matrix.html L110-111: ::before '['
+   + ::after ']', rgba(0,255,136,.45)). display:inline-block overrides the
+   naive horizontal menu's `.n-menu-item-content::before { display:none }`
+   (verified in naive-ui menu cssr). Note the selector is scoped to this
+   style via the :root[data-style='matrix'] prefix, so it cannot collide
+   with cyberpunk's .status-dot rules below. */
+:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: 0 0 8px rgba(0, 255, 136, .5);
+}
+
+:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected::before {
+  content: '[';
+  display: inline-block;
+  color: rgba(0, 255, 136, .45);
+  margin-right: 3px;
+}
+
+:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected::after {
+  content: ']';
+  display: inline-block;
+  color: rgba(0, 255, 136, .45);
+  margin-left: 3px;
+}
+
+:root[data-style='matrix'][data-effects~='glow'] .n-button:not(:disabled):hover,
+:root[data-style='matrix'][data-effects~='glow'] .n-card:hover {
+  box-shadow: 0 0 12px rgba(0, 255, 136, .25);
+}
+
+:root[data-style='matrix'][data-effects~='glow'] .bot-card .status-dot.running {
+  box-shadow: 0 0 6px #00ff88;
+}
+
+:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: none;
+}
+
+:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected::before,
+:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected::after {
+  content: none;
+}
+
+:root[data-style='matrix']:not([data-effects~='glow']) .n-button:not(:disabled):hover,
+:root[data-style='matrix']:not([data-effects~='glow']) .n-card:hover {
+  box-shadow: none;
+}
+
+:root[data-style='matrix']:not([data-effects~='glow']) .bot-card .status-dot.running {
+  box-shadow: none;
+}
+
+/* FX: blink — hard-switch status dot blink (matrix.html L200-206:
+   `blink 1.2s steps(2,start)`, 50% opacity .35). Selector carries the
+   full :root[data-style='matrix'] prefix so it never collides with the
+   cyberpunk .status-dot.running rules (design §3.8 conflict note).
+   Starting dots blink at the demo's faster 0.8s with the warn-yellow
+   background (matrix.html L204, --warn #ffd479). */
+:root[data-style='matrix'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+  background: var(--primary-color);
+  color: var(--primary-color);
+  animation: fx-mx-blink 1.2s steps(2, start) infinite;
+}
+
+:root[data-style='matrix'][data-effects~='blink'] .bot-card .status-dot.starting {
+  background: #ffd479;
+}
+
+:root[data-style='matrix'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.starting {
+  animation: fx-mx-blink .8s steps(2, start) infinite;
+}
+
+@keyframes fx-mx-blink {
+  50% { opacity: .35; }
+}
+
+:root[data-style='matrix']:not([data-effects~='blink']) .bot-card .status-dot.running,
+:root[data-style='matrix']:not([data-effects~='blink']) .bot-card .status-dot.starting {
+  animation: none;
+  opacity: 1;
+}
+
+/* FX: grid — green scrollbars (matrix.html L76-79). Off rules restore the
+   base palette from the top of this file. */
+:root[data-style='matrix'][data-effects~='grid'] *::-webkit-scrollbar-thumb {
+  background: rgba(0, 255, 136, .18);
+  border-radius: 4px;
+}
+
+:root[data-style='matrix'][data-effects~='grid'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 255, 136, .35);
+}
+
+:root[data-style='matrix'][data-effects~='grid'] * {
+  scrollbar-color: rgba(0, 255, 136, .18) transparent;
+  scrollbar-width: thin;
+}
+
+:root[data-style='matrix']:not([data-effects~='grid']) *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .35);
+  border-radius: 4px;
+}
+
+:root[data-style='matrix']:not([data-effects~='grid']) *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .55);
+}
+
+:root[data-style='matrix']:not([data-effects~='grid']) * {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+/* ================================================================
+   ZEN  (style: zen — NO effects, FX_IDS=[]; the appearance panel shows
+   the shared noEffects empty state. Paper/night variants ship as two
+   private schemes in themes.ts — this block only carries the base
+   color repair + scrollbar adaptation, per design §2.8 Wave 3.)
+   Ported from examples/full-ui/zen.html :root L21-42 + L76-80.
+   ================================================================ */
+
+/* Style-level color repair (not an effect): paper base with the demo's
+   faint primary radial halo (zen.html L70-72). */
+:root[data-style='zen'] body {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(59, 91, 219, .03), transparent 40%),
+    var(--bg-color);
+}
+
+/* zen scrollbars (zen.html L76-80: row-line thumb, border-strong hover).
+   zen has no effects, so these are unconditional under the style and
+   there is no off counterpart (the base palette applies to other styles). */
+:root[data-style='zen'] *::-webkit-scrollbar-thumb {
+  background: #f0ece6;
+  border-radius: 4px;
+}
+
+:root[data-style='zen'] *::-webkit-scrollbar-thumb:hover {
+  background: #d8d2c8;
+}
+
+:root[data-style='zen'] * {
+  scrollbar-color: #f0ece6 transparent;
+  scrollbar-width: thin;
+}
+
+/* ================================================================
+   INK FX  (style: ink — effects: wash / fade)
+   Ported from examples/full-ui/ink.html (token values verbatim:
+   ink-wash L49-57, seal L59-66, ink-pulse L79, inkFade L81,
+   serif stacks L38, fx-off rules L134-136).
+   wash covers both the ink-wash layer and the vermilion seal;
+   fade animates the content stagger (production: page transitions stay
+   untouched, the fade effect maps to the router-view content entrance).
+   ================================================================ */
+
+/* Style-level color repair (not an effect): paper base. */
+:root[data-style='ink'] body {
+  background: var(--bg-color);
+}
+
+/* FX: wash — ink-wash radial gradients (4 layers, last is a 150px dot
+   grid). The layer is fully static (ink.html L49-57 has no animation on
+   the wash layer); the demo's ink-pulse 3s/.45 lives on the running
+   status dot instead (B4 below). */
+:root[data-style='ink'][data-effects~='wash'] .fv-wash {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(560px 380px at 12% 8%, rgba(80, 70, 60, .05), transparent 60%),
+    radial-gradient(520px 360px at 88% 30%, rgba(80, 70, 60, .04), transparent 62%),
+    radial-gradient(600px 400px at 62% 94%, rgba(80, 70, 60, .045), transparent 60%),
+    radial-gradient(rgba(80, 70, 60, .028) 1px, transparent 1px);
+  background-size: auto, auto, auto, 150px 150px;
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) .fv-wash {
+  display: none;
+}
+
+/* FX: wash — vermilion running status dot (ink.html L79: background
+   var(--cinnabar) #b3402a; base styling outside the fx blocks — kept
+   unconditional under the style). The demo's `ink-pulse 3s` opacity .45
+   breathing maps here, gated on [data-animations='on'] (the anim-off
+   override below and the scoped dot-pulse are both beaten by the
+   animation gate while animations are on). */
+:root[data-style='ink'] .bot-card .status-dot.running {
+  background: #b3402a;
+}
+
+:root[data-style='ink'][data-animations='on'] .bot-card .status-dot.running {
+  animation: fx-ink-dot-pulse 3s ease-in-out infinite;
+}
+
+@keyframes fx-ink-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+/* FX: wash — vermilion seal (「雅」, 54px circle, -8deg tilt). Text node
+   ships from App.vue; the seal hides together with the wash layer. */
+:root[data-style='ink'][data-effects~='wash'] .fv-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: fixed;
+  right: 30px;
+  bottom: 214px;
+  z-index: 0;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: rgba(179, 64, 42, .5);
+  color: var(--bg-color);
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 23px;
+  font-weight: 600;
+  transform: rotate(-8deg);
+  opacity: .5;
+  user-select: none;
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) .fv-seal {
+  display: none;
+}
+
+/* FX: wash — bleed the main layout so the ink-wash shows through */
+:root[data-style='ink'][data-effects~='wash'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) .n-layout {
+  background-color: var(--bg-color);
+}
+
+/* FX: fade — staggered entrance fade for the router-view content
+   (production mapping of ink.html L81 `.content-inner > *` inkFade).
+   Only animation is gated; the off rule restores full opacity so the
+   content is always readable. */
+:root[data-style='ink'][data-animations='on'][data-effects~='fade'] .page-enter-active {
+  transition: opacity .6s ease, transform .6s ease;
+}
+
+:root[data-style='ink'][data-effects~='fade'] .page-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* fx-off-fade (ink.html L136): the entrance fade goes fully static —
+   animation:none, content fully visible at opacity 1, no translate
+   (the 0.28s/10px page transition no longer applies). */
+:root[data-style='ink']:not([data-effects~='fade']) .page-enter-active {
+  transition: none;
+}
+
+:root[data-style='ink']:not([data-effects~='fade']) .page-enter-from {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+/* Ink serif titles (design §2.4 dual-channel, decoration-channel).
+   `.n-card-header` is the real naive-ui Card header class (no `__`);
+   `.section-card-title` ships from SectionCard.vue. Production has no
+   `.page-title` element, so it is intentionally not referenced. */
+:root[data-style='ink'] .n-card-header,
+:root[data-style='ink'] .section-card-title {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+}
+
+/* FX: wash — paper scrollbars (ink.html L67-70). Off rules restore the
+   base palette from the top of this file. */
+:root[data-style='ink'][data-effects~='wash'] *::-webkit-scrollbar-thumb {
+  background: #ece4d5;
+  border-radius: 4px;
+}
+
+:root[data-style='ink'][data-effects~='wash'] *::-webkit-scrollbar-thumb:hover {
+  background: #c9bda9;
+}
+
+:root[data-style='ink'][data-effects~='wash'] * {
+  scrollbar-color: #ece4d5 transparent;
+  scrollbar-width: thin;
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .35);
+  border-radius: 4px;
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .55);
+}
+
+:root[data-style='ink']:not([data-effects~='wash']) * {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+/* ================================================================
+   FX: pixel — hard edges, zero radius, offset shadows, terminal
+   scanline / blink / shine (pixel.html L59-77, L220-266, L671-688).
+   Zero radius rides the cssVars channel (--radius-md/--radius-lg:
+   0px) plus the naiveMapping pixel special-case; hard borders and
+   offset shadows hang on the `shine` effect so turning it off
+   returns to a flat look (design §2.5).
+   ================================================================ */
+
+/* pixel identity — 32px blue grid on body (pixel.html L52-56, token
+   values verbatim: rgba(76,201,240,.045) 1px lines, 32px 32px cells).
+   Base decoration (the demo styles it on body outside any fx block),
+   so it is not gated on an effect. */
+:root[data-style='pixel'] body {
+  background-image:
+    linear-gradient(rgba(76, 201, 240, .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(76, 201, 240, .045) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-attachment: fixed;
+}
+
+/* pixel identity — terminal-ish scrollbars (pixel.html L70-74).
+   Base styling, not an effect (the demo page styles them outside
+   any fx block); scoped to the style so no cross-style leak. */
+:root[data-style='pixel'] *::-webkit-scrollbar-thumb {
+  background: #2e3544;
+  border-radius: 0;
+}
+
+:root[data-style='pixel'] *::-webkit-scrollbar-thumb:hover {
+  background: #454f63;
+}
+
+:root[data-style='pixel'] * {
+  scrollbar-color: #2e3544 transparent;
+  scrollbar-width: thin;
+}
+
+/* mono headers (pixel.html L255-258: mono brand titles) */
+:root[data-style='pixel'] .n-card-header,
+:root[data-style='pixel'] .section-card-title {
+  font-family: "JetBrains Mono", "Fira Code", Consolas, "Courier New", monospace;
+  letter-spacing: .08em;
+  font-weight: 700;
+}
+
+/* FX: shine — rainbow cycling title + pixel block deco
+   (pixel.html L257-266 px-shine / px-blink) */
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title {
+  color: #ffd23f;
+}
+
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header::before,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title::before {
+  content: '█▌';
+  color: #4cc9f0;
+  margin-right: 6px;
+}
+
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header::after,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title::after {
+  content: '▐█';
+  color: #4cc9f0;
+  margin-left: 6px;
+}
+
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header,
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title {
+  animation: fx-px-shine 6s steps(3, end) infinite;
+}
+
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header::before,
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title::before,
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header::after,
+:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title::after {
+  animation: fx-px-blink 1s steps(2, start) infinite;
+}
+
+@keyframes fx-px-shine {
+  0%   { color: #ffd23f; }
+  33%  { color: #4cc9f0; }
+  66%  { color: #f72585; }
+  100% { color: #ffd23f; }
+}
+
+@keyframes fx-px-blink {
+  50% { opacity: .25; }
+}
+
+/* FX: shine (off) — flat gold title, no deco (pixel.html L677) */
+:root[data-style='pixel']:not([data-effects~='shine']) .n-card-header,
+:root[data-style='pixel']:not([data-effects~='shine']) .section-card-title {
+  color: #ffd23f;
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-card-header::before,
+:root[data-style='pixel']:not([data-effects~='shine']) .section-card-title::before,
+:root[data-style='pixel']:not([data-effects~='shine']) .n-card-header::after,
+:root[data-style='pixel']:not([data-effects~='shine']) .section-card-title::after {
+  content: none;
+}
+
+/* Hard 3px edges + offset shadows ride the shine effect (design
+   §2.5): off returns to a flat look. naive-ui components receive
+   inline shadow tokens, so !important is required (design §2.5
+   fallback clause; scoped to pixel only). */
+:root[data-style='pixel'][data-effects~='shine'] .n-layout-header {
+  position: relative;
+  border-bottom: 3px solid var(--border-color);
+}
+
+/* Retro logo tri-color strip (pixel.html L88-91: .topbar::after 3px bar,
+   #f72585 → #ffd23f → #4cc9f0), mapped onto the naive header's bottom
+   edge, replacing the 3px border while shine is on. */
+:root[data-style='pixel'][data-effects~='shine'] .n-layout-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 3px;
+  background: linear-gradient(90deg, #f72585 0 33%, #ffd23f 33% 66%, #4cc9f0 66% 100%);
+}
+
+:root[data-style='pixel'][data-effects~='shine'] .n-layout-sider {
+  border-right: 3px solid var(--border-color);
+}
+
+:root[data-style='pixel'][data-effects~='shine'] .n-card,
+:root[data-style='pixel'][data-effects~='shine'] .n-button:not(:disabled),
+:root[data-style='pixel'][data-effects~='shine'] .n-input {
+  box-shadow: 4px 4px 0 rgba(0, 0, 0, .45) !important;
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-layout-header {
+  border-bottom: 1px solid var(--border-color);
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-layout-header::after {
+  content: none;
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-layout-header:not(.n-layout-header--absolute-positioned) {
+  position: static;
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-layout-sider {
+  border-right: 1px solid var(--border-color);
+}
+
+:root[data-style='pixel']:not([data-effects~='shine']) .n-card,
+:root[data-style='pixel']:not([data-effects~='shine']) .n-button:not(:disabled),
+:root[data-style='pixel']:not([data-effects~='shine']) .n-input {
+  box-shadow: none !important;
+}
+
+/* FX: scanline — top pixel scan line (pixel.html L59-69).
+   z-index 999 stays below naive overlays (dialog/message ≥2000),
+   per design §2.1 INFO-2. */
+:root[data-style='pixel'][data-effects~='scanline'] .fv-scanline {
+  display: block;
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  z-index: 999;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(76, 201, 240, .75), transparent);
+}
+
+:root[data-style='pixel'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+  animation: fx-px-scan 5s steps(40, end) infinite;
+}
+
+@keyframes fx-px-scan {
+  0%   { transform: translateY(-22px); }
+  100% { transform: translateY(106vh); }
+}
+
+:root[data-style='pixel']:not([data-effects~='scanline']) .fv-scanline {
+  display: none;
+}
+
+/* FX: blink — status dots (pixel.html L219-221: running = --green
+   #00e054, starting = --gold #ffd23f; both blink at 1s steps(2,start)) */
+:root[data-style='pixel'][data-effects~='blink'] .bot-card .status-dot.running {
+  background: #00e054;
+}
+
+:root[data-style='pixel'][data-effects~='blink'] .bot-card .status-dot.starting {
+  background: #ffd23f;
+}
+
+:root[data-style='pixel'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running,
+:root[data-style='pixel'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.starting {
+  animation: fx-px-blink 1s steps(2, start) infinite;
+}
+
+:root[data-style='pixel']:not([data-effects~='blink']) .bot-card .status-dot.running,
+:root[data-style='pixel']:not([data-effects~='blink']) .bot-card .status-dot.starting {
+  animation: none;
+  opacity: 1;
+}
+
+/* ================================================================
+   Animations-off gate — status dots (demo §8.3 whitelist parity).
+   The scoped BotCard dot-pulse lives in a component style and is not
+   reachable from a plain attribute selector, so this single global
+   gate rule needs !important (the ONLY !important outside the pixel
+   shadow fallback; style-neutral — no cross-style leak). Every style's
+   status-dot animation is killed while [data-animations='off']. */
+:root[data-animations='off'] .bot-card .status-dot.running,
+:root[data-animations='off'] .bot-card .status-dot.starting {
+  animation: none !important;
+}
+
+/* ================================================================
+   prefers-reduced-motion — global degradation (UX §5 #2).
+   Kills every animation/transition; decorative layers fall back to
+   static low-opacity visuals (the aurora gradient stays, no drift).
+   Functional hover color changes remain — only transitions are off.
+   ================================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  :root[data-style='aurora'] .fv-aurora {
+    opacity: .3;
+  }
+
+  /* synthwave.html L503-505: static sun/grid, scanline removed */
+  :root[data-style='synthwave'] .fv-sun::before {
+    opacity: .35;
+  }
+
+  :root[data-style='synthwave'] .fv-grid {
+    opacity: .6;
+  }
+
+  :root[data-style='synthwave'] .fv-scanline {
+    display: none;
+  }
+
+  /* matrix.html L620-624: scanline removed, status dot glow off */
+  :root[data-style='matrix'] .fv-scanline {
+    display: none;
+  }
+
+  :root[data-style='matrix'] .bot-card .status-dot.running {
+    box-shadow: none;
+  }
+
+  /* ink: wash stays static (no animation), seal stays visible */
+  :root[data-style='ink'] .fv-wash {
+    opacity: 1;
+  }
+
+  /* pixel.html L688: scanline removed, dots static */
+  :root[data-style='pixel'] .fv-scanline {
+    display: none;
+  }
+
+  :root[data-style='pixel'] .bot-card .status-dot.running,
+  :root[data-style='pixel'] .bot-card .status-dot.starting {
+    animation: none;
+    opacity: 1;
+  }
 }
