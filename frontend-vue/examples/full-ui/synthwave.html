@@ -1,0 +1,2781 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-style="synthwave" data-effects="sunset grid scanline glow">
+<head>
+<meta charset="UTF-8">
+<!-- 注意：charset 必须位于文件前 1024 字节内（HTML 嗅探规范），故文件头注释块置于 meta 之后 -->
+<!--
+  文件：full-ui/synthwave.html · Synthwave 蒸汽波（方案 D · 全交互演示移植版）
+  定位：ELA-Bot 完整 UI 功能演示 · 紫粉日落 + 网格地平线 + 霓虹字体（80 年代复古未来）
+  色板：--bg #12082a · --fg #e6dcff · --primary #ff6ec7 · --accent #2de2e6 · --gold #ffd319 · --card-bg #1c0f38
+        token 与基线 synthwave.html :root 逐值一致；另补充 --card-hover-border/--topbar-bg/--sider-bg（值取基线对应元素实值）
+  特效 FX_IDS：[sunset, grid, scanline, glow]（按面板顺序；fx-off 关闭规则自基线原样迁移，fx-off-glow 仅 animation:none —— 设计 §8.2 迁移豁免）
+  模块：7 视图全实现（providers / model-settings+Playground / config / prompt-studio+debugger / user-options / appearance）
+        + 日志面板（过滤/暂停/清空/计数）· Bot CRUD 状态机（启停/重启/删除/新建/重命名/刷新）· toast/弹窗（confirmDialog + 焦点圈闭）· splash
+  结构：母版 aurora.html 结构移植 → CSS 区块序 §12.3 → HTML（topbar/shell/sider/content 7 view/log-footer/浮层）→ JS 六分区 §12.4
+  扩展说明：外观页「自定义 CSS 编辑器」为附加扩展功能（超出演示范围，保留自洽）。
+  说明：逻辑与母版一致，仅 FX_IDS / 色板 / 装饰层 / i18n fx 键按 Synthwave 替换。英文切换为结构预留（点击提示，不切换）。
+  省略字段：ocr_*/embedding_*/rerank_*/memory_embedding_enabled/bot_nickname/各提供商 *_base_url 变体（10 个）/auto_memory_* 子项/user_personas/role_based_config/scoped_prompts/quota_alert（见设计文档 §4.2）
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELA-Bot · Synthwave</title>
+<style>
+/* ============ 基础与变量（token 与基线 synthwave.html :root 逐值一致）============ */
+:root{
+  --bg:#12082a;
+  --fg:#e6dcff;
+  --fg-muted:#b3a3d9;
+  --fg-dim:#7d6ba6;
+  --primary:#ff6ec7;
+  --accent:#2de2e6;
+  --gold:#ffd319;
+  --success:#2de2e6;
+  --error:#ff3860;
+  --warn:#ffd319;
+  --card-bg:#1c0f38;
+  --card-border:rgba(255,110,199,.25);
+  --card-border-hover:rgba(45,226,230,.65);
+  --input-bg:#150a2e;
+  --input-border:rgba(255,110,199,.32);
+  --log-bg:#0c0518;
+  /* 以下 3 项为母版 CSS 引用、基线 :root 未定义的补充 token（值取自基线对应元素实值） */
+  --card-hover-border:rgba(45,226,230,.65);
+  --topbar-bg:rgba(18,8,42,.75);
+  --sider-bg:rgba(22,11,44,.72);
+  --mono:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  font-size:14px;
+  color:var(--fg);
+  overflow:hidden;
+  background-color:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+/* ============ 风格装饰层（synthwave：sunset / grid / scanline / glow，关闭规则见文末 fx-off-*）============ */
+/* ① 太阳：28% 高度处的径向渐变圆（黄→粉），模糊柔和，12s 呼吸漂移 */
+.sun-layer{
+  position:fixed;left:50%;top:28%;z-index:-1;
+  width:460px;height:460px;margin:-230px 0 0 -230px;
+  pointer-events:none;
+}
+.sun-layer::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle, #ffd319, #ff6ec7 45%, transparent 70%);
+  filter:blur(26px);
+  animation:sun-drift 12s ease-in-out infinite;
+}
+@keyframes sun-drift{
+  0%,100%{transform:scale(1) translateY(0);opacity:.85}
+  50%{transform:scale(1.06) translateY(-16px);opacity:1}
+}
+/* ② 透视网格：底部 30% 高度区域，青粉线交替，55deg 俯视 */
+.grid-layer{
+  position:fixed;left:-30%;right:-30%;bottom:-60px;height:30%;z-index:-1;
+  pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,110,199,.16) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45,226,230,.16) 1px, transparent 1px);
+  background-size:56px 56px;
+  transform:perspective(600px) rotateX(55deg);
+  transform-origin:center bottom;
+  -webkit-mask-image:linear-gradient(to top, rgba(0,0,0,.85), transparent 88%);
+  mask-image:linear-gradient(to top, rgba(0,0,0,.85), transparent 88%);
+}
+/* ③ CRT 扫描亮线：青粉渐变水平线 8s 从上往下扫过 */
+.scanline{
+  position:fixed;left:0;right:0;top:0;height:2px;z-index:60;
+  pointer-events:none;opacity:.55;
+  background:linear-gradient(90deg,transparent,rgba(45,226,230,.4),rgba(255,110,199,.5),transparent);
+  box-shadow:0 0 14px rgba(255,110,199,.25);
+  animation:scan-sweep 8s linear infinite;
+}
+@keyframes scan-sweep{
+  0%  {transform:translateY(-24px)}
+  100%{transform:translateY(106vh)}
+}
+/* ④ 霓虹辉光（glow 特效）：品牌 / 主标题 drop-shadow / 主按钮 box-shadow 脉动 */
+@keyframes neon-pulse{
+  0%,100%{text-shadow:0 0 8px rgba(255,110,199,.55),0 0 24px rgba(255,110,199,.28),0 0 48px rgba(255,110,199,.12)}
+  50%{text-shadow:0 0 12px rgba(255,110,199,.95),0 0 32px rgba(255,110,199,.5),0 0 64px rgba(255,110,199,.22)}
+}
+@keyframes glow-drop{
+  0%,100%{filter:drop-shadow(0 0 6px rgba(255,110,199,.4)) drop-shadow(0 0 18px rgba(255,110,199,.2))}
+  50%{filter:drop-shadow(0 0 11px rgba(255,110,199,.85)) drop-shadow(0 0 32px rgba(255,110,199,.4))}
+}
+@keyframes glow-box{
+  0%,100%{box-shadow:0 0 10px rgba(255,110,199,.35)}
+  50%{box-shadow:0 0 22px rgba(255,110,199,.65)}
+}
+/* ============ 滚动条 ============ */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(179,163,217,.28);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(179,163,217,.5)}
+/* ============ 焦点可见 ============ */
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+/* ============ 布局骨架（app/topbar/nav/lang/shell/sider）============ */
+.app{height:100vh;display:flex;flex-direction:column}
+.topbar{position:sticky;top:0;z-index:50;height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:12px;background:var(--topbar-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,110,199,.2)}
+.brand{font-size:16px;font-weight:700;letter-spacing:.06em;white-space:nowrap;color:var(--gold);animation:neon-pulse 5s ease-in-out infinite}
+.main-nav{flex:1;min-width:0;display:flex;align-items:stretch;height:100%;overflow-x:auto;scrollbar-width:none}
+.main-nav::-webkit-scrollbar{display:none}
+.nav-item{position:relative;display:flex;align-items:center;padding:0 12px;white-space:nowrap;text-decoration:none;color:var(--fg-muted);font-size:13px;transition:color .2s ease}
+.nav-item:hover{color:var(--fg)}
+.nav-item.active{color:var(--primary);text-shadow:0 0 10px rgba(255,110,199,.6)}
+.nav-item.active::after{content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:70%;height:2px;border-radius:2px;background:var(--primary);box-shadow:0 0 8px var(--primary),0 0 16px rgba(255,110,199,.5)}
+.topbar-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lang-wrap,.fx-outer{position:relative}
+.lang-btn,.theme-btn{display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 10px;border-radius:8px;background:rgba(255,110,199,.08);border:1px solid rgba(255,110,199,.3);color:var(--fg-muted);font-size:12px;cursor:pointer;transition:border-color .2s,color .2s,box-shadow .2s}
+.lang-btn:hover,.theme-btn:hover{color:var(--primary);border-color:var(--primary);box-shadow:0 0 12px rgba(255,110,199,.25)}
+.lang-menu{position:absolute;top:calc(100% + 6px);right:0;z-index:80;min-width:120px;padding:4px;border-radius:10px;background:rgba(28,15,56,.97);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,110,199,.35);box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(255,110,199,.1)}
+.lang-menu[hidden]{display:none}
+.lang-menu button{display:block;width:100%;text-align:left;padding:7px 10px;border:none;border-radius:6px;background:transparent;color:var(--fg);font-size:13px;cursor:pointer}
+.lang-menu button:hover{background:rgba(255,110,199,.12);color:var(--primary)}
+.lang-menu button.selected{color:var(--primary)}
+.fx-wrap{position:absolute;top:calc(100% + 6px);right:0;z-index:80;width:252px;padding:12px;border-radius:12px;background:rgba(28,15,56,.97);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border:1px solid rgba(255,110,199,.35);box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 24px rgba(255,110,199,.1)}
+.fx-wrap[hidden]{display:none}
+.fx-title{font-size:13px;font-weight:700;letter-spacing:.05em;color:var(--primary)}
+.fx-note{font-size:11px;color:var(--fg-dim);margin:4px 0 6px}
+.fx-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 2px;border-top:1px solid rgba(255,110,199,.14);font-size:12.5px;color:var(--fg);cursor:pointer}
+.fx-row small{display:block;font-size:10.5px;color:var(--fg-dim);margin-top:1px}
+/* ============ Bot 卡片 ============ */
+.shell{flex:1;min-height:0;display:flex}
+.sider{width:260px;flex-shrink:0;display:flex;flex-direction:column;min-height:0;background:var(--sider-bg);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-right:1px solid rgba(255,110,199,.16);transition:width .25s ease}
+.sider-title{display:flex;align-items:center;justify-content:space-between;padding:12px 12px 8px;flex-shrink:0}
+.sider-title-text{font-weight:600;font-size:13px;letter-spacing:.06em;color:var(--primary);text-shadow:0 0 10px rgba(255,110,199,.4)}
+.sider-actions{display:flex;gap:4px}
+.btn-icon{width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:8px;background:transparent;color:var(--fg-muted);font-size:13px;cursor:pointer;transition:color .2s,background .2s}
+.btn-icon:hover{color:var(--primary);background:rgba(255,110,199,.1)}
+.bot-list{flex:1;min-height:0;overflow-y:auto;padding:2px 0 12px}
+.bot-card{position:relative;margin:4px 8px;padding:10px 12px;border-radius:10px;background:var(--card-bg);border:1px solid var(--card-border);cursor:pointer;transition:border-color .2s,box-shadow .2s,background .2s}
+.bot-card:hover{border-color:rgba(45,226,230,.5);box-shadow:0 0 14px rgba(45,226,230,.18)}
+.bot-card.active{border-color:rgba(255,110,199,.7);background:rgba(255,110,199,.08);box-shadow:0 0 16px rgba(255,110,199,.18)}
+.card-actions{position:absolute;top:6px;right:6px;z-index:2;display:flex;gap:2px;opacity:0;pointer-events:none;transition:opacity .15s ease}
+.bot-card:hover .card-actions,.bot-card:focus-visible .card-actions,.bot-card.active .card-actions{opacity:1;pointer-events:auto}
+.act-btn{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:none;border-radius:6px;background:rgba(12,5,24,.75);color:var(--fg-muted);font-size:11px;cursor:pointer;transition:color .15s,box-shadow .15s}
+.act-btn:hover{color:var(--primary);box-shadow:0 0 8px rgba(255,110,199,.35)}
+.act-btn.danger:hover{color:var(--error);box-shadow:0 0 8px rgba(255,56,96,.35)}
+.card-row{display:flex;align-items:center;gap:6px;min-width:0}
+.card-row-main{padding-right:56px}
+.card-row-id{margin-top:2px}
+.card-row-meta{margin-top:6px;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#55457e;flex-shrink:0}
+.status-dot.running{background:var(--primary);box-shadow:0 0 8px rgba(255,110,199,.8);animation:dot-pulse 1.5s ease-in-out infinite}
+.status-dot.error{background:var(--error);box-shadow:0 0 6px rgba(255,56,96,.7)}
+.status-dot.starting{background:var(--warn);animation:dot-pulse 1s ease-in-out infinite}
+@keyframes dot-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.bot-name{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-id{font-family:var(--mono);font-size:12px;color:var(--fg-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text}
+.platform-badge{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:1px 6px;border-radius:4px;flex-shrink:0}
+.platform-badge.discord{background:rgba(45,226,230,.15);color:var(--accent)}
+.platform-badge.qq{background:rgba(255,110,199,.16);color:var(--primary)}
+.card-meta{font-size:12px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.keyword-tag{font-size:11px;padding:1px 7px;border-radius:6px;background:rgba(255,110,199,.08);border:1px solid rgba(255,110,199,.22);color:var(--fg-muted);line-height:1.6}
+/* ============ 内容区与视图容器 ============ */
+.content{flex:1;min-width:0;overflow-y:auto;padding:20px}
+.content-inner{max-width:1240px;margin:0 auto}
+.content-inner > *{animation:fadeUp .5s ease both}
+.content-inner > *:nth-child(2){animation-delay:.05s}
+.content-inner > *:nth-child(3){animation-delay:.1s}
+.content-inner > *:nth-child(4){animation-delay:.15s}
+.content-inner > *:nth-child(5){animation-delay:.2s}
+.content-inner > *:nth-child(6){animation-delay:.25s}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.view[hidden]{display:none}
+.page-head{margin-bottom:18px}
+.page-title{font-size:26px;font-weight:800;letter-spacing:.06em;background:linear-gradient(90deg,#ffd319,#ff6ec7);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;animation:glow-drop 5s ease-in-out infinite}
+.page-sub{margin-top:6px;font-size:13px;color:var(--fg-muted);letter-spacing:.03em}
+/* ============ 通用卡片 / 统计卡 / Provider 卡 ============ */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat-card{padding:16px 18px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;position:relative;overflow:hidden;transition:border-color .25s ease,box-shadow .25s ease}
+.stat-card::before,.card::before,.provider-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(255,110,199,.5),transparent)}
+.stat-card:hover{border-color:var(--card-border-hover);box-shadow:0 0 18px rgba(45,226,230,.25)}
+.stat-label{font-size:12px;color:var(--fg-muted)}
+.stat-value{margin-top:8px;display:flex;align-items:baseline;gap:4px}
+.stat-num{font-family:var(--mono);font-size:28px;font-weight:600;color:var(--gold);letter-spacing:-.01em;text-shadow:0 0 12px rgba(255,211,25,.35)}
+.stat-unit{font-size:12px;color:var(--fg-dim)}
+.stat-trend{margin-top:8px;font-family:var(--mono);font-size:12px;color:var(--fg-muted)}
+.stat-trend.up{color:var(--accent)}
+.stat-trend.down{color:var(--primary)}
+.card{position:relative;overflow:hidden;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;padding:18px 20px;margin-bottom:18px;transition:border-color .25s ease,box-shadow .25s ease}
+.card:hover{border-color:rgba(45,226,230,.55);box-shadow:0 0 18px rgba(45,226,230,.2)}
+.card-title{font-size:15px;font-weight:700;letter-spacing:.03em;color:var(--primary);margin-bottom:14px;display:flex;align-items:center;gap:8px;text-shadow:0 0 12px rgba(255,110,199,.3)}
+.card-title .hint{font-size:12px;font-weight:400;color:var(--fg-dim);text-shadow:none}
+.providers-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.provider-card{padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:10px;position:relative;overflow:hidden;transition:border-color .25s ease,box-shadow .25s ease}
+.provider-card:hover{border-color:var(--card-border-hover);box-shadow:0 0 18px rgba(45,226,230,.25)}
+.provider-card.current{border-color:rgba(255,110,199,.55);background:rgba(255,110,199,.08)}
+.prov-head{display:flex;align-items:center;gap:10px}
+.monogram{width:34px;height:34px;border-radius:9px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:15px;font-weight:700;background:rgba(255,110,199,.1);border:1px solid rgba(255,110,199,.3);color:var(--primary)}
+.prov-name{font-size:14px;font-weight:600;flex:1;min-width:0}
+.health-chip{font-size:11px;padding:2px 8px;border-radius:20px;flex-shrink:0;font-weight:500}
+.health-chip.ok{color:var(--accent);background:rgba(45,226,230,.12);border:1px solid rgba(45,226,230,.35)}
+.health-chip.slow{color:var(--warn);background:rgba(255,211,25,.10);border:1px solid rgba(255,211,25,.35)}
+.health-chip.off{color:var(--error);background:rgba(255,56,96,.10);border:1px solid rgba(255,56,96,.4)}
+.prov-model{margin-top:10px;font-family:var(--mono);font-size:13px;color:var(--fg)}
+.prov-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.prov-meta{font-size:12px;color:var(--fg-dim)}
+.prov-meta .latency{font-family:var(--mono);color:var(--fg-muted)}
+/* ============ 四态组件（§7）============ */
+.empty-state{padding:48px 20px;text-align:center;color:var(--fg-muted)}
+.empty-icon{font-size:32px;opacity:.4;margin-bottom:10px}
+.empty-title{font-size:14px;font-weight:600;color:var(--fg)}
+.empty-desc{font-size:12px;margin-top:4px}
+.sk-line{height:12px;border-radius:6px;margin:8px 0;background:var(--card-border);opacity:.6;animation:sk-pulse 1.4s ease-in-out infinite}
+@keyframes sk-pulse{0%,100%{opacity:.35}50%{opacity:.8}}
+.error-banner{display:flex;align-items:center;gap:10px;padding:12px 16px;margin-bottom:14px;border:1px solid var(--error);border-radius:10px;color:var(--fg);background:rgba(255,56,96,.08)}
+.error-banner .err-icon{color:var(--error)}
+/* ============ 表单与控件（input/select/switch/slider/tabs/badge/tag）============ */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field-label{font-size:12px;color:var(--fg-muted)}
+.input,.select{width:100%;height:36px;padding:0 12px;background:var(--input-bg);border:1px solid var(--input-border);border-radius:10px;color:var(--fg);font-size:13px;font-family:inherit;transition:border-color .2s,box-shadow .2s}
+.input::placeholder{color:var(--fg-dim)}
+.input:focus,.select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(45,226,230,.15)}
+.select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23b3a3d9' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;cursor:pointer}
+.select option{background:#1c0f38;color:var(--fg)}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0}
+.switch-label{font-size:13px;color:var(--fg)}
+.switch-label small{display:block;font-size:11px;color:var(--fg-dim);margin-top:1px}
+.switch{position:relative;width:38px;height:20px;flex-shrink:0}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch .track{position:absolute;inset:0;border-radius:20px;background:rgba(255,110,199,.14);border:1px solid rgba(255,110,199,.35);transition:background .2s,box-shadow .2s}
+.switch .knob{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#b3a3d9;transition:transform .2s,background .2s}
+.switch input:checked ~ .track{background:var(--primary);border-color:var(--primary);box-shadow:0 0 10px rgba(255,110,199,.5)}
+.switch input:checked ~ .knob{transform:translateX(18px);background:#12082a}
+.switch input:focus-visible ~ .track{outline:2px solid var(--primary);outline-offset:2px}
+.form-actions{display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,110,199,.2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:7px 16px;border-radius:10px;border:1px solid rgba(255,110,199,.3);background:rgba(255,110,199,.08);color:var(--fg);font-size:13px;font-family:inherit;cursor:pointer;transition:border-color .2s,background .2s,color .2s}
+.btn:hover{color:var(--primary);border-color:var(--primary);box-shadow:0 0 12px rgba(255,110,199,.25)}
+.btn-primary{padding:8px 20px;border:none;border-radius:10px;cursor:pointer;background:var(--primary);color:#12082a;font-size:13px;font-weight:700;font-family:inherit;animation:glow-box 5s ease-in-out infinite;transition:transform .2s,filter .2s}
+.btn-primary:hover{transform:translateY(-1px);filter:brightness(1.1)}
+.btn-primary:active{transform:translateY(0);filter:brightness(.92)}
+.btn-secondary{padding:8px 18px;border-radius:10px;cursor:pointer;background:transparent;border:1px solid rgba(255,110,199,.45);color:var(--primary);font-size:13px;font-family:inherit;transition:border-color .2s,box-shadow .2s,color .2s}
+.btn-secondary:hover{border-color:var(--primary);box-shadow:0 0 12px rgba(255,110,199,.25)}
+.btn-mini{padding:4px 10px;font-size:11px;border-radius:7px;border:1px solid rgba(255,110,199,.3);background:transparent;color:var(--fg-muted);cursor:pointer;font-family:inherit;transition:border-color .2s,color .2s}
+.btn-mini:hover{color:var(--primary);border-color:var(--primary)}
+.btn-danger{border-color:var(--error)!important;color:var(--error)!important}
+.btn-danger:hover{background:rgba(255,56,96,.1)!important}
+.icon-btn{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;border-radius:8px;border:none;background:transparent;color:var(--fg-muted);font-size:14px;cursor:pointer;transition:color .2s,background .2s}
+.icon-btn:hover{color:var(--primary);background:rgba(255,110,199,.1)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid rgba(255,110,199,.2);margin-bottom:14px}
+.tab{padding:7px 14px;font-size:13px;color:var(--fg-muted);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;font-family:inherit}
+.tab:hover{color:var(--fg)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;letter-spacing:.03em;white-space:nowrap}
+.badge.ok{color:var(--accent);background:rgba(45,226,230,.12);border:1px solid rgba(45,226,230,.35)}
+.badge.warn{color:var(--warn);background:rgba(255,211,25,.10);border:1px solid rgba(255,211,25,.35)}
+.badge.err{color:var(--error);background:rgba(255,56,96,.10);border:1px solid rgba(255,56,96,.3)}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 8px;border-radius:5px;background:rgba(255,110,199,.08);border:1px solid rgba(255,110,199,.22);color:var(--fg-muted);line-height:1.6}
+.kv-row{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px;border-bottom:1px dashed rgba(255,110,199,.14)}
+.kv-row .k{color:var(--fg-muted)}
+.kv-row .v{color:var(--fg);font-family:var(--mono)}
+.slider-row{display:flex;align-items:center;gap:12px;padding:6px 0}
+.slider-row input[type=range]{flex:1;accent-color:var(--primary)}
+.slider-row .slider-label{width:130px;flex-shrink:0;font-size:13px}
+.slider-row .slider-val{width:70px;text-align:right;font-family:var(--mono);font-size:12px;color:var(--primary)}
+/* ============ 表格（S1c：debugger 历史/捕获列表）============ */
+.table-wrap{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;min-width:560px}
+.data-table th{text-align:left;font-size:11px;font-weight:500;letter-spacing:.08em;color:var(--fg-dim);padding:8px 10px;border-bottom:1px solid rgba(255,110,199,.25);white-space:nowrap}
+.data-table td{padding:9px 10px;font-size:12px;border-bottom:1px solid rgba(255,110,199,.1);vertical-align:middle}
+.data-table tbody tr{transition:background .15s;cursor:pointer}
+.data-table tbody tr:hover{background:rgba(255,110,199,.05)}
+/* ============ 时间线（S1c：Trace）============ */
+.timeline{position:relative;padding-left:20px}
+.tl-node{position:relative;padding:0 0 14px 14px;border-left:2px solid rgba(255,110,199,.2)}
+.tl-node:last-child{border-left-color:transparent;padding-bottom:0}
+.tl-dot{position:absolute;left:-7px;top:2px;width:12px;height:12px;border-radius:50%;background:#55457e;border:2px solid var(--bg)}
+.tl-dot.ok{background:var(--accent)}
+.tl-dot.warn{background:var(--warn)}
+.tl-dot.err{background:var(--error)}
+.tl-head{font-size:13px;font-weight:600}
+.tl-meta{font-size:12px;color:var(--fg-muted);font-family:var(--mono);margin-top:2px;white-space:pre-wrap;word-break:break-all}
+.tl-time{font-size:11px;color:var(--fg-dim);font-family:var(--mono)}
+/* ============ 折叠（S1c：Reasoning 折叠气泡 / 详情折叠区）============ */
+.reasoning-bubble{border:1px solid rgba(45,226,230,.35);border-radius:10px;background:rgba(45,226,230,.08);margin:8px 0;padding:0 12px}
+.reasoning-bubble summary{cursor:pointer;font-size:12px;color:var(--accent);padding:8px 0;list-style:none}
+.reasoning-bubble summary::before{content:'▸ '}
+.reasoning-bubble[open] summary::before{content:'▾ '}
+.reasoning-content{font-size:12px;color:var(--fg-muted);padding-bottom:10px;line-height:1.7;white-space:pre-wrap}
+.detail-fold{border:1px solid var(--card-border);border-radius:10px;padding:0 12px;margin-top:10px;background:rgba(255,110,199,.03)}
+.detail-fold summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--fg-muted);padding:8px 0;list-style:none}
+.detail-fold[open] .fold-body{padding-bottom:10px}
+.json-pre{font-family:var(--mono);font-size:11px;background:rgba(12,5,24,.65);border:1px solid var(--input-border);border-radius:8px;padding:10px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--fg-muted)}
+/* ============ prompt-studio（S1c）============ */
+.ps-layout{display:grid;grid-template-columns:230px 1fr;gap:16px}
+.ps-side{min-width:0}
+.ps-side-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.ps-side-head .hint{font-size:12px;color:var(--fg-dim)}
+.ps-list{max-height:420px;overflow-y:auto;border:1px solid var(--card-border);border-radius:12px;padding:6px;background:rgba(12,5,24,.6)}
+.ps-group{font-size:11px;color:var(--fg-dim);padding:8px 6px 4px;letter-spacing:.06em}
+.tpl-item{display:flex;align-items:center;gap:6px;width:100%;text-align:left;padding:6px 8px;border:none;border-radius:8px;background:transparent;color:var(--fg-muted);font-size:12px;font-family:var(--mono);cursor:pointer}
+.tpl-item:hover{background:rgba(255,110,199,.08);color:var(--fg)}
+.tpl-item.active{background:rgba(255,110,199,.1);color:var(--primary)}
+.tpl-item.empty-flag::before{content:'●';color:var(--error);font-size:8px;flex-shrink:0}
+.ps-main{min-width:0}
+.ps-editor-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.ps-editor-head .hint{font-size:12px;color:var(--fg-dim)}
+.ph-panel{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(255,110,199,.14)}
+.ph-panel .hint{font-size:12px;color:var(--fg-dim)}
+/* ============ debugger（S1c）============ */
+.ph-btn{padding:3px 10px;font-size:11px;border-radius:6px;border:1px solid rgba(45,226,230,.4);background:rgba(45,226,230,.1);color:var(--accent);cursor:pointer;font-family:var(--mono)}
+.ph-btn:hover{background:rgba(45,226,230,.2)}
+.sim-layout{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.sim-pane{font-family:var(--mono);font-size:12px;line-height:1.7;background:rgba(12,5,24,.65);border:1px solid var(--input-border);border-radius:10px;padding:10px 12px;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--fg-muted)}
+.build-log{font-family:var(--mono);font-size:12px;background:rgba(12,5,24,.65);border:1px solid var(--input-border);border-radius:10px;padding:10px 12px;max-height:180px;overflow-y:auto;margin-top:14px}
+.bl-row{display:flex;gap:8px;color:var(--fg-muted);line-height:1.8}
+.bl-time{color:var(--fg-dim);flex-shrink:0}
+.dbg-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.dbg-san-layout{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dbg-san-out{font-family:var(--mono);font-size:12px;line-height:1.7;background:rgba(12,5,24,.65);border:1px solid var(--input-border);border-radius:10px;padding:10px 12px;min-height:120px;white-space:pre-wrap;word-break:break-all;color:var(--fg)}
+.cap-list{display:flex;flex-direction:column;gap:8px}
+.cap-item{border:1px solid var(--card-border);border-radius:12px;padding:10px 14px;cursor:pointer;background:rgba(255,110,199,.04);transition:border-color .15s}
+.cap-item:hover{border-color:var(--card-hover-border)}
+.cap-item.open{border-color:rgba(255,110,199,.45)}
+.cap-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px}
+.cap-id{font-family:var(--mono);color:var(--primary);font-weight:600}
+.cap-time{color:var(--fg-dim);font-family:var(--mono)}
+.cap-user{color:var(--fg-muted)}
+.cap-prov{color:var(--fg-muted);font-family:var(--mono);font-size:11px}
+.cap-msg{margin-top:4px;font-size:12px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cap-detail{padding:12px 0 4px}
+.usage-row{display:flex;gap:16px;font-family:var(--mono);font-size:12px;color:var(--fg-muted);margin-top:10px}
+/* ============ model-settings 表单增强 + Playground 聊天（S1a）============ */
+.ms-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.ms-row{display:flex;align-items:center;gap:8px}
+.ms-row .input{flex:1}
+.kv-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.kv-head .hint{font-size:12px;color:var(--fg-dim)}
+.kv-edit-row{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed rgba(255,110,199,.14)}
+.kv-edit-row .input{flex:1;min-width:0}
+.kv-empty{padding:18px;text-align:center;color:var(--fg-dim);font-size:12px;border:1px dashed rgba(255,110,199,.25);border-radius:10px}
+.confirm-msg{font-size:13px;line-height:1.7;color:var(--fg)}
+.chat-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.chat-head .card-title{margin-bottom:0}
+.chat-box{display:flex;flex-direction:column;gap:10px;max-height:300px;overflow-y:auto;padding:12px;border:1px solid var(--input-border);border-radius:12px;background:rgba(12,5,24,.55)}
+/* ============ config 视图（S1b）：标签/只读/校验/高级折叠 ============ */
+.chat-row{display:flex;gap:10px;align-items:flex-start}
+.chat-row.user{justify-content:flex-end}
+.chat-role{font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--fg-dim);flex-shrink:0;padding-top:6px}
+.chat-bubble{max-width:72%;padding:8px 12px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word;white-space:pre-wrap}
+.chat-row.bot .chat-bubble{background:rgba(255,110,199,.07);border:1px solid rgba(255,110,199,.12);border-top-left-radius:4px}
+.chat-row.user .chat-bubble{background:linear-gradient(135deg,rgba(255,110,199,.16),rgba(45,226,230,.16));border:1px solid rgba(255,110,199,.35);border-top-right-radius:4px}
+.chat-bubble.thinking{color:var(--fg-dim);font-style:italic}
+.chat-empty{padding:28px;text-align:center;color:var(--fg-dim);font-size:12px}
+.chat-input-row{display:flex;gap:10px;margin-top:12px}
+.chat-input-row .input{flex:1}
+.cfg-tags{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-height:32px;padding:6px 0}
+.cfg-tag{gap:4px}
+.tag-del{background:none;border:none;color:var(--fg-dim);cursor:pointer;font-size:10px;padding:0 2px;line-height:1}
+.tag-del:hover{color:var(--error)}
+.tag-input{flex:1;min-width:140px}
+.field-hint{font-size:12px;color:var(--fg-dim)}
+.input.invalid{border-color:var(--error);box-shadow:0 0 0 3px rgba(255,56,96,.15)}
+textarea.input{height:auto;min-height:88px;padding:10px 12px;resize:vertical;line-height:1.6}
+.input[readonly]{color:var(--fg-muted);cursor:not-allowed}
+.cfg-details{border:1px solid var(--card-border);border-radius:12px;padding:0 14px;background:rgba(255,110,199,.03)}
+.cfg-details summary{cursor:pointer;padding:12px 0;font-size:14px;font-weight:600;color:var(--fg);list-style:none}
+.cfg-details summary::before{content:'▸ ';color:var(--fg-dim)}
+.cfg-details[open] summary::before{content:'▾ '}
+.cfg-advanced{padding-bottom:14px;display:flex;flex-direction:column;gap:10px}
+/* ============ user-options（S1d）============ */
+.cfg-actions{display:flex;gap:10px;flex-wrap:wrap}
+.priority-bar{margin:10px 0 14px;padding:8px 12px;font-size:12px;color:var(--fg-muted);border:1px dashed rgba(255,110,199,.4);border-radius:8px;background:rgba(255,110,199,.05)}
+.rule-row{display:grid;grid-template-columns:1.4fr .9fr 1fr .9fr 1fr 60px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid rgba(255,110,199,.14)}
+.rule-row.head{color:var(--fg-dim);font-size:11px;letter-spacing:.05em}
+.uop-user-row{display:grid;grid-template-columns:1fr 1fr 1.2fr 40px;gap:8px;align-items:center;padding:6px 0 6px 14px}
+.uop-user-row .hint{font-size:11px;color:var(--fg-dim)}
+.uop-users{border-left:2px solid rgba(255,110,199,.14);margin:4px 0 4px 6px;padding-left:10px}
+.uop-btn{flex-shrink:0}
+/* ============ appearance（S1d）============ */
+.style-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.style-card{border:1px solid var(--card-border);border-radius:14px;padding:16px;text-align:center;cursor:pointer;background:rgba(255,110,199,.04);transition:border-color .2s,transform .2s}
+.style-card:hover{transform:translateY(-2px);border-color:var(--card-hover-border)}
+.style-card.cur{border-color:rgba(255,110,199,.55);background:rgba(255,110,199,.08)}
+.style-card .swatch{width:100%;height:56px;border-radius:10px;margin-bottom:10px;position:relative;overflow:hidden}
+.style-card .sw-name{font-size:13px;font-weight:600}
+.style-card .sw-sub{font-size:11px;color:var(--fg-dim);margin-top:2px}
+.sw-aurora{background:linear-gradient(135deg,#0f172a 0%,#1e1b4b 55%,#0f172a 100%)}
+.sw-aurora::after{content:'';position:absolute;inset:-40%;background:linear-gradient(90deg,transparent,#5eead4,transparent);animation:sw-sweep 3s linear infinite;opacity:.5}
+.sw-matrix{background:radial-gradient(circle at 50% 30%,#051d10,#020604 70%)}
+.sw-matrix::after{content:'';position:absolute;left:0;right:0;top:0;height:100%;background:linear-gradient(180deg,transparent,#00ff88 .04em,transparent .04em) 0 0/100% 6px;opacity:.5}
+.sw-zen{background:linear-gradient(135deg,#f8fafc,#e2e8f0)}
+.sw-synth{background:linear-gradient(180deg,#261447 0%,#ff6ec7 60%,#f9f871 100%)}
+.sw-ink{background:linear-gradient(160deg,#f5f0e8,#e5dcc8)}
+.sw-pixel{background:repeating-conic-gradient(#1a1c2c 0% 25%,#22243a 0% 50%) 0 0/16px 16px}
+@keyframes sw-sweep{0%{transform:translateX(-30%)}100%{transform:translateX(30%)}}
+/* ============ Bot CRUD 状态点动画（S1d）============ */
+.chip-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chip{padding:6px 14px;border-radius:999px;border:1px solid var(--card-border);background:rgba(255,110,199,.04);color:var(--fg-muted);font-size:12px;cursor:pointer}
+.chip.on{border-color:rgba(255,110,199,.55);background:rgba(255,110,199,.1);color:var(--primary)}
+/* ============ 日志面板过滤条（S1d）============ */
+.log-toolbar{display:flex;align-items:center;gap:6px;padding:6px 12px;border-bottom:1px solid rgba(255,110,199,.14);flex-wrap:wrap}
+.log-filter{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--fg-dim);cursor:pointer}
+.log-filter:hover{color:var(--fg)}
+.log-filter.active{color:var(--primary);border-color:rgba(255,110,199,.4);background:rgba(255,110,199,.08)}
+.log-count{font-size:11px;color:var(--fg-dim);margin-left:auto}
+/* ============ 弹窗 modal（骨架；焦点圈闭等交互细节 → S1c/S1d）============ */
+.modal{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:20px}
+.modal[hidden]{display:none}
+.modal-overlay{position:absolute;inset:0;background:rgba(12,5,24,.7);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)}
+.modal-box{position:relative;width:min(520px,100%);max-height:80vh;display:flex;flex-direction:column;background:rgba(28,15,56,.97);border:1px solid rgba(255,110,199,.35);border-radius:16px;box-shadow:0 24px 64px rgba(0,0,0,.55),0 0 24px rgba(255,110,199,.1)}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,110,199,.2);flex-shrink:0}
+.modal-title{font-size:15px;font-weight:600}
+.modal-body{padding:16px 18px;overflow-y:auto}
+.modal-foot{display:flex;justify-content:flex-end;gap:10px;padding:12px 18px;border-top:1px solid rgba(255,110,199,.2);flex-shrink:0}
+/* ============ 日志面板 ============ */
+.log-footer{position:relative;flex-shrink:0;height:180px;background:var(--log-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid rgba(255,110,199,.2);overflow:hidden;display:flex;flex-direction:column;transition:height .2s ease}
+.log-footer.collapsed{height:34px}
+.log-handle{position:absolute;top:0;left:0;right:0;height:6px;z-index:3;cursor:ns-resize;touch-action:none}
+.log-handle::after{content:'';position:absolute;top:2px;left:50%;transform:translateX(-50%);width:48px;height:2px;border-radius:2px;background:rgba(255,110,199,.3);transition:background .2s,width .2s,box-shadow .2s}
+.log-handle:hover::after,.log-handle.dragging::after{background:var(--accent);width:72px;box-shadow:0 0 8px rgba(45,226,230,.6)}
+.log-toggle{position:absolute;top:8px;right:14px;z-index:4;width:24px;height:20px;border:none;border-radius:6px;background:transparent;color:var(--fg-dim);font-size:10px;cursor:pointer}
+.log-toggle:hover{color:var(--fg)}
+.log-body{flex:1;min-height:0;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.9}
+.log-row{display:flex;gap:10px;white-space:nowrap}
+.log-time{color:#54477e;flex-shrink:0}
+.log-level{flex-shrink:0;font-weight:700}
+.log-level.info{color:var(--accent)}
+.log-level.warn{color:var(--warn)}
+.log-level.error{color:var(--primary)}
+.log-level.debug{color:#9a8fb8}
+.log-msg{color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis}
+.log-empty{padding:30px 0;text-align:center;color:var(--fg-dim)}
+/* ============ Toast（三变体）============ */
+.toast{position:fixed;left:50%;bottom:64px;z-index:100;transform:translate(-50%,12px);padding:9px 18px;border-radius:10px;background:rgba(28,15,56,.96);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,110,199,.45);color:var(--fg);font-size:13px;box-shadow:0 16px 40px rgba(0,0,0,.55),0 0 18px rgba(255,110,199,.12);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.error{border-color:var(--error)}
+.toast.warn{border-color:var(--warn)}
+/* ============ 风格装饰层：splash ============ */
+.splash{position:fixed;inset:0;z-index:200;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:var(--bg);transition:opacity .35s ease}
+.splash.hide{opacity:0;pointer-events:none}
+.splash-logo{font-size:30px;font-weight:800;letter-spacing:.04em;background:linear-gradient(90deg,#ffd319,#ff6ec7);-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent}
+.splash-spin{width:26px;height:26px;border:2px solid rgba(255,110,199,.2);border-top-color:var(--primary);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.splash-sub{font-size:12px;color:var(--fg-dim);letter-spacing:.2em}
+/* ============ 响应式断点（1100/900/768/640）============ */
+@media (max-width:1100px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .providers-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:900px){
+  .sider{width:64px}
+  .sider-title-text,.bot-name,.card-id,.card-meta,.platform-badge,.card-tags,.card-actions{display:none}
+  .bot-card{display:flex;justify-content:center;padding:12px 0}
+}
+@media (max-width:768px){
+  .card-row{padding:0}
+  .form-grid{grid-template-columns:1fr}
+  .brand{display:none}
+  .ps-layout{grid-template-columns:1fr}
+}
+@media (max-width:640px){
+  .sim-layout{grid-template-columns:1fr}
+  .dbg-san-layout{grid-template-columns:1fr}
+  .data-table{min-width:440px}
+  .sider{display:none}
+  .stats-grid{grid-template-columns:1fr}
+  .providers-grid{grid-template-columns:1fr}
+  .content{padding:14px}
+}
+/* ============ 特效关闭（html.fx-off-*，§8.2 成对规则；synthwave 基线规则原样迁移）============ */
+/* 注：fx-off-glow 仅 animation:none（§8.2 迁移豁免——不套 aurora 静态降级，渐变文字关闭动画后仍显示静态渐变） */
+html.fx-off-sunset .sun-layer::before{animation:none;opacity:.12}
+html.fx-off-grid .grid-layer{opacity:0}
+html.fx-off-scanline .scanline{display:none}
+html.fx-off-glow .brand,
+html.fx-off-glow .page-title,
+html.fx-off-glow .btn-primary{animation:none}
+/* ============ 动画开关（html.anim-off，§8.3 白名单）============ */
+html.anim-off .content-inner > *{animation:none}
+html.anim-off .sk-line{animation:none}
+html.anim-off .status-dot.running{animation:none}
+html.anim-off .sun-layer::before{animation:none}
+html.anim-off .splash-spin{animation:none}
+/* ============ 减少动态效果偏好 ============ */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .sun-layer::before{opacity:.35}
+  .grid-layer{opacity:.6}
+  .scanline{display:none}
+  .brand{text-shadow:0 0 8px rgba(255,110,199,.5)}
+  .page-title{filter:drop-shadow(0 0 8px rgba(255,110,199,.35))}
+  .btn-primary{box-shadow:none}
+}
+</style>
+
+<script>
+(function(){
+  try{
+    var s = JSON.parse(localStorage.getItem('elabot-demo-state-v1-synthwave'))
+    if (!s || !s.appearance) return
+    var h = document.documentElement
+    if (s.appearance.anim === false) h.className += ' anim-off'
+    var fx = s.appearance.fx || {}
+    for (var k in fx){ if (fx[k] === false) h.className += ' fx-off-' + k }
+  }catch(e){}
+})()
+</script>
+</head>
+<body>
+<div class="sun-layer" aria-hidden="true"></div>
+<div class="grid-layer" aria-hidden="true"></div>
+<div class="scanline" aria-hidden="true"></div>
+<div class="app">
+
+<!-- ===== 顶栏：brand + 7 项导航（data-view + hash）+ 语言 / 特效 / 外观 ===== -->
+<header class="topbar">
+<div class="brand">ELA-Bot</div>
+<nav class="main-nav" aria-label="主导航">
+<a class="nav-item" data-view="providers" href="#providers">提供商</a>
+<a class="nav-item" data-view="model-settings" href="#model-settings">模型设置</a>
+<a class="nav-item" data-view="config" href="#config">控制面板</a>
+<a class="nav-item" data-view="prompt-studio" href="#prompt-studio">提示词工坊</a>
+<a class="nav-item" data-view="debugger" href="#debugger">调试器</a>
+<a class="nav-item" data-view="user-options" href="#user-options">用户选项</a>
+<a class="nav-item" data-view="appearance" href="#appearance">外观设置</a>
+</nav>
+<div class="topbar-right">
+<div class="lang-wrap">
+<button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false">zh ▼</button>
+<div class="lang-menu" id="lang-menu" role="listbox" hidden>
+<button role="option" data-lang="简体中文" class="selected">简体中文</button>
+<button role="option" data-lang="English">English</button>
+</div>
+</div>
+<div class="fx-outer">
+<button class="theme-btn" id="fx-btn" aria-haspopup="dialog" aria-expanded="false">⚡ 特效</button>
+<div class="fx-wrap" id="fx-wrap" role="dialog" aria-label="特效开关面板" hidden>
+<div class="fx-title">特效开关</div>
+<div class="fx-note">关闭后对应装饰动画立即消失</div>
+<div id="fx-rows"></div>
+</div>
+</div>
+<button class="theme-btn" id="theme-btn" title="外观设置" aria-label="外观设置">◐ 外观</button>
+</div>
+</header>
+
+<!-- ===== 外壳 ===== -->
+<div class="shell">
+
+<!-- ===== 左侧 Bot 列表（JS 渲染 5 卡）===== -->
+<aside class="sider" aria-label="Bot 列表">
+<div class="sider-title">
+<span class="sider-title-text">Bots</span>
+<div class="sider-actions">
+<button class="btn-icon" id="btn-new" title="新建 Bot" aria-label="新建 Bot">＋</button>
+<button class="btn-icon" id="btn-refresh" title="刷新列表" aria-label="刷新列表">↻</button>
+</div>
+</div>
+<div class="bot-list" id="bot-list"></div>
+</aside>
+
+<!-- ===== 主内容：7 个视图容器（providers 已实现；其余 6 个为占位，后续切片逐一切换实现）===== -->
+<main class="content">
+<div class="content-inner" id="content-inner">
+<section class="view" id="view-providers" data-view="providers"></section>
+<section class="view" id="view-model-settings" data-view="model-settings" hidden></section>
+<section class="view" id="view-config" data-view="config" hidden></section>
+<section class="view" id="view-prompt-studio" data-view="prompt-studio" hidden></section>
+<section class="view" id="view-debugger" data-view="debugger" hidden></section>
+<section class="view" id="view-user-options" data-view="user-options" hidden></section>
+<section class="view" id="view-appearance" data-view="appearance" hidden></section>
+</div>
+</main>
+</div>
+
+<!-- ===== 日志面板 ===== -->
+<footer class="log-footer" id="log-footer" aria-label="日志面板">
+<div class="log-handle" id="log-handle" title="拖拽调整日志高度"></div>
+<button class="log-toggle" id="log-toggle" title="折叠 / 展开日志面板" aria-expanded="true">▼</button>
+<div class="log-toolbar" id="log-toolbar"></div>
+<div class="log-body" id="log-body"></div>
+</footer>
+</div>
+
+<!-- ===== 浮层：toast / 弹窗 / splash ===== -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="modal" id="modal" hidden>
+<div class="modal-overlay" id="modal-overlay"></div>
+<div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+<div class="modal-head"><span class="modal-title" id="modal-title"></span><button class="icon-btn" id="modal-close" aria-label="关闭">✕</button></div>
+<div class="modal-body" id="modal-body"></div>
+<div class="modal-foot" id="modal-foot"></div>
+</div>
+</div>
+<div class="splash" id="splash">
+<div class="splash-logo">ELA-Bot</div>
+<div class="splash-spin" aria-hidden="true"></div>
+<div class="splash-sub">完整 UI 演示 · 加载中…</div>
+</div>
+
+<script>
+(function(){
+'use strict'
+/* ============ 1. I18N —— t() 插值 + zh 字典（en 结构预留，§6）============ */
+var I18N = {
+  zh: { appNav: {providers:'提供商', modelSettings:'模型设置', config:'控制面板', promptStudio:'提示词工坊', debugger:'调试器', userOptions:'用户选项', appearance:'外观设置'}, providersPage: {title:'提供商管理', sub:'实时状态与配置中心 · 点击「设为当前」切换', current:'当前', setCurrent:'设为当前', unconfigured:'未配置', healthy:{ok:'正常', slow:'缓慢', off:'离线'}, latency:'延迟', loading:'加载中…', test:'测试', testing:'检测中…', testOk:'{name} 健康检测通过：{ms}ms（{status}）', testFail:'{name} 健康检测失败', stats:{onlineBots:'在线 Bot', configured:'已配置提供商', healthy:'健康提供商', currentProv:'当前提供商', botUnit:'个', provUnit:'家'}}, userOptions: {title:'用户选项', sub:'黑白名单规则 · 用户条目 · 全部为模拟数据', enabled:'启用用户选项', timeout:'用户搜索超时（ms，1000-30000）', priority:'规则优先级：频道 > 服务器 > 全局', ruleTable:'黑白名单规则', noRules:'暂无规则', addRule:'＋ 新建规则', name:'名称', scopeType:'作用域', scopeId:'作用域 ID', mode:'模式', behavior:'白名单行为', users:'用户条目', ops:'操作', scopeGlobal:'global', scopeGuild:'guild', scopeChannel:'channel', scopeDm:'dm', modeBlack:'blacklist', modeWhite:'whitelist', bhMsgOnly:'messages_only', bhTrigOnly:'triggers_only', delRuleConfirm:'确定删除规则「{name}」？', delRule:'删除规则', usersTitle:'用户条目（{name}）', addUser:'＋ 添加用户', userEmpty:'暂无用户条目', uid:'user_id', uname:'display_name', bm:'blacklist_mode', bmNegative:'negative_portrait', bmBlock:'block_messages', bmDeny:'deny_response', validScope:'scope_id 必填（非 global 作用域）', validUser:'user_id 不能为空', save:'保存设置', saving:'正在保存…', saved:'设置已保存', loadFail:'规则加载失败', retry:'重试'}, appearance: {title:'外观设置', sub:'风格 · 配色 · 特效 · 动画 · 全部为模拟数据', style:'风格', currentStyle:'当前风格', styleNote:'切换风格请访问对应演示页', styleMatrix:'Matrix', styleZen:'Zen', styleSynth:'Synthwave', styleInk:'Ink', stylePixel:'Pixel', palette:'配色', chipDark:'深色', chipLight:'浅色', paletteNote:'本页仅深色主题，切换仅保留偏好', anim:'界面动画', animDesc:'关闭后过渡/骨架/状态点动画停用（html.anim-off）', fxTitle:'特效开关', fxNote:'关闭后对应装饰动画立即消失', customCss:'自定义 CSS', cssPlaceholder:'body{...} 自定义样式，即时注入 <style>', cssApply:'应用', cssReset:'重置', cssApplied:'自定义 CSS 已应用', cssCleared:'自定义 CSS 已清除', resetData:'重置演示数据', resetConfirm:'确定重置全部演示数据？将清空本地存储并重载页面。', resetDone:'演示数据已重置', perPage:'存储提示', perPageDesc:'每页独立存储（localStorage 域隔离），本页改动不影响其他风格页。'}, sidebar: {title:'Bots', new:'新建 Bot', refresh:'刷新列表', empty:'暂无 Bot', emptyDesc:'点击右上角新建', start:'启动', stop:'停止', restart:'重启', delete:'删除', rename:'重命名', delConfirm:'确定删除 Bot「{name}」？', botId:'Bot ID', botName:'Bot 名称', platform:'平台', llm:'LLM 提供商', model:'模型', modelName:'模型名称', dup:'Bot ID 已存在', badId:'ID 需为小写字母/数字/-/_', idRequired:'Bot ID 不能为空', nameRequired:'Bot 名称不能为空', created:'已创建 Bot：{name}', deleted:'已删除 Bot：{name}', renamed:'已重命名为：{name}', started:'已启动：{name}', stopped:'已停止：{name}', restarted:'已重启：{name}', startFail:'启动失败：{name}', startFailed:'启动失败（模拟网络错误）', refreshing:'正在刷新…', newTitle:'新建 Bot', renameTitle:'重命名 Bot', renamePlaceholder:'新名称' }, logPanel: {empty:'暂无日志', clear:'清空', cleared:'日志已清空', pause:'暂停', resume:'恢复', paused:'日志已暂停', all:'ALL', info:'INFO', warn:'WARN', error:'ERROR', debug:'DEBUG', filter:'级别过滤', count:'{n} 条'}, fx: {title:'特效开关', note:'关闭后对应装饰动画立即消失', sunset:'日落光带', grid:'透视网格', scanline:'CRT 扫描线', glow:'霓虹辉光', sunsetDesc:'地平线日落渐变光带上下漂移', gridDesc:'底部青粉线透视网格是否显示', scanlineDesc:'青粉渐变扫描线扫过全屏', glowDesc:'标题 / 品牌 / 按钮辉光脉动'}, actionBtn: {close:'关闭', cancel:'取消', confirm:'确认', save:'保存', delete:'删除', retry:'重试'}, dialog: {confirmTitle:'确认操作', dirtyConfirm:'当前表单有未保存的更改，确定继续？', discarded:'已丢弃未保存的更改'}, status: {saving:'正在保存…', saved:'已保存', loading:'正在加载…', failed:'操作失败：{error}'}, fourState: {emptyTitle:'暂无数据', loading:'加载中…', error:'加载失败', retry:'点击重试'}, modelSettings: {title:'模型设置', sub:'提供商连接 · 推理参数 · 测试对话（全部为模拟数据）', providerCard:'LLM 提供商', provider:'提供商', model:'模型', apiKey:'API Key', baseUrl:'Base URL', showKey:'显示', hideKey:'隐藏', testConnection:'测试连接', testing:'正在测试连接…', connectionOk:'连接成功 · {ms}ms', connectionFail:'连接失败：{name}（模拟）', paramsCard:'推理参数', paramsHint:'滑块实时生效 · 保存后持久化', temperature:'Temperature', topP:'Top P', maxTokens:'Max Tokens', customParams:'自定义参数', customHeaders:'请求头', addRow:'新增', remove:'删除', kvKey:'Key', kvValue:'Value', kvEmpty:'暂无条目，点击「新增」添加', save:'保存设置', saving:'正在保存…', chatCard:'测试对话（Playground）', chatPlaceholder:'输入消息，Enter 发送…', send:'发送', clear:'清空', chatEmpty:'输入消息开始测试', thinking:'正在思考…', chatEmptyInput:'请输入消息后再发送', reqSummary:'请求体摘要（只读）', failSim:'模拟失败', failSimMsg:'请求失败（模拟）：{provider} 返回 500 · 演示错误', demoReply:'收到：「{question}」\n[演示回复] 已应用 temperature={temperature} · top_p={topP} · max_tokens={maxTokens}\n{provider} · {model}'}, configPanel: {title:'控制面板', sub:'Bot 配置 · 字段子集（§4.2）· 全部为模拟数据', save:'保存更改', saving:'正在保存…', export:'导出 JSON', import:'导入', exported:'已导出配置 JSON', exportFallback:'导出受限环境：JSON 已输出到控制台', importOk:'导入成功：{name}', importFail:'导入失败：JSON 解析或校验错误', validateFail:'校验失败：{items}', base:'基础配置', botId:'Bot ID', botName:'Bot 名称', platform:'平台', enabled:'启用', keywords:'触发关键词', noTags:'暂无关键词，输入后回车添加', tagInput:'输入关键词，回车添加', tagDup:'关键词已存在', matchMode:'匹配模式', params:'推理参数', temperature:'Temperature', topP:'Top P', maxTokens:'Max Tokens', freqPenalty:'Frequency Penalty', presPenalty:'Presence Penalty', context:'上下文', contextMode:'上下文模式', chCtx:'频道上下文', memCtx:'记忆上下文', msgLimit:'消息上限', charLimit:'字符上限', auto:'自动化', autoInterject:'自动插话', interjectInterval:'插话间隔（秒，≥1）', repeatParrot:'复读鹦鹉', repeatThreshold:'复读阈值（次数）', memory:'自动记忆', autoMemory:'自动记忆摄取', recallTopK:'召回 Top-K', recallCharLimit:'召回字符上限', recallMaxAge:'召回最大天数', advanced:'高级设置（只读展示）', sysPrompt:'system_prompt', apiSecret:'api_secret_key', showSecret:'显示', hideSecret:'隐藏', reset:'重置', resetDone:'配置已重置为上次保存状态', discordToken:'Discord Token', llmProvider:'LLM 提供商', apiKey:'API Key', modelName:'模型名称', baseUrl:'Base URL', topK:'top_k（1-100）', caseSensitive:'关键词大小写敏感', show:'显示', hide:'隐藏', customHeadersCount:'custom_headers 数量', interactionHistory:'interaction_history', pluginsCount:'plugins 数量', customParamsCount:'custom_parameters 数量', historySummary:'启用 · {size} 上限 · 自动清理'}, promptStudio: {title:'提示词工坊', sub:'14 键模板编辑 · 占位符插入 · 情景模拟（全部为模拟数据）', templates:'模板列表', presetBar:'预设管理', presetSave:'另存为', presetLoad:'加载', presetName:'预设名称', presetNamePlaceholder:'输入预设名称…', presetSaved:'预设已保存：{name}', presetLoaded:'已加载预设：{name}', presetDeleted:'已删除预设：{name}', presetDefaultProtected:'默认预设「{name}」不可覆盖或删除', presetMissing:'预设不存在', required:'必填', optional:'可选', newKey:'新建模板键', delKey:'删除模板键', delConfirm:'确定删除模板键「{key}」？', delRequired:'必填模板键不可删除', keyName:'模板键名', keyDup:'模板键已存在', keyEmpty:'模板键名不能为空', editor:'编辑：{key}', save:'保存模板', saving:'正在保存…', saved:'模板已保存', validateFail:'必填模板键不能为空：{keys}', loadFail:'模板加载失败', ph:'可用占位符', noPh:'该模板无可用占位符', phInserted:'已插入 {ph}', roleCard:'角色配置（模拟）', nickname:'Bot 昵称', persona:'人设（模拟 system_prompt 的独立字段）', personaPlaceholder:'输入人设描述…', noPersona:'（未设置人设）', simCard:'情景模拟器', simMsg:'用户消息', simMsgPlaceholder:'输入要模拟的用户消息…', simReply:'应回复', simRole:'用户角色', simImages:'图片数', build:'构建提示词', building:'正在构建…', simEmpty:'用户消息不能为空', simPreview:'后端提示词预览', simRequest:'用户请求预览', buildLog:'构建日志', roleUser:'普通用户', roleAdmin:'管理员', roleOwner:'频道主', roleMember:'群成员', simLog1:'读取模板 message_format / user_request_block', simLog2:'注入角色：{role} · 图片 x{n} · {reply}', simLog3:'构建用户请求块（{parts} 替换完成）', simLog4:'构建完成（{ms}ms）', replyYes:'应回复', replyNo:'不回复'}, debugger: {title:'调试器', sub:'模拟对话 · 历史 · 捕获 · 消毒', tabChat:'模拟对话', tabHistory:'历史', tabCapture:'捕获', tabSanitize:'消毒', chatPlaceholder:'输入消息，Enter 发送…', send:'发送', clear:'清空', thinking:'正在思考…', chatEmpty:'输入消息开始调试', reasoning:'Reasoning（点击展开）', reasoningTitle:'推理过程（模拟）', reply:'（模拟回复）已处理您的请求：{msg}', histEmpty:'暂无历史记录', histTime:'时间', histRole:'角色', histSummary:'摘要', histTags:'标签', histDetail:'历史详情', roleUser:'用户', roleBot:'Bot', capTitle:'捕获列表（8 条）', capEmpty:'暂无捕获', capNew:'新建演示捕获', capClear:'清空捕获', capDel:'删除捕获', capDeleted:'已删除捕获：{id}', detailFallback:'详情解析失败，以下为原始内容', detailParseFail:'捕获详情数据格式异常，已降级显示原始 JSON', capId:'ID', capUser:'用户', capProv:'提供商', capMsg:'消息摘要', trace:'Trace 时间线', traceRequest:'request', traceReasoning:'reasoning', traceToolCall:'tool_call', traceToolResult:'tool_result', traceResponse:'response', detailSys:'system_prompt', detailHistory:'history_for_llm', detailUsage:'usage', detailRaw:'原始 JSON', usage:'prompt {p} · completion {c} · total {t}', sanTitle:'日志消毒器', sanInput:'输入原始日志', sanInputPlaceholder:'粘贴包含邮箱 / 手机号 / API Key 的日志…', sanOutput:'消毒结果', run:'运行消毒', running:'正在消毒…', sample:'填入示例', sanitized:'消毒完成', loadFail:'捕获加载失败', retry:'重试', loading:'加载中…'}, toast: {switched:'已切换至 {name}', langReserved:'英文版为结构预留，当前仅提供简体中文', resetData:'数据损坏，已恢复默认', botSelected:'已选中 Bot：{name}', placeholder:'演示：{msg}（后续切片实现）', saved:'已保存', connectionOk:'连接成功 · {ms}ms', connectionFail:'连接失败', requestFail:'请求失败（模拟）', langZh:'当前为简体中文界面', cleared:'已清空对话', exported:'已导出配置 JSON', exportFallback:'导出受限环境：JSON 已输出到控制台', importOk:'导入成功：{name}', importFail:'导入失败：JSON 解析或校验错误', langSwitched:'已切换语言：{lang}'}, },
+  en: { appNav: {providers:'Providers', modelSettings:'Model Settings', config:'Dashboard', promptStudio:'Prompt Studio', debugger:'Debugger', userOptions:'User Options', appearance:'Appearance'}, actionBtn: {close:'Close', cancel:'Cancel', confirm:'Confirm', save:'Save', delete:'Delete', retry:'Retry'}, status: {saving:'Saving…', saved:'Saved', loading:'Loading…', failed:'Failed: {error}'}, toast: {saved:'Saved', cleared:'Chat cleared', langSwitched:'Language switched: {lang}', langReserved:'English UI is reserved (structural placeholder), staying in Chinese', requestFail:'Request failed (simulated)'}, logPanel: {empty:'No logs', clear:'Clear', pause:'Pause', resume:'Resume'}, sidebar: {title:'Bots', new:'New Bot', refresh:'Refresh', empty:'No bots', emptyDesc:'Click + to create', start:'Start', stop:'Stop', restart:'Restart', delete:'Delete', rename:'Rename', modelName:'Model name'}, dialog: {confirmTitle:'Confirm', dirtyConfirm:'You have unsaved changes. Continue?', discarded:'Unsaved changes discarded'}, userOptions: {title:'User Options', enabled:'Enable user options'}, appearance: {title:'Appearance', style:'Style', palette:'Palette', resetData:'Reset demo data'}, providersPage: {title:'Providers', current:'Current', setCurrent:'Set current', test:'Test', testing:'Testing…', testOk:'{name} healthy: {ms}ms ({status})', testFail:'{name} health check failed', loading:'Loading…'}, modelSettings: {title:'Model Settings', send:'Send', clear:'Clear', reqSummary:'Request body summary (read-only)', failSim:'Simulate failure', failSimMsg:'Request failed (simulated): {provider} returned 500'}, configPanel: {title:'Dashboard', save:'Save Changes', reset:'Reset', resetDone:'Config reset', discordToken:'Discord Token', llmProvider:'LLM Provider', apiKey:'API Key', modelName:'Model name', baseUrl:'Base URL', topK:'top_k (1-100)', caseSensitive:'Case-sensitive keywords', show:'Show', hide:'Hide'}, promptStudio: {title:'Prompt Studio', save:'Save Template', presetBar:'Preset management', presetSave:'Save as…', presetLoad:'Load', presetName:'Preset name', presetNamePlaceholder:'Enter preset name…', presetSaved:'Preset saved: {name}', presetLoaded:'Preset loaded: {name}', presetDeleted:'Preset deleted: {name}', presetDefaultProtected:'Default preset cannot be overwritten or deleted', presetMissing:'Preset not found'}, debugger: {title:'Debugger', clear:'Clear', capDel:'Delete capture', capDeleted:'Capture deleted: {id}', detailFallback:'Detail parse failed, showing raw content', detailParseFail:'Capture detail data is malformed, showing raw JSON'}, fourState: {emptyTitle:'No data', loading:'Loading…', error:'Load failed', retry:'Click to retry'} }
+}
+var _lang = 'zh'
+function t(path, params){
+  var cur = I18N[_lang]
+  if (_lang !== 'zh'){
+    var en = I18N.en, ps = path.split('.'), v = en
+    for (var i = 0; i < ps.length; i++){ if (v == null) break; v = v[ps[i]] }
+    if (typeof v !== 'string') cur = I18N.zh   /* en 缺键 → 回退 zh（§6） */
+  }
+  var parts = path.split('.')
+  for (var i = 0; i < parts.length; i++){ if (cur == null) return path; cur = cur[parts[i]] }
+  if (typeof cur !== 'string') return path
+  if (params) cur = cur.replace(/\{(\w+)\}/g, function(m, k){ return params[k] != null ? params[k] : m })
+  return cur
+}
+
+/* ============ 2. MOCK —— 全量种子数据（§4）+ DEFAULT_STATE ============ */
+var MOCK = {
+  providers: [
+    {name:'openai',      model:'gpt-4o',                  healthy:true,  latency_ms:243,  configured:true,  is_current:true},
+    {name:'google',      model:'gemini-1.5-pro',          healthy:true,  latency_ms:812,  configured:true,  is_current:false},
+    {name:'anthropic',   model:'claude-3-opus',           healthy:true,  latency_ms:318,  configured:true,  is_current:false},
+    {name:'grok',        model:'grok-4',                  healthy:false, latency_ms:null, configured:false, is_current:false},
+    {name:'deepseek',    model:'deepseek-v4-pro',         healthy:true,  latency_ms:156,  configured:true,  is_current:false},
+    {name:'siliconflow', model:'deepseek-ai/DeepSeek-V3', healthy:true,  latency_ms:289,  configured:true,  is_current:false},
+    {name:'volcengine',  model:'ep-20250101000000-xxxxx', healthy:null,  latency_ms:null, configured:false, is_current:false},
+    {name:'dashscope',   model:'qwen-plus',               healthy:true,  latency_ms:178,  configured:true,  is_current:false},
+    {name:'moonshot',    model:'moonshot-v1-32k',         healthy:null,  latency_ms:null, configured:false, is_current:false},
+    {name:'zhipu',       model:'glm-4-plus',              healthy:true,  latency_ms:224,  configured:true,  is_current:false},
+    {name:'stepfun',     model:'step-2-16k',              healthy:null,  latency_ms:null, configured:false, is_current:false}
+  ],
+  providerNames: {openai:'OpenAI', google:'Google Gemini', anthropic:'Anthropic Claude', deepseek:'DeepSeek (深度求索)',
+    siliconflow:'SiliconFlow (硅基流动)', volcengine:'Volcano Ark (火山方舟)', dashscope:'Alibaba Bailian (阿里百炼)',
+    moonshot:'Moonshot (月之暗面)', zhipu:'Zhipu GLM (智谱)', stepfun:'StepFun (阶跃星辰)', grok:'Grok (xAI)'},
+  providerModels: {
+    openai:['gpt-4o','gpt-4o-mini','gpt-4.1','gpt-4.1-mini','o3','o4-mini'],
+    google:['gemini-1.5-pro','gemini-1.5-flash','gemini-2.5-pro','gemini-2.5-flash'],
+    anthropic:['claude-3-opus','claude-3-sonnet','claude-sonnet-4','claude-haiku'],
+    grok:['grok-4','grok-4-fast','grok-3'],
+    deepseek:['deepseek-v4-pro','deepseek-v4','deepseek-chat','deepseek-reasoner'],
+    siliconflow:['deepseek-ai/DeepSeek-V3','Qwen/Qwen2.5-72B-Instruct','THUDM/glm-4-9b-chat'],
+    volcengine:['ep-20250101000000-xxxxx','doubao-pro-32k','doubao-lite-32k'],
+    dashscope:['qwen-plus','qwen-max','qwen-turbo','qwen3-235b-a22b'],
+    moonshot:['moonshot-v1-32k','moonshot-v1-8k','kimi-k2-0711-preview'],
+    zhipu:['glm-4-plus','glm-4-flash','glm-4-air','glm-4.5'],
+    stepfun:['step-2-16k','step-1-8k','step-1v-8k']
+  },
+  baseUrls: {openai:'https://api.openai.com/v1', google:'https://generativelanguage.googleapis.com/v1beta', anthropic:'https://api.anthropic.com/v1', grok:'https://api.x.ai/v1', deepseek:'https://api.deepseek.com/v1', siliconflow:'https://api.siliconflow.cn/v1', volcengine:'https://ark.cn-beijing.volces.com/api/v3', dashscope:'https://dashscope.aliyuncs.com/compatible-mode/v1', moonshot:'https://api.moonshot.cn/v1', zhipu:'https://open.bigmodel.cn/api/paas/v4', stepfun:'https://api.stepfun.com/v1'},
+  bots: [
+    {bot_id:'bot_main',  bot_name:'主机器人',   platform:'discord', status:'running', llm_provider:'openai',    model_name:'gpt-4o',            trigger_keywords:['你好','帮助','周报']},
+    {bot_id:'bot_alpha', bot_name:'阿尔法测试机', platform:'qq',      status:'running', llm_provider:'dashscope', model_name:'qwen-plus',         trigger_keywords:['测试','ping']},
+    {bot_id:'bot_stats', bot_name:'统计播报员', platform:'discord', status:'stopped', llm_provider:'anthropic', model_name:'claude-sonnet-4',   trigger_keywords:['日报','统计']},
+    {bot_id:'bot_legacy',bot_name:'旧版实例',   platform:'discord', status:'error',   llm_provider:'deepseek',  model_name:'deepseek-chat',     trigger_keywords:['迁移']},
+    {bot_id:'bot_beta',  bot_name:'预览频道',   platform:'qq',      status:'stopped', llm_provider:'google',    model_name:'gemini-1.5-pro',    trigger_keywords:['预览']}
+  ],
+  logs: [
+    {t:'09:41:02.318', l:'info',  m:"Bot 'bot_main' 已上线，WebSocket 连接建立"},
+    {t:'09:41:02.402', l:'info',  m:'知识库加载完成：2,847 条记忆 · 186 条世界书'},
+    {t:'09:41:05.117', l:'debug', m:'recall 命中 6 条记忆（fts5 4 + 向量 2），耗时 38ms'},
+    {t:'09:41:07.901', l:'info',  m:'OpenAI · gpt-4o 请求完成：prompt 1,204 · completion 382 tokens'},
+    {t:'09:41:12.340', l:'warn',  m:"provider 'google' 响应延迟 812ms，超出阈值 600ms"},
+    {t:'09:41:18.055', l:'error', m:'bot_legacy 心跳超时，第 3 次重连失败，进入错误状态'},
+    {t:'09:41:19.221', l:'debug', m:'自动记忆候选提升检查：0 条达到阈值'},
+    {t:'09:41:24.882', l:'info',  m:'WebUI 会话接入：10.0.0.5 · GET /api/health 200'},
+    {t:'09:41:26.440', l:'info',  m:'usage 记账完成：今日累计 tokens 128,436'},
+    {t:'09:41:31.207', l:'debug', m:'世界书关键词扫描：命中 0 条（关键词库 186 条）'}
+  ]
+}
+var LS_KEY = 'elabot-demo-state-v1-synthwave'   /* P4：每页独立 key（file:// 同域共享 localStorage，防止跨页串扰） */
+var FX_IDS = ['sunset', 'grid', 'scanline', 'glow']  /* §8.2 synthwave 特效 id 全集 */
+function makeDefaultTemplates(){
+  return {
+    message_format: '「{author_id_str}」说：\n{content}',
+    user_request_block: '<user_request>\n{parts}\n</user_request>',
+    system_prompt_foundation_header: '你是一个乐于助人的 AI 助手，请使用简体中文回复。',
+    operational_instructions: [],
+    image_note: '（附带 {count} 张图片）',
+    reply_context: '回复对象：{author_info}，原消息：{replied_content}',
+    deleted_reply_context: '（原消息已删除）',
+    tool_context: '工具上下文：{data}',
+    memory_context: '记忆上下文：{data}',
+    worldbook_context: '世界书上下文：{data}',
+    system_prompt_persona_header: '你的角色设定：',
+    system_prompt_situation_header: '当前情景：',
+    system_prompt_participants_header: '参与者：',
+    system_prompt_security_header: '安全要求：'
+  }
+}
+var TEMPLATE_GROUPS = [   /* 4 必填 + 10 可选（§4.4 对齐 prompts.py DEFAULT_TEMPLATES） */
+  {name: '必填', keys: ['message_format', 'user_request_block', 'system_prompt_foundation_header', 'operational_instructions']},
+  {name: '可选', keys: ['image_note', 'reply_context', 'deleted_reply_context', 'tool_context', 'memory_context', 'worldbook_context', 'system_prompt_persona_header', 'system_prompt_situation_header', 'system_prompt_participants_header', 'system_prompt_security_header']}
+]
+var TEMPLATE_PH = {   /* 占位符按键分组（§4.4 逐字对齐 TEMPLATE_PLACEHOLDERS） */
+  message_format: ['{author_id_str}', '{content}', '{image_note}'],
+  image_note: ['{count}'],
+  reply_context: ['{author_info}', '{replied_content}'],
+  tool_context: ['{data}'], memory_context: ['{data}'], worldbook_context: ['{data}'],
+  user_request_block: ['{parts}']
+}
+function makeMockCaptures(){
+  var rows = [
+    ['cap_01','2026-08-02 11:04:12','user_8842','张三','openai','gpt-4o','帮我写一份周报模板',['keyword']],
+    ['cap_02','2026-08-02 10:52:47','user_1203','李四','deepseek','deepseek-v4-pro','介绍一下你的知识库功能',['keyword','prefix']],
+    ['cap_03','2026-08-02 10:31:05','user_7741','Alice','anthropic','claude-sonnet-4','翻译这段英文：Hello world',['command']],
+    ['cap_04','2026-08-02 09:58:33','user_8842','张三','google','gemini-1.5-pro','帮我查一下昨天的天气',['keyword']],
+    ['cap_05','2026-08-02 09:40:21','admin','管理员','dashscope','qwen-plus','更新知识库部署手册第 3 章',['keyword','admin']],
+    ['cap_06','2026-08-02 09:12:56','user_1203','李四','zhipu','glm-4-plus','写一首关于秋天的诗',['prefix']],
+    ['cap_07','2026-08-01 22:47:18','user_5532','王五','siliconflow','deepseek-ai/DeepSeek-V3','数据库报错，帮我看看',['keyword']],
+    ['cap_08','2026-08-01 21:03:44','user_7741','Alice','moonshot','kimi-k2-0711-preview','什么是 Prompt Injection？',['command']]
+  ]
+  return rows.map(function(c){
+    return {id: c[0], captured_at: c[1], user_id: c[2], user_name: c[3], provider: c[4], model: c[5], raw_user_message: c[6], trigger_sources: c[7], detail: null}
+  })
+}
+function makeCaptureDetail(cap){
+  var hasTool = cap.raw_user_message.indexOf('知识库') !== -1 || cap.raw_user_message.indexOf('翻译') !== -1
+  var steps = [{stage: 'reasoning', content: '用户请求：「' + cap.raw_user_message + '」，先分析意图，再决定是否检索知识库。'}]
+  if (hasTool){
+    steps.push({stage: 'tool_call', name: 'search_knowledge', args: '{"query":"' + cap.raw_user_message.slice(0, 8) + '"}'})
+    steps.push({stage: 'tool_result', content: '命中 3 条相关记忆，相关性评分 0.87 / 0.72 / 0.65'})
+  }
+  steps.push({stage: 'response', content: '好的，已为您处理：「' + cap.raw_user_message + '」（模拟回复）'})
+  return {
+    system_prompt: '你是一个乐于助人的 AI 助手。\n（捕获时刻的系统提示词，演示只读）',
+    history_for_llm: [{role: 'user', content: cap.raw_user_message}, {role: 'assistant', content: '…'}],
+    intermediate_llm_responses: steps,
+    usage: {prompt_tokens: 1204, completion_tokens: 382, total_tokens: 1586},
+    raw_llm_response: '{"id":"chatcmpl-demo-001","choices":[{"message":{"role":"assistant","content":"模拟原始响应"}}],"usage":{"total_tokens":1586}}',
+    cleaned_llm_response: '模拟清洗后的响应文本（用于渲染展示）'
+  }
+}
+function makeMockHistory(){
+  return [
+    {t: '08-02 11:04', role: 'user', summary: '帮我写一份周报模板', tags: ['捕获'], content: '帮我写一份周报模板，包含本周进展、下周计划、风险项三个部分。'},
+    {t: '08-02 10:52', role: 'bot', summary: '已生成周报模板，含三部分结构', tags: ['模板'], content: '好的，这是周报模板：\n1. 本周进展\n2. 下周计划\n3. 风险项\n（完整回复示例，用于历史详情弹窗展示。）'},
+    {t: '08-02 10:31', role: 'user', summary: '翻译这段英文：Hello world', tags: ['命令'], content: '翻译这段英文：Hello world'},
+    {t: '08-02 09:58', role: 'bot', summary: 'Hello world → 你好，世界', tags: ['翻译'], content: '「Hello world」译为：你好，世界。'},
+    {t: '08-02 09:12', role: 'user', summary: '写一首关于秋天的诗', tags: ['前缀'], content: '写一首关于秋天的诗'}
+  ]
+}
+
+/* ============ 3. STATE —— 加载（localStorage + 三层兜底）/ 防抖持久化 ============ */
+function clone(x){ return JSON.parse(JSON.stringify(x)) }
+function isNum(v, min, max){ return typeof v === 'number' && !isNaN(v) && v >= min && v <= max }
+function defaultState(){
+  return {
+    v: 1,
+    bots: clone(MOCK.bots),
+    currentBotId: 'bot_main',
+    providers: clone(MOCK.providers),
+    currentProvider: 'openai',
+    params: {temperature: 1.0, top_p: 0.9, max_tokens: 4096},   /* 推理参数（§5.3 校验字段） */
+    customParams: [],                                            /* 卡③ 自定义参数 kv */
+    customHeaders: [],                                           /* 卡④ 请求头 kv */
+    msForm: {model: MOCK.providers[0].model, apiKey: 'sk-demo-' + MOCK.providers[0].name, baseUrl: MOCK.baseUrls[MOCK.providers[0].name] || ''},   /* model-settings 卡①连接表单（默认对齐当前 provider） */
+    configs: {},        /* S1b：bot_id → 配置对象（懒生成 makeBotConfig；§5.2 语义 bots 摘要 + configs 全量） */
+    captures: makeMockCaptures(),   /* S1c：DebugCaptureSummary 8 条（detail 懒加载） */
+    templates: makeDefaultTemplates(),  /* S1c：14 键模板（§4.4） */
+    history: makeMockHistory(),     /* S1c：debugger 历史（mock 5 条 + 运行追加） */
+    psRole: {nickname: '主机器人', persona: '你是一个热情细心的助手，回复简洁有条理。'},  /* S1c：prompt-studio 角色卡 */
+    debugChat: [],      /* S1c：debugger 模拟对话消息流 */
+    userOptions: {enabled: true, member_search_timeout_ms: 5000, rules: {
+      'rule_global': {scope_type:'global', scope_id:'', mode:'blacklist', whitelist_behavior:'triggers_only', users: {
+        'user_6666': {user_id:'user_6666', user_display_name:'恶意用户', blacklist_mode:'deny_response', negative_portrait:''}}},
+      'rule_guild': {scope_type:'guild', scope_id:'127000000001', mode:'whitelist', whitelist_behavior:'messages_only', users: {
+        'user_8842': {user_id:'user_8842', user_display_name:'张三', blacklist_mode:'negative_portrait', negative_portrait:'重视效率，偏好简洁回复'}}}
+    }},   /* S1d：UserOptionsConfig（§4.5 逐字） */
+    appearance: {fx: {sunset:true, grid:true, scanline:true, glow:true}, anim:true, scheme:'dark', customCss:''},
+    logFilter: 'ALL',   /* S1d：日志级别过滤 */
+    logPaused: false,   /* S1d：日志暂停 */
+    lang: 'zh',         /* S1d：语言（en 壳可用） */
+    presets: {},        /* S1c：prompt-studio 预设管理（另存为的模板快照） */
+    logEntries: clone(MOCK.logs),
+    logCollapsed: false,
+    playground: {messages: []}   /* Playground 会话（S1a） */
+  }
+}
+var _resetFlag = false
+function loadState(){
+  var raw = null
+  try { raw = localStorage.getItem(LS_KEY) } catch(e){}
+  if (!raw) return defaultState()
+  try {
+    var s = JSON.parse(raw)
+    if (!s || s.v !== 1 || !Array.isArray(s.bots) || !Array.isArray(s.providers) || typeof s.currentProvider !== 'string' || typeof s.currentBotId !== 'string'){
+      _resetFlag = true; return defaultState()
+    }
+    var d = defaultState()
+    s.params = s.params && typeof s.params === 'object' ? s.params : clone(d.params)
+    if (!isNum(s.params.temperature, 0, 2)) s.params.temperature = 1.0
+    if (!isNum(s.params.top_p, 0, 1)) s.params.top_p = 0.9
+    if (!isNum(s.params.max_tokens, 1, 128000)) s.params.max_tokens = 4096
+    if (!Array.isArray(s.customParams)) s.customParams = []
+    if (!Array.isArray(s.customHeaders)) s.customHeaders = []
+    s.msForm = s.msForm && typeof s.msForm === 'object' && typeof s.msForm.model === 'string' ? s.msForm : clone(d.msForm)
+    s.appearance = s.appearance && typeof s.appearance === 'object' && s.appearance.fx && typeof s.appearance.fx === 'object' ? s.appearance : clone(d.appearance)
+    if (typeof s.appearance.anim !== 'boolean') s.appearance.anim = true
+    if (typeof s.appearance.scheme !== 'string') s.appearance.scheme = 'dark'
+    if (typeof s.appearance.customCss !== 'string') s.appearance.customCss = ''
+    var uo = s.userOptions && typeof s.userOptions === 'object' ? s.userOptions : {}
+    if (typeof uo.enabled !== 'boolean') uo.enabled = true
+    if (!isNum(uo.member_search_timeout_ms, 1000, 30000)) uo.member_search_timeout_ms = 5000
+    if (!uo.rules || typeof uo.rules !== 'object' || Array.isArray(uo.rules)) uo.rules = {}
+    s.userOptions = uo
+    s.logFilter = s.logFilter === 'INFO' || s.logFilter === 'WARN' || s.logFilter === 'ERROR' || s.logFilter === 'DEBUG' ? s.logFilter : 'ALL'
+    if (typeof s.logPaused !== 'boolean') s.logPaused = false
+    s.lang = s.lang === 'en' ? 'en' : 'zh'
+    if (!Array.isArray(s.logEntries)) s.logEntries = clone(d.logEntries)
+    if (typeof s.logCollapsed !== 'boolean') s.logCollapsed = false
+    s.playground = s.playground && Array.isArray(s.playground.messages) ? s.playground : {messages: []}
+    if (!s.configs || typeof s.configs !== 'object' || Array.isArray(s.configs)) s.configs = {}
+    var cfgBad = false
+    Object.keys(s.configs).forEach(function(bid){
+      var cfg = s.configs[bid]
+      if (!cfg || typeof cfg !== 'object'){ cfgBad = true; return }
+      var cfgBase = makeBotConfig({bot_id: bid})
+      Object.keys(cfgBase).forEach(function(k){
+        if (cfg[k] === undefined) cfg[k] = clone(cfgBase[k])
+      })
+      if (!isNum(cfg.temperature, 0, 2)) cfgBad = true
+      if (!isNum(cfg.top_p, 0, 1)) cfgBad = true
+      if (!isNum(cfg.max_tokens, 1, 128000)) cfgBad = true
+      if (!isNum(cfg.frequency_penalty, -2, 2)) cfgBad = true
+      if (!isNum(cfg.presence_penalty, -2, 2)) cfgBad = true
+      var cc = cfg.channel_context_settings
+      if (!cc || !isNum(cc.message_limit, 1, 100) || !isNum(cc.char_limit, 1, 20000)) cfgBad = true
+      var mc = cfg.memory_context_settings
+      if (!mc || !isNum(mc.message_limit, 1, 100) || !isNum(mc.char_limit, 1, 20000)) cfgBad = true
+      if (!isNum(cfg.auto_interject_interval, 1, 99999)) cfgBad = true
+    })
+    if (cfgBad){ _resetFlag = true; return defaultState() }
+    var tpl = s.templates && typeof s.templates === 'object' && !Array.isArray(s.templates) ? s.templates : {}
+    var dt = makeDefaultTemplates()
+    for (var tk in dt){ if (typeof tpl[tk] !== 'string' && !Array.isArray(tpl[tk])) tpl[tk] = clone(dt[tk]) }
+    s.templates = tpl
+    if (!Array.isArray(s.captures) || !s.captures.length) s.captures = makeMockCaptures()
+    if (!s.presets || typeof s.presets !== 'object' || Array.isArray(s.presets)) s.presets = {}
+    if (!Array.isArray(s.history)) s.history = makeMockHistory()
+    s.psRole = s.psRole && typeof s.psRole === 'object' ? s.psRole : clone(d.psRole)
+    if (!Array.isArray(s.debugChat)) s.debugChat = []
+    return s
+  } catch(e){ _resetFlag = true; return defaultState() }
+}
+var state = loadState()
+var _persistTimer = null
+function schedulePersist(){
+  clearTimeout(_persistTimer)
+  _persistTimer = setTimeout(function(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)) }catch(e){} }, 300)
+}
+
+/* ============ 4. UI —— toast / logAppend / modal / fx 面板 / 日志拖拽折叠 ============ */
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c] })
+}
+var toastEl = document.getElementById('toast')
+var toastTimer = null
+function toast(msg, type){
+  toastEl.textContent = msg
+  toastEl.className = 'toast' + (type ? ' ' + type : '')
+  toastEl.classList.add('show')
+  clearTimeout(toastTimer)
+  toastTimer = setTimeout(function(){ toastEl.classList.remove('show') }, 1800)
+}
+function pad2(n){ return (n < 10 ? '0' : '') + n }
+function pad3(n){ return n < 10 ? '00' + n : n < 100 ? '0' + n : '' + n }
+function nowStamp(){
+  var d = new Date()
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) + '.' + pad3(d.getMilliseconds())
+}
+function logAppend(msg, level){
+  state.logEntries.push({t: nowStamp(), l: level || 'info', m: msg})
+  if (state.logEntries.length > 200) state.logEntries.shift()
+  if (!state.logPaused) renderLog()   /* S1d：暂停时仅入列不渲染，恢复后 renderLog */
+  schedulePersist()
+}
+function renderLog(){
+  var body = document.getElementById('log-body')
+  var cnt = document.getElementById('log-count')
+  if (cnt) cnt.textContent = t('logPanel.count', {n: state.logEntries.length})
+  var entries = state.logFilter === 'ALL' ? state.logEntries : state.logEntries.filter(function(e){ return (e.l || 'info').toUpperCase() === state.logFilter })
+  if (!entries.length){
+    body.innerHTML = '<div class="log-empty">' + t('logPanel.empty') + '</div>'
+    return
+  }
+  body.innerHTML = entries.map(function(e){
+    return '<div class="log-row"><span class="log-time">' + esc(e.t) + '</span><span class="log-level ' + esc(e.l) + '">[' + esc(e.l).toUpperCase() + ']</span><span class="log-msg">' + esc(e.m) + '</span></div>'
+  }).join('')
+  if (!REDUCED) body.scrollTop = body.scrollHeight   /* reduced-motion：保持当前滚动位置（§9） */
+}
+var _modalPrevFocus = null
+function isVisible(el){ return document.defaultView.getComputedStyle(el).display !== 'none' }
+function getFocusables(scope){
+  return Array.prototype.slice.call(scope.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])'))
+    .filter(function(el){ return !el.disabled && isVisible(el) })
+}
+function openModal(cfg){
+  var m = document.getElementById('modal')
+  document.getElementById('modal-title').textContent = cfg.title || ''
+  document.getElementById('modal-body').innerHTML = cfg.body || ''
+  var foot = document.getElementById('modal-foot')
+  foot.innerHTML = ''
+  ;(cfg.actions || [{label: t('actionBtn.close'), cls: 'btn-secondary', cb: closeModal}]).forEach(function(a){
+    var b = document.createElement('button')
+    b.className = a.cls || 'btn-secondary'
+    b.textContent = a.label
+    b.addEventListener('click', function(){ if (a.cb) a.cb() })
+    foot.appendChild(b)
+  })
+  m.hidden = false
+  _modalPrevFocus = document.activeElement
+  var focusables = getFocusables(m)
+  var primary = m.querySelector('input, select, textarea')   /* 输入类弹窗优先聚焦输入框（§9） */
+  if (primary && !primary.disabled && isVisible(primary)) primary.focus()
+  else if (focusables.length) focusables[0].focus()
+  else { var box = m.querySelector('.modal-box'); if (box){ box.setAttribute('tabindex', '-1'); box.focus() } }
+}
+function closeModal(){
+  document.getElementById('modal').hidden = true
+  if (_modalPrevFocus && _modalPrevFocus.focus && isVisible(_modalPrevFocus)) _modalPrevFocus.focus()
+}
+function promptModal(title, placeholder, onOk){
+  openModal({
+    title: title,
+    body: '<input class="input" id="modal-input" placeholder="' + esc(placeholder) + '" autocomplete="off" aria-label="' + esc(placeholder) + '">',
+    actions: [
+      {label: t('actionBtn.cancel'), cls: 'btn-secondary', cb: function(){ closeModal() }},
+      {label: t('actionBtn.confirm'), cls: 'btn-primary', cb: function(){
+        var v = document.getElementById('modal-input').value.trim()
+        closeModal()
+        if (v) onOk(v)
+      }}
+    ]
+  })
+}
+/* 确认弹窗（复用 modal 骨架；焦点圈闭/遮罩语义 → 挂点 S1c/S1d） */
+function confirmDialog(msg, onResult){
+  openModal({
+    title: t('dialog.confirmTitle'),
+    body: '<div class="confirm-msg">' + esc(msg) + '</div>',
+    actions: [
+      {label: t('actionBtn.cancel'), cls: 'btn-secondary', cb: function(){ closeModal(); onResult && onResult(false) }},
+      {label: t('actionBtn.confirm'), cls: 'btn-primary', cb: function(){ closeModal(); onResult && onResult(true) }}
+    ]
+  })
+}
+var REDUCED = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+function mockDelay(base, cb){ return setTimeout(cb, REDUCED ? 100 : base) }
+var dirtyFlags = {}
+function markDirty(viewId){ dirtyFlags[viewId || 'model-settings'] = true }
+function getActiveView(){
+  var v = document.querySelector('.view:not([hidden])')
+  return v ? v.dataset.view : null
+}
+function hasDirtyForm(viewId){ return !!dirtyFlags[viewId || getActiveView()] }
+var msSnapshot = null
+function captureMsSnapshot(){
+  return {provider: state.currentProvider, model: state.msForm.model, apiKey: state.msForm.apiKey, baseUrl: state.msForm.baseUrl,
+    params: clone(state.params), customParams: clone(state.customParams), customHeaders: clone(state.customHeaders)}
+}
+function refreshSnapshot(){ msSnapshot = captureMsSnapshot() }
+function discardMsEdits(){
+  if (!msSnapshot) return
+  dirtyFlags['model-settings'] = false
+  state.currentProvider = msSnapshot.provider
+  state.msForm = {model: msSnapshot.model, apiKey: msSnapshot.apiKey, baseUrl: msSnapshot.baseUrl}
+  state.params = clone(msSnapshot.params)
+  state.customParams = clone(msSnapshot.customParams)
+  state.customHeaders = clone(msSnapshot.customHeaders)
+  if (renderedViews['model-settings']) renderModelSettings()
+  refreshSnapshot()
+  schedulePersist()
+  toast(t('dialog.discarded'), 'warn')
+  logAppend('已丢弃未保存的更改（脏表单确认）', 'warn')
+}
+var cfgSnapshot = null
+function refreshCfgSnapshot(){ cfgSnapshot = clone(getBotConfig(state.currentBotId)) }
+function discardCfgEdits(){
+  if (!cfgSnapshot) return
+  dirtyFlags['config'] = false
+  state.configs[state.currentBotId] = clone(cfgSnapshot)
+  if (renderedViews['config']) renderConfig()
+  schedulePersist()
+  toast(t('dialog.discarded'), 'warn')
+  logAppend('已丢弃未保存的更改（脏表单确认）', 'warn')
+}
+var psSnapshot = null
+function refreshPsSnapshot(){ psSnapshot = clone({templates: state.templates, psRole: state.psRole}) }
+function discardPsEdits(){
+  if (!psSnapshot) return
+  dirtyFlags['prompt-studio'] = false
+  state.templates = clone(psSnapshot.templates)
+  state.psRole = clone(psSnapshot.psRole)
+  if (renderedViews['prompt-studio']) renderPromptStudio()
+  refreshPsSnapshot()
+  schedulePersist()
+  toast(t('dialog.discarded'), 'warn')
+  logAppend('已丢弃未保存的更改（脏表单确认）', 'warn')
+}
+function discardDirtyEdits(viewId){
+  viewId = viewId || getActiveView()
+  if (viewId === 'model-settings') discardMsEdits()
+  else if (viewId === 'config') discardCfgEdits()
+  else if (viewId === 'prompt-studio') discardPsEdits()
+  else if (viewId === 'user-options') discardUoEdits()
+}
+function renderFxPanel(){
+  document.getElementById('fx-rows').innerHTML = FX_IDS.map(function(id){
+    return '<label class="fx-row"><span>' + t('fx.' + id) + '<small>' + t('fx.' + id + 'Desc') + '</small></span>' + '<span class="switch"><input type="checkbox" data-fx="' + id + '"' + (state.appearance.fx[id] !== false ? ' checked' : '') + '><span class="track"></span><span class="knob"></span></span></label>'
+  }).join('')
+  document.querySelectorAll('#fx-rows input[data-fx]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      document.documentElement.classList.toggle('fx-off-' + cb.dataset.fx, !cb.checked)
+      state.appearance.fx[cb.dataset.fx] = cb.checked
+      schedulePersist()
+    })
+  })
+}
+var footer = document.getElementById('log-footer')
+var handle = document.getElementById('log-handle')
+var toggle = document.getElementById('log-toggle')
+var dragging = false
+if (state.logCollapsed){ footer.classList.add('collapsed'); toggle.textContent = '▲'; toggle.setAttribute('aria-expanded', 'false') }
+toggle.addEventListener('click', function(){
+  var collapsed = footer.classList.toggle('collapsed')
+  state.logCollapsed = collapsed
+  schedulePersist()
+  toggle.textContent = collapsed ? '▲' : '▼'
+  toggle.setAttribute('aria-expanded', String(!collapsed))
+})
+handle.addEventListener('pointerdown', function(e){
+  e.preventDefault()
+  dragging = true
+  handle.classList.add('dragging')
+  document.body.style.userSelect = 'none'
+  document.addEventListener('pointermove', onMove)
+  document.addEventListener('pointerup', onUp)
+})
+function onMove(e){
+  if (!dragging) return
+  var h = Math.max(120, Math.min(500, window.innerHeight - e.clientY))
+  footer.style.height = h + 'px'
+  footer.classList.remove('collapsed')
+  toggle.textContent = '▼'
+  toggle.setAttribute('aria-expanded', 'true')
+}
+function onUp(){
+  dragging = false
+  handle.classList.remove('dragging')
+  document.body.style.userSelect = ''
+  document.removeEventListener('pointermove', onMove)
+  document.removeEventListener('pointerup', onUp)
+}
+
+/* ============ 5. 模块 render —— providers 完整 / Bot 列表 / 其余视图挂点 ============ */
+var MONO_COLORS = [['rgba(255,110,199,.14)','#ff6ec7'],['rgba(45,226,230,.14)','#2de2e6'],['rgba(255,211,25,.14)','#ffd319'],['rgba(179,163,217,.14)','#b3a3d9'],['rgba(255,56,96,.14)','#ff3860']]
+function monoStyle(name){
+  var c = MONO_COLORS[name.length % MONO_COLORS.length]
+  return 'background:' + c[0] + ';color:' + c[1]
+}
+function getBot(id){
+  for (var i = 0; i < state.bots.length; i++){ if (state.bots[i].bot_id === id) return state.bots[i] }
+  return null
+}
+function getProvider(name){
+  for (var i = 0; i < state.providers.length; i++){ if (state.providers[i].name === name) return state.providers[i] }
+  return null
+}
+function renderBotList(){
+  var list = document.getElementById('bot-list')
+  if (!state.bots.length){
+    list.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">◇</div><div class="empty-title">' + t('sidebar.empty') + '</div><div class="empty-desc">' + t('sidebar.emptyDesc') + '</div></div>'
+    return
+  }
+  list.innerHTML = state.bots.map(function(b){
+    var dot = b.status === 'running' ? 'running' : b.status === 'starting' ? 'starting' : b.status === 'error' ? 'error' : 'stopped'
+    var acts = [['start', '▶', t('sidebar.start')], ['stop', '■', t('sidebar.stop')], ['restart', '↻', t('sidebar.restart')], ['delete', '🗑', t('sidebar.delete')]]
+    return '<div class="bot-card' + (b.bot_id === state.currentBotId ? ' active' : '') + '" data-bot="' + esc(b.bot_id) + '" role="button" tabindex="0">' + '<div class="card-actions">' + acts.map(function(a){
+        return '<button class="act-btn' + (a[0] === 'delete' ? ' danger' : '') + '" data-act="' + a[0] + '" title="' + a[2] + ' ' + esc(b.bot_id) + '" aria-label="' + a[2] + '">' + a[1] + '</button>'
+      }).join('') + '</div>' + '<div class="card-row card-row-main"><span class="status-dot ' + dot + '" aria-hidden="true"></span><span class="bot-name">' + esc(b.bot_name) + '</span></div>' + '<div class="card-row card-row-id"><span class="card-id">' + esc(b.bot_id) + '</span></div>' + '<div class="card-row card-row-meta"><span class="platform-badge ' + esc(b.platform) + '">' + esc(b.platform) + '</span><span class="card-meta">' + esc(b.model_name) + ' · ' + esc(b.llm_provider) + '</span></div>' + '<div class="card-tags">' + (b.trigger_keywords || []).map(function(k){ return '<span class="keyword-tag">' + esc(k) + '</span>' }).join('') + '</div>' + '</div>'
+  }).join('')
+}
+function providerCard(p){
+  var disp = MOCK.providerNames[p.name] || p.name
+  var isCur = p.name === state.currentProvider
+  var chip
+  if (p.configured === false || p.healthy === null){
+    chip = '<span class="health-chip off">' + t('providersPage.unconfigured') + '</span>'
+  } else if (p.latency_ms != null && p.latency_ms > 400){
+    chip = '<span class="health-chip slow">' + t('providersPage.healthy.slow') + '</span>'
+  } else if (p.healthy === true){
+    chip = '<span class="health-chip ok">' + t('providersPage.healthy.ok') + '</span>'
+  } else {
+    chip = '<span class="health-chip off">' + t('providersPage.healthy.off') + '</span>'
+  }
+  var lat = p.latency_ms == null ? '—' : p.latency_ms + ' ms'
+  var curBadge = isCur
+    ? '<span class="badge ok">' + t('providersPage.current') + '</span>'
+    : '<button class="btn-mini" data-action="set-provider" data-provider="' + esc(p.name) + '">' + t('providersPage.setCurrent') + '</button>'
+  var foot = '<span class="prov-actions" style="display:inline-flex;gap:6px;align-items:center">' + curBadge + '<button class="btn-mini" data-action="prov-test" data-provider="' + esc(p.name) + '">' + t('providersPage.test') + '</button></span>'
+  return '<div class="provider-card' + (isCur ? ' current' : '') + '">' + '<div class="prov-head"><span class="monogram" style="' + monoStyle(p.name) + '">' + esc(p.name.charAt(0).toUpperCase()) + '</span>' + '<span class="prov-name">' + esc(disp) + '</span>' + chip + '</div>' + '<div class="prov-model">' + esc(p.model) + '</div>' + '<div class="prov-foot"><span class="prov-meta">' + t('providersPage.latency') + ' <span class="latency">' + esc(lat) + '</span></span>' + foot + '</div>' + '</div>'
+}
+var _provLoaded = false
+function renderProviders(){
+  var host = document.getElementById('view-providers')
+  if (!_provLoaded){
+    host.innerHTML = '<div class="page-head"><h1 class="page-title">' + t('providersPage.title') + '</h1><p class="page-sub">' + t('providersPage.sub') + '</p></div>' + '<section class="stats-grid" aria-label="状态统计">' + [1,2,3,4].map(function(){
+      return '<div class="stat-card"><div class="sk-line" style="width:52%"></div><div class="sk-line" style="width:74%"></div></div>'
+    }).join('') + '</section>' + '<section class="card" aria-label="LLM 提供商"><h2 class="card-title">LLM 提供商 <span class="hint">' + t('providersPage.loading') + '</span></h2>' + '<div class="providers-grid">' + state.providers.map(function(){
+      return '<div class="provider-card"><div class="sk-line" style="width:64%"></div><div class="sk-line" style="width:46%"></div></div>'
+    }).join('') + '</div></section>'
+    mockDelay(600, function(){ _provLoaded = true; renderProviders() })
+    return
+  }
+  var runBots = state.bots.filter(function(b){ return b.status === 'running' }).length
+  var confProv = state.providers.filter(function(p){ return p.configured }).length
+  var okProv = state.providers.filter(function(p){ return p.healthy === true }).length
+  var cur = getProvider(state.currentProvider)
+  var stats = [
+    {label: t('providersPage.stats.onlineBots'),    num: runBots, unit: t('providersPage.stats.botUnit'),  trend: '共 ' + state.bots.length + ' 个 Bot'},
+    {label: t('providersPage.stats.configured'),    num: confProv, unit: t('providersPage.stats.provUnit'), trend: '共 ' + state.providers.length + ' 家提供商'},
+    {label: t('providersPage.stats.healthy'),       num: okProv,  unit: t('providersPage.stats.provUnit'), trend: '正常 + 缓慢'},
+    {label: t('providersPage.stats.currentProv'),   num: MOCK.providerNames[state.currentProvider] || state.currentProvider, unit: '', trend: cur ? cur.model : ''}
+  ]
+  var statsHtml = stats.map(function(s){
+    return '<div class="stat-card"><div class="stat-label">' + esc(s.label) + '</div>' + '<div class="stat-value"><span class="stat-num">' + esc(s.num) + '</span>' + (s.unit ? '<span class="stat-unit">' + esc(s.unit) + '</span>' : '') + '</div>' + '<div class="stat-trend">' + esc(s.trend) + '</div></div>'
+  }).join('')
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('providersPage.title') + '</h1><p class="page-sub">' + t('providersPage.sub') + '</p></div>' + '<section class="stats-grid" aria-label="状态统计">' + statsHtml + '</section>' + '<section class="card" aria-label="LLM 提供商"><h2 class="card-title">LLM 提供商 <span class="hint">' + confProv + ' 家已配置 · ' + okProv + ' 家在线</span></h2>' + '<div class="providers-grid">' + state.providers.map(providerCard).join('') + '</div></section>'
+}
+function provTest(name){
+  var p = getProvider(name)
+  if (!p) return
+  var btn = document.querySelector('[data-action="prov-test"][data-provider="' + name + '"]')
+  if (btn){ btn.disabled = true; btn.textContent = t('providersPage.testing') }
+  var disp = MOCK.providerNames[name] || name
+  mockDelay(900, function(){
+    if (btn){ btn.disabled = false; btn.textContent = t('providersPage.test') }
+    if (!p.configured || p.healthy === false){
+      toast(t('providersPage.testFail', {name: disp}), 'error')
+      logAppend('健康检测失败：' + disp, 'error')
+    } else {
+      p.healthy = true
+      p.latency_ms = 80 + Math.floor(Math.random() * 480)
+      var ok = p.latency_ms <= 400
+      toast(t('providersPage.testOk', {name: disp, ms: p.latency_ms, status: ok ? t('providersPage.healthy.ok') : t('providersPage.healthy.slow')}))
+      logAppend('健康检测成功：' + disp + ' · ' + p.latency_ms + 'ms', 'info')
+    }
+    renderProviders()
+    schedulePersist()
+  })
+}
+/* ===== model-settings 视图（S1a）===== */
+var _msLastProvider = null
+var _msRendered = false
+function getProviderModels(name){
+  var list = MOCK.providerModels[name]
+  if (list && list.length) return list
+  var p = getProvider(name)
+  return p ? [p.model] : []
+}
+function renderMsProviderCard(){
+  var provs = state.providers.map(function(p){
+    return '<option value="' + esc(p.name) + '"' + (p.name === state.currentProvider ? ' selected' : '') + '>' + esc(MOCK.providerNames[p.name] || p.name) + '</option>'
+  }).join('')
+  return '<section class="card" aria-label="LLM 提供商连接"><h2 class="card-title">' + t('modelSettings.providerCard') + '</h2>' + '<div class="ms-grid">' + '<div class="field"><label class="field-label" for="ms-provider">' + t('modelSettings.provider') + '</label><select class="select" id="ms-provider">' + provs + '</select></div>' + '<div class="field"><label class="field-label" for="ms-model">' + t('modelSettings.model') + '</label><select class="select" id="ms-model"></select></div>' + '<div class="field"><label class="field-label" for="ms-apikey">' + t('modelSettings.apiKey') + '</label><div class="ms-row"><input class="input" id="ms-apikey" type="password" autocomplete="off"><button class="btn-mini" data-action="ms-toggle-key" aria-label="' + t('modelSettings.showKey') + '">' + t('modelSettings.showKey') + '</button></div></div>' + '<div class="field"><label class="field-label" for="ms-baseurl">' + t('modelSettings.baseUrl') + '</label><input class="input" id="ms-baseurl" type="text" autocomplete="off"></div>' + '</div>' + '<div class="error-banner" id="ms-error" hidden><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg"></span></div>' + '<div class="form-actions"><button class="btn-secondary" data-action="ms-test" id="ms-test">' + t('modelSettings.testConnection') + '</button></div>' + '</section>'
+}
+function sliderRow(key, label, val, min, max, step){
+  return '<div class="slider-row"><span class="slider-label">' + label + '</span>' + '<input type="range" data-param="' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">' + '<span class="slider-val" id="slider-val-' + key + '">' + val + '</span></div>'
+}
+function msReqBody(){
+  return {provider: state.currentProvider, model: state.msForm.model, temperature: state.params.temperature, top_p: state.params.top_p, max_tokens: state.params.max_tokens}
+}
+function refreshReqSummary(){
+  var el = document.getElementById('ms-req-summary')
+  if (el) el.textContent = JSON.stringify(msReqBody(), null, 2)
+}
+function renderMsParamsCard(){
+  var p = state.params
+  return '<section class="card" aria-label="推理参数"><h2 class="card-title">' + t('modelSettings.paramsCard') + ' <span class="hint">' + t('modelSettings.paramsHint') + '</span></h2>' + sliderRow('temperature', t('modelSettings.temperature'), p.temperature, 0, 2, 0.05) + sliderRow('top_p', t('modelSettings.topP'), p.top_p, 0, 1, 0.01) + sliderRow('max_tokens', t('modelSettings.maxTokens'), p.max_tokens, 1, 128000, 256) + '<div class="field-label" style="margin-top:12px">' + t('modelSettings.reqSummary') + '</div>' + '<pre class="json-pre" id="ms-req-summary">' + esc(JSON.stringify(msReqBody(), null, 2)) + '</pre>' + '</section>'
+}
+function kvRowsHtml(kind, list){
+  return list.length ? list.map(function(item, idx){
+    return '<div class="kv-edit-row">' + '<input class="input" placeholder="' + t('modelSettings.kvKey') + '" value="' + esc(item.k) + '" data-kv="' + kind + '" data-idx="' + idx + '" data-field="k">' + '<input class="input" placeholder="' + t('modelSettings.kvValue') + '" value="' + esc(item.v) + '" data-kv="' + kind + '" data-idx="' + idx + '" data-field="v">' + '<button class="btn-icon" data-action="ms-del-row" data-kind="' + kind + '" data-idx="' + idx + '" title="' + t('modelSettings.remove') + '" aria-label="' + t('modelSettings.remove') + '">✕</button>' + '</div>'
+  }).join('') : '<div class="kv-empty">' + t('modelSettings.kvEmpty') + '</div>'
+}
+function renderMsKvCard(kind, title, list){
+  return '<section class="card" aria-label="' + title + '"><h2 class="card-title">' + title + '</h2>' + '<div class="kv-head"><span class="hint">' + t('modelSettings.kvKey') + ' / ' + t('modelSettings.kvValue') + '</span><button class="btn-mini" data-action="ms-add-row" data-kind="' + kind + '">＋ ' + t('modelSettings.addRow') + '</button></div>' + '<div class="kv-list" data-kind="' + kind + '">' + kvRowsHtml(kind, list) + '</div>' + (kind === 'customHeaders' ? '<div class="form-actions"><button class="btn-primary" data-action="ms-save" id="ms-save">' + t('modelSettings.save') + '</button></div>' : '') + '</section>'
+}
+function renderPlaygroundCard(){
+  return '<section class="card" aria-label="测试对话"><div class="chat-head"><h2 class="card-title">' + t('modelSettings.chatCard') + '</h2><button class="btn-mini" data-action="pg-clear">' + t('modelSettings.clear') + '</button></div>' + '<div class="chat-input-row" style="margin-top:0"><span class="switch-label" style="font-size:12px">' + t('modelSettings.failSim') + '</span><label class="switch"><input type="checkbox" data-act="fail-sim" id="pg-fail-sim"><span class="track"></span><span class="knob"></span></label></div>' + '<div class="chat-box" id="pg-messages" aria-live="polite"></div>' + '<div class="chat-input-row"><input class="input" id="pg-input" placeholder="' + t('modelSettings.chatPlaceholder') + '" autocomplete="off"><button class="btn-primary" data-action="pg-send">' + t('modelSettings.send') + '</button></div>' + '</section>'
+}
+function renderChat(){
+  var box = document.getElementById('pg-messages')
+  if (!box) return
+  if (!state.playground.messages.length){
+    box.innerHTML = '<div class="chat-empty">' + t('modelSettings.chatEmpty') + '</div>'
+    return
+  }
+  box.innerHTML = state.playground.messages.map(function(m){
+    if (m.role === 'fail'){
+      return '<div class="chat-row bot"><span class="chat-role">AI</span><div class="error-banner" style="margin-bottom:0;max-width:72%"><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg">' + esc(m.text) + ' <button class="btn-secondary" data-action="pg-retry">' + t('actionBtn.retry') + '</button></span></div></div>'
+    }
+    var cls = m.role === 'user' ? 'user' : 'bot'
+    return '<div class="chat-row ' + cls + '"><span class="chat-role">' + (m.role === 'user' ? '我' : 'AI') + '</span><div class="chat-bubble' + (m.role === 'thinking' ? ' thinking' : '') + '">' + esc(m.text) + '</div></div>'
+  }).join('')
+  if (!REDUCED) box.scrollTop = box.scrollHeight
+}
+function renderModelSettings(){
+  var host = document.getElementById('view-model-settings')
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('modelSettings.title') + '</h1><p class="page-sub">' + t('modelSettings.sub') + '</p></div>' + renderMsProviderCard() + renderMsParamsCard() + renderMsKvCard('customParams', t('modelSettings.customParams'), state.customParams) + renderMsKvCard('customHeaders', t('modelSettings.customHeaders'), state.customHeaders) + renderPlaygroundCard()
+  renderChat()
+  refreshModelSettings()   /* 首次渲染：填充 ms-model 选项与连接表单值 */
+  dirtyFlags['model-settings'] = false
+  refreshSnapshot()
+}
+function refreshModelSettings(){
+  var p = getProvider(state.currentProvider)
+  if (!p) return
+  var first = !_msRendered
+  var changed = _msLastProvider !== state.currentProvider
+  if (!first && !changed) return
+  _msLastProvider = state.currentProvider
+  _msRendered = true
+  if (changed && !first){
+    state.msForm.model = p.model
+    state.msForm.apiKey = 'sk-demo-' + state.currentProvider
+    state.msForm.baseUrl = MOCK.baseUrls[state.currentProvider] || ''
+  }
+  var selP = document.getElementById('ms-provider')
+  var selM = document.getElementById('ms-model')
+  var key = document.getElementById('ms-apikey')
+  var base = document.getElementById('ms-baseurl')
+  if (selP) selP.value = state.currentProvider
+  if (selM){
+    var models = getProviderModels(state.currentProvider)
+    if (models.indexOf(state.msForm.model) === -1) state.msForm.model = models[0] || ''
+    selM.innerHTML = models.map(function(m){
+      return '<option value="' + esc(m) + '"' + (m === state.msForm.model ? ' selected' : '') + '>' + esc(m) + '</option>'
+    }).join('')
+  }
+  if (key) key.value = state.msForm.apiKey
+  if (base) base.value = state.msForm.baseUrl
+  if (!first) refreshSnapshot()   /* 联动后快照同步（不视为用户编辑） */
+}
+function onProviderSelect(){
+  var sel = document.getElementById('ms-provider')
+  if (!sel || sel.value === state.currentProvider) return
+  state.currentProvider = sel.value
+  schedulePersist()
+  refreshModelSettings()
+  markDirty('model-settings')
+}
+function testConnection(){
+  var btn = document.getElementById('ms-test')
+  var banner = document.getElementById('ms-error')
+  if (!btn) return
+  btn.disabled = true
+  btn.textContent = t('modelSettings.testing')
+  if (banner) banner.hidden = true
+  var p = getProvider(state.currentProvider)
+  var disp = MOCK.providerNames[state.currentProvider] || state.currentProvider
+  var fail = p.healthy === false || (p.healthy === null && Math.random() < 0.5)   /* healthy=false 必失败；null 随机 */
+  mockDelay(800, function(){
+    btn.disabled = false
+    btn.textContent = t('modelSettings.testConnection')
+    if (fail){
+      banner.hidden = false
+      banner.querySelector('.err-msg').innerHTML = esc(t('modelSettings.connectionFail', {name: disp})) + ' <button class="btn-secondary" data-action="ms-test">' + t('actionBtn.retry') + '</button>'
+      toast(t('toast.connectionFail'), 'error')
+      logAppend('连接测试失败：' + disp, 'error')
+    } else {
+      var ms = 120 + Math.floor(Math.random() * 480)
+      toast(t('toast.connectionOk', {ms: ms}))
+      logAppend('连接测试成功：' + disp + ' · ' + ms + 'ms', 'info')
+    }
+  })
+}
+function toggleApiKey(){
+  var key = document.getElementById('ms-apikey')
+  var btn = document.querySelector('[data-action="ms-toggle-key"]')
+  if (!key || !btn) return
+  var show = key.type === 'password'
+  key.type = show ? 'text' : 'password'
+  btn.textContent = show ? t('modelSettings.hideKey') : t('modelSettings.showKey')
+  btn.setAttribute('aria-label', show ? t('modelSettings.hideKey') : t('modelSettings.showKey'))
+}
+function addKvRow(kind){
+  state[kind].push({k: '', v: ''})
+  markDirty('model-settings')
+  var list = document.querySelector('.kv-list[data-kind="' + kind + '"]')
+  if (list) list.innerHTML = kvRowsHtml(kind, state[kind])
+}
+function delKvRow(kind, idx){
+  state[kind].splice(idx, 1)
+  markDirty('model-settings')
+  var list = document.querySelector('.kv-list[data-kind="' + kind + '"]')
+  if (list) list.innerHTML = kvRowsHtml(kind, state[kind])
+}
+function saveModelSettings(){
+  var btn = document.getElementById('ms-save')
+  if (!btn) return
+  btn.disabled = true
+  btn.textContent = t('modelSettings.saving')
+  mockDelay(150 + Math.random() * 250, function(){
+    btn.disabled = false
+    btn.textContent = t('modelSettings.save')
+    dirtyFlags['model-settings'] = false
+    refreshSnapshot()
+    schedulePersist()
+    toast(t('status.saved'))
+    logAppend('模型设置已保存（provider=' + state.currentProvider + ' · model=' + state.msForm.model + '）')
+  })
+}
+function failSimOn(){ var el = document.getElementById('pg-fail-sim'); return !!(el && el.checked) }
+function pgFinishSim(text, retry){
+  var arr = state.playground.messages
+  for (var i = arr.length - 1; i >= 0; i--){ if (arr[i].role === 'thinking'){ arr.splice(i, 1); break } }
+  if (failSimOn()){
+    arr.push({role: 'fail', text: t('modelSettings.failSimMsg', {provider: MOCK.providerNames[state.currentProvider] || state.currentProvider})})
+    toast(t('toast.requestFail'), 'error')
+    logAppend('Playground 请求失败（模拟失败开关）：' + text.slice(0, 30), 'error')
+  } else {
+    var p = state.params
+    arr.push({role: 'bot', text: t('modelSettings.demoReply', {
+      question: text, temperature: p.temperature, topP: p.top_p, maxTokens: p.max_tokens,
+      provider: MOCK.providerNames[state.currentProvider] || state.currentProvider, model: state.msForm.model
+    })})
+    logAppend('Playground ' + (retry ? '重试' : '回复') + '完成：temperature=' + p.temperature + ' · top_p=' + p.top_p + ' · max_tokens=' + p.max_tokens, 'debug')
+  }
+  if (arr.length > 50) arr.splice(0, arr.length - 50)
+  renderChat()
+  schedulePersist()
+}
+function sendChat(){
+  var input = document.getElementById('pg-input')
+  var text = input.value.trim()
+  if (!text){ toast(t('modelSettings.chatEmptyInput'), 'warn'); return }
+  input.value = ''
+  state.playground.messages.push({role: 'user', text: text})
+  state.playground.messages.push({role: 'thinking', text: t('modelSettings.thinking')})
+  renderChat()
+  schedulePersist()
+  logAppend('Playground 发送：' + text.slice(0, 40), 'debug')
+  mockDelay(1200 + Math.random() * 800, function(){ pgFinishSim(text, false) })
+}
+function pgRetry(){
+  var arr = state.playground.messages
+  var lastUser = null
+  for (var i = arr.length - 1; i >= 0; i--){ if (arr[i].role === 'user'){ lastUser = arr[i].text; break } }
+  if (!lastUser){ toast(t('modelSettings.chatEmptyInput'), 'warn'); return }
+  for (var j = arr.length - 1; j >= 0; j--){ if (arr[j].role === 'fail'){ arr.splice(j, 1); break } }
+  arr.push({role: 'thinking', text: t('modelSettings.thinking')})
+  renderChat()
+  schedulePersist()
+  mockDelay(1200 + Math.random() * 800, function(){ pgFinishSim(lastUser, true) })
+}
+function clearChat(){
+  state.playground.messages = []
+  renderChat()
+  schedulePersist()
+  toast(t('toast.cleared'))
+  logAppend('Playground 对话已清空')
+}
+/* ===== config 视图（S1b，§4.2 字段三级策略）===== */
+var _cfgLastBot = null
+var _cfgTimer = null
+function makeBotConfig(b){
+  b = b || {}
+  return {
+    bot_id: b.bot_id || '', bot_name: b.bot_name || '', platform: b.platform || 'discord', enabled: true,
+    discord_token: 'demo-token-' + (b.bot_id || 'demo'),
+    llm_provider: b.llm_provider || 'openai', api_key: 'sk-cfg-' + (b.bot_id || 'demo'),
+    model_name: b.model_name || (MOCK.providers[0] ? MOCK.providers[0].model : 'gpt-4o'),
+    base_url: MOCK.baseUrls[b.llm_provider || 'openai'] || '',
+    trigger_keywords: (b.trigger_keywords || []).slice(), trigger_match_mode: 'contains', trigger_case_sensitive: false,
+    temperature: 1.0, top_p: 0.9, max_tokens: 4096, top_k: 40, frequency_penalty: 0, presence_penalty: 0,
+    context_mode: 'channel', channel_context_settings: {message_limit: 10, char_limit: 4000},
+    memory_context_settings: {message_limit: 15, char_limit: 6000},
+    auto_interject_enabled: false, auto_interject_interval: 30,
+    repeat_parrot_enabled: false, repeat_parrot_threshold: 3,
+    auto_memory_enabled: true, auto_memory_recall_top_k: 12, auto_memory_recall_char_limit: 2200, auto_memory_recall_max_age_days: 365,
+    system_prompt: '你是一个乐于助人的 AI 助手，请使用简体中文回复。\n（演示页只读 system_prompt，占位内容）',
+    api_secret_key: 'sk-secret-' + (b.bot_id || 'demo'),
+    custom_headers_count: 2, interaction_history: {enabled: true, max_storage_bytes: 1048576, auto_prune: true},
+    plugins_count: 3, custom_parameters_count: 4
+  }
+}
+function getBotConfig(botId){
+  if (!state.configs[botId]) state.configs[botId] = makeBotConfig(getBot(botId))
+  return state.configs[botId]
+}
+function setCfgValueOn(obj, path, val){
+  var parts = path.split('.')
+  var cur = obj
+  for (var i = 0; i < parts.length - 1; i++){ if (cur[parts[i]] == null || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {}; cur = cur[parts[i]] }
+  cur[parts[parts.length - 1]] = val
+}
+function cfgSliderRow(path, label, val, min, max, step){
+  return '<div class="slider-row"><span class="slider-label">' + label + '</span>' + '<input type="range" data-cfg="' + path + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '">' + '<span class="slider-val" id="cfg-slider-val-' + path.replace(/\./g, '_') + '">' + val + '</span></div>'
+}
+function cfgSwitchRow(path, label, checked){
+  return '<div class="switch-row"><span class="switch-label">' + label + '</span>' + '<label class="switch"><input type="checkbox" data-cfg="' + path + '"' + (checked ? ' checked' : '') + '><span class="track"></span><span class="knob"></span></label></div>'
+}
+function cfgSelect(path, label, options, val, disabled){
+  return '<div class="field"><label class="field-label">' + label + '</label><select class="select" data-cfg="' + path + '"' + (disabled ? ' disabled' : '') + '>' + options.map(function(o){ return '<option value="' + esc(o[0]) + '"' + (o[0] === val ? ' selected' : '') + '>' + esc(o[1]) + '</option>' }).join('') + '</select></div>'
+}
+function cfgNumField(path, label, val, min, max, hint){
+  return '<div class="field"><label class="field-label">' + label + '</label><input class="input" type="number" min="' + min + '" max="' + max + '" step="any" value="' + val + '" data-cfg="' + path + '">' + (hint ? '<span class="field-hint">' + hint + '</span>' : '') + '</div>'
+}
+function cfgProviderOptions(){
+  return state.providers.map(function(p){ return [p.name, MOCK.providerNames[p.name] || p.name] })
+}
+function renderCfgBase(cfg){
+  return '<section class="card" aria-label="' + t('configPanel.base') + '"><h2 class="card-title">' + t('configPanel.base') + ' <span class="hint">' + esc(cfg.bot_id) + '</span></h2>' + '<div class="ms-grid">' + '<div class="field"><label class="field-label">' + t('configPanel.botId') + '</label><input class="input" readonly value="' + esc(cfg.bot_id) + '"></div>' + '<div class="field"><label class="field-label">' + t('configPanel.botName') + '</label><input class="input" type="text" value="' + esc(cfg.bot_name) + '" data-cfg="bot_name"></div>' + cfgSelect('platform', t('configPanel.platform'), [['discord','Discord'],['qq','QQ']], cfg.platform, false) + '<div class="field"><span class="field-label">' + t('configPanel.enabled') + '</span>' + cfgSwitchRow('enabled', '', cfg.enabled) + '</div>' + '<div class="field"><label class="field-label">' + t('configPanel.llmProvider') + '</label><select class="select" data-cfg="llm_provider">' + cfgProviderOptions().map(function(o){ return '<option value="' + esc(o[0]) + '"' + (o[0] === cfg.llm_provider ? ' selected' : '') + '>' + esc(o[1]) + '</option>' }).join('') + '</select></div>' + '<div class="field"><label class="field-label">' + t('configPanel.modelName') + '</label><input class="input" type="text" value="' + esc(cfg.model_name) + '" data-cfg="model_name"></div>' + '<div class="field"><label class="field-label">' + t('configPanel.apiKey') + '</label><div class="ms-row"><input class="input" type="password" value="' + esc(cfg.api_key) + '" data-cfg="api_key" autocomplete="off"><button class="btn-mini" data-action="cfg-toggle-pw" data-pw="api_key" type="button">' + t('configPanel.show') + '</button></div></div>' + '<div class="field"><label class="field-label">' + t('configPanel.discordToken') + '</label><div class="ms-row"><input class="input" type="password" value="' + esc(cfg.discord_token) + '" data-cfg="discord_token" autocomplete="off"><button class="btn-mini" data-action="cfg-toggle-pw" data-pw="discord_token" type="button">' + t('configPanel.show') + '</button></div></div>' + '<div class="field"><label class="field-label">' + t('configPanel.baseUrl') + '</label><input class="input" type="text" value="' + esc(cfg.base_url) + '" data-cfg="base_url"></div>' + '<div class="field"><span class="field-label">' + t('configPanel.caseSensitive') + '</span>' + cfgSwitchRow('trigger_case_sensitive', '', cfg.trigger_case_sensitive) + '</div>' + cfgSelect('trigger_match_mode', t('configPanel.matchMode'), [['contains','contains（只读）']], cfg.trigger_match_mode, true) + '</div>' + '<div class="field"><label class="field-label">' + t('configPanel.keywords') + '</label>' + '<div class="cfg-tags" id="cfg-tags"></div>' + '<div class="ms-row"><input class="input tag-input" id="cfg-tag-input" placeholder="' + t('configPanel.tagInput') + '" autocomplete="off"></div>' + '</div>' + '</section>'
+}
+function renderCfgParams(cfg){
+  return '<section class="card" aria-label="' + t('configPanel.params') + '"><h2 class="card-title">' + t('configPanel.params') + '</h2>' + cfgSliderRow('temperature', t('configPanel.temperature'), cfg.temperature, 0, 2, 0.05) + cfgSliderRow('top_p', t('configPanel.topP'), cfg.top_p, 0, 1, 0.01) + cfgSliderRow('max_tokens', t('configPanel.maxTokens'), cfg.max_tokens, 1, 128000, 256) + cfgSliderRow('frequency_penalty', t('configPanel.freqPenalty'), cfg.frequency_penalty, -2, 2, 0.1) + cfgSliderRow('presence_penalty', t('configPanel.presPenalty'), cfg.presence_penalty, -2, 2, 0.1) + cfgNumField('top_k', t('configPanel.topK'), cfg.top_k, 1, 100) + '</section>'
+}
+function renderCfgContext(cfg){
+  return '<section class="card" aria-label="' + t('configPanel.context') + '"><h2 class="card-title">' + t('configPanel.context') + '</h2>' + '<div class="ms-grid">' + cfgSelect('context_mode', t('configPanel.contextMode'), [['channel','channel（只读）']], cfg.context_mode, true) + '</div>' + '<h3 class="card-title" style="font-size:13px;margin:10px 0 6px">' + t('configPanel.chCtx') + '</h3>' + '<div class="ms-grid">' + cfgNumField('channel_context_settings.message_limit', t('configPanel.msgLimit'), cfg.channel_context_settings.message_limit, 1, 100) + cfgNumField('channel_context_settings.char_limit', t('configPanel.charLimit'), cfg.channel_context_settings.char_limit, 1, 20000) + '</div>' + '<h3 class="card-title" style="font-size:13px;margin:10px 0 6px">' + t('configPanel.memCtx') + '</h3>' + '<div class="ms-grid">' + cfgNumField('memory_context_settings.message_limit', t('configPanel.msgLimit'), cfg.memory_context_settings.message_limit, 1, 100) + cfgNumField('memory_context_settings.char_limit', t('configPanel.charLimit'), cfg.memory_context_settings.char_limit, 1, 20000) + '</div>' + '</section>'
+}
+function renderCfgAuto(cfg){
+  return '<section class="card" aria-label="' + t('configPanel.auto') + '"><h2 class="card-title">' + t('configPanel.auto') + '</h2>' + cfgSwitchRow('auto_interject_enabled', t('configPanel.autoInterject'), cfg.auto_interject_enabled) + cfgNumField('auto_interject_interval', t('configPanel.interjectInterval'), cfg.auto_interject_interval, 1, 99999, '≥ 1') + cfgSwitchRow('repeat_parrot_enabled', t('configPanel.repeatParrot'), cfg.repeat_parrot_enabled) + cfgNumField('repeat_parrot_threshold', t('configPanel.repeatThreshold'), cfg.repeat_parrot_threshold, 1, 9999) + '</section>'
+}
+function renderCfgMemory(cfg){
+  return '<section class="card" aria-label="' + t('configPanel.memory') + '"><h2 class="card-title">' + t('configPanel.memory') + '</h2>' + cfgSwitchRow('auto_memory_enabled', t('configPanel.autoMemory'), cfg.auto_memory_enabled) + '<div class="ms-grid">' + cfgNumField('auto_memory_recall_top_k', t('configPanel.recallTopK'), cfg.auto_memory_recall_top_k, 1, 100) + cfgNumField('auto_memory_recall_char_limit', t('configPanel.recallCharLimit'), cfg.auto_memory_recall_char_limit, 1, 20000) + cfgNumField('auto_memory_recall_max_age_days', t('configPanel.recallMaxAge'), cfg.auto_memory_recall_max_age_days, 1, 3650) + '</div>' + '</section>'
+}
+function fmtBytes(n){
+  return n >= 1048576 ? (n / 1048576).toFixed(0) + 'MB' : Math.round(n / 1024) + 'KB'
+}
+function renderCfgAdvanced(cfg){
+  var ih = cfg.interaction_history || {}
+  return '<section class="card" aria-label="' + t('configPanel.advanced') + '"><details class="cfg-details"><summary>' + t('configPanel.advanced') + '</summary><div class="cfg-advanced">' + '<div class="field"><label class="field-label">' + t('configPanel.sysPrompt') + '</label><textarea class="input" rows="4" data-cfg="system_prompt" spellcheck="false">' + esc(cfg.system_prompt) + '</textarea></div>' + '<div class="kv-row"><span class="k">' + t('configPanel.apiSecret') + '</span><span class="v" id="cfg-secret">••••••••</span><button class="btn-mini" data-action="cfg-toggle-secret" aria-label="' + t('configPanel.showSecret') + '">' + t('configPanel.showSecret') + '</button></div>' + '<div class="kv-row"><span class="k">' + t('configPanel.customHeadersCount') + '</span><span class="v">' + cfg.custom_headers_count + ' 个</span></div>' + '<div class="kv-row"><span class="k">' + t('configPanel.interactionHistory') + '</span><span class="v">' + t('configPanel.historySummary', {size: fmtBytes(ih.max_storage_bytes)}) + '</span></div>' + '<div class="kv-row"><span class="k">' + t('configPanel.pluginsCount') + '</span><span class="v">' + cfg.plugins_count + ' 个</span></div>' + '<div class="kv-row"><span class="k">' + t('configPanel.customParamsCount') + '</span><span class="v">' + cfg.custom_parameters_count + ' 个</span></div>' + '</div></details></section>'
+}
+function renderConfig(){
+  var host = document.getElementById('view-config')
+  var bot = getBot(state.currentBotId)
+  _cfgLastBot = state.currentBotId
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('configPanel.title') + '</h1><p class="page-sub">' + t('configPanel.sub') + ' · ' + esc(bot ? bot.bot_name : state.currentBotId) + '</p></div>' + '<div class="card"><div class="skeleton" aria-hidden="true"><div class="sk-line" style="width:38%"></div><div class="sk-line" style="width:62%"></div><div class="sk-line" style="width:50%"></div></div></div>'
+  clearTimeout(_cfgTimer)
+  _cfgTimer = mockDelay(300, renderConfigForm)
+}
+function renderConfigForm(){
+  var host = document.getElementById('view-config')
+  var cfg = getBotConfig(state.currentBotId)
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('configPanel.title') + '</h1><p class="page-sub">' + t('configPanel.sub') + ' · ' + esc(cfg.bot_name) + '</p></div>' + '<div class="error-banner" id="cfg-error" hidden><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg"></span></div>' + renderCfgBase(cfg) + renderCfgParams(cfg) + renderCfgContext(cfg) + renderCfgAuto(cfg) + renderCfgMemory(cfg) + renderCfgAdvanced(cfg) + '<div class="form-actions cfg-actions">' + '<button class="btn-primary" data-action="cfg-save" id="cfg-save">' + t('configPanel.save') + '</button>' + '<button class="btn-secondary" data-action="cfg-export">' + t('configPanel.export') + '</button>' + '<button class="btn-secondary" data-action="cfg-import-btn">' + t('configPanel.import') + '</button>' + '<button class="btn-secondary" data-action="cfg-reset">' + t('configPanel.reset') + '</button>' + '<input type="file" id="cfg-file" accept=".json,application/json" hidden>' + '</div>'
+  renderTagList()
+  refreshCfgSnapshot()
+  dirtyFlags['config'] = false
+}
+function renderTagList(){
+  var box = document.getElementById('cfg-tags')
+  if (!box) return
+  var cfg = getBotConfig(state.currentBotId)
+  box.innerHTML = cfg.trigger_keywords.length ? cfg.trigger_keywords.map(function(k){
+    return '<span class="tag cfg-tag">' + esc(k) + '<button class="tag-del" data-action="cfg-tag-del" data-tag="' + esc(k) + '" aria-label="删除">✕</button></span>'
+  }).join('') : '<span class="field-hint">' + t('configPanel.noTags') + '</span>'
+}
+function refreshConfig(){
+  if (_cfgLastBot === state.currentBotId) return
+  renderConfig()
+}
+function addTag(){
+  var input = document.getElementById('cfg-tag-input')
+  if (!input) return
+  var tag = input.value.trim()
+  if (!tag) return
+  var cfg = getBotConfig(state.currentBotId)
+  if (cfg.trigger_keywords.indexOf(tag) !== -1){ toast(t('configPanel.tagDup'), 'warn'); return }
+  cfg.trigger_keywords.push(tag)
+  input.value = ''
+  renderTagList()
+  markDirty('config')
+  logAppend('添加触发关键词：' + tag, 'debug')
+}
+function delTag(tag){
+  var cfg = getBotConfig(state.currentBotId)
+  var i = cfg.trigger_keywords.indexOf(tag)
+  if (i === -1) return
+  cfg.trigger_keywords.splice(i, 1)
+  renderTagList()
+  markDirty('config')
+  logAppend('删除触发关键词：' + tag, 'debug')
+}
+function toggleSecret(){
+  var el = document.getElementById('cfg-secret')
+  var btn = document.querySelector('[data-action="cfg-toggle-secret"]')
+  if (!el || !btn) return
+  if (el.textContent === '••••••••'){
+    el.textContent = getBotConfig(state.currentBotId).api_secret_key
+    btn.textContent = t('configPanel.hideSecret')
+  } else {
+    el.textContent = '••••••••'
+    btn.textContent = t('configPanel.showSecret')
+  }
+}
+function resetConfig(){
+  if (!cfgSnapshot) return
+  state.configs[state.currentBotId] = clone(cfgSnapshot)
+  renderConfigForm()
+  dirtyFlags['config'] = false
+  toast(t('configPanel.resetDone'))
+  logAppend('Bot 配置已重置为上次保存状态：' + state.currentBotId)
+}
+function cfgTogglePw(key){
+  var el = document.querySelector('#view-config [data-cfg="' + key + '"]')
+  var btn = document.querySelector('[data-action="cfg-toggle-pw"][data-pw="' + key + '"]')
+  if (!el || !btn) return
+  var show = el.type === 'password'
+  el.type = show ? 'text' : 'password'
+  btn.textContent = show ? t('configPanel.hide') : t('configPanel.show')
+  btn.setAttribute('aria-label', show ? t('configPanel.hide') : t('configPanel.show'))
+}
+function validateConfig(cfg){
+  var errs = []
+  function chk(path, val, min, max, label){
+    if (!isNum(val, min, max)) errs.push({path: path, label: label})
+  }
+  chk('temperature', cfg.temperature, 0, 2, 'temperature 0-2')
+  chk('top_p', cfg.top_p, 0, 1, 'top_p 0-1')
+  chk('max_tokens', cfg.max_tokens, 1, 128000, 'max_tokens 1-128000')
+  chk('frequency_penalty', cfg.frequency_penalty, -2, 2, 'frequency_penalty ±2')
+  chk('presence_penalty', cfg.presence_penalty, -2, 2, 'presence_penalty ±2')
+  chk('channel_context_settings.message_limit', cfg.channel_context_settings.message_limit, 1, 100, '频道消息上限 1-100')
+  chk('channel_context_settings.char_limit', cfg.channel_context_settings.char_limit, 1, 20000, '频道字符上限 1-20000')
+  chk('memory_context_settings.message_limit', cfg.memory_context_settings.message_limit, 1, 100, '记忆消息上限 1-100')
+  chk('memory_context_settings.char_limit', cfg.memory_context_settings.char_limit, 1, 20000, '记忆字符上限 1-20000')
+  chk('auto_interject_interval', cfg.auto_interject_interval, 1, 99999, '插话间隔 ≥1')
+  chk('top_k', cfg.top_k, 1, 100, 'top_k 1-100')
+  return errs
+}
+function markInvalid(cfgPath){
+  var el = document.querySelector('#view-config [data-cfg="' + cfgPath + '"]')
+  if (el) el.classList.add('invalid')
+}
+function collectConfig(){
+  var base = clone(getBotConfig(state.currentBotId))
+  document.querySelectorAll('#view-config [data-cfg]').forEach(function(el){
+    var val
+    if (el.type === 'checkbox') val = el.checked
+    else if (el.type === 'number') val = parseFloat(el.value)
+    else if (el.type === 'range') val = parseFloat(el.value)
+    else val = el.value
+    setCfgValueOn(base, el.dataset.cfg, val)
+  })
+  return base
+}
+function saveConfig(){
+  var btn = document.getElementById('cfg-save')
+  if (!btn) return
+  var cfg = collectConfig()
+  var errs = validateConfig(cfg)
+  var banner = document.getElementById('cfg-error')
+  document.querySelectorAll('#view-config .invalid').forEach(function(el){ el.classList.remove('invalid') })
+  if (errs.length){
+    banner.hidden = false
+    banner.querySelector('.err-msg').innerHTML = esc(t('configPanel.validateFail', {items: errs.map(function(e){ return e.label }).join('；')}))
+    errs.forEach(function(e){ markInvalid(e.path) })
+    toast(t('configPanel.validateFail', {items: errs[0].label}), 'error')
+    logAppend('配置校验失败：' + errs.map(function(e){ return e.label }).join('；'), 'error')
+    return
+  }
+  banner.hidden = true
+  btn.disabled = true
+  btn.textContent = t('configPanel.saving')
+  mockDelay(150 + Math.random() * 250, function(){
+    btn.disabled = false
+    btn.textContent = t('configPanel.save')
+    state.configs[state.currentBotId] = cfg
+    dirtyFlags['config'] = false
+    refreshCfgSnapshot()
+    schedulePersist()
+    toast(t('status.saved'))
+    logAppend('Bot 配置已保存：' + state.currentBotId)
+  })
+}
+function exportConfig(){
+  var cfg = collectConfig()
+  var json = JSON.stringify(cfg, null, 2)
+  var ok = false
+  try {
+    if (window.URL && typeof URL.createObjectURL === 'function'){
+      var blob = new Blob([json], {type: 'application/json'})
+      var a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = state.currentBotId + '-config.json'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      ok = true
+    }
+  } catch(e){}
+  if (ok){
+    toast(t('toast.exported'))
+    logAppend('已导出 Bot 配置 JSON：' + state.currentBotId, 'info')
+  } else {
+    console.log('=== ' + state.currentBotId + '-config.json ===\n' + json)
+    toast(t('toast.exportFallback'), 'warn')
+    logAppend('导出受限环境：JSON 已输出到控制台', 'warn')
+  }
+}
+function mergeConfig(base, src){
+  var out = clone(base)
+  var keys = ['bot_name','platform','enabled','trigger_keywords','trigger_match_mode','trigger_case_sensitive','temperature','top_p','max_tokens','top_k','frequency_penalty','presence_penalty',
+    'context_mode','channel_context_settings','memory_context_settings','auto_interject_enabled','auto_interject_interval','repeat_parrot_enabled',
+    'repeat_parrot_threshold','auto_memory_enabled','auto_memory_recall_top_k','auto_memory_recall_char_limit','auto_memory_recall_max_age_days','system_prompt','api_secret_key','discord_token','llm_provider','api_key','model_name','base_url']
+  keys.forEach(function(k){
+    if (src[k] === undefined) return
+    if (k === 'channel_context_settings' || k === 'memory_context_settings'){
+      out[k] = clone(out[k])
+      if (src[k] && typeof src[k] === 'object'){
+        if (isNum(src[k].message_limit, 1, 100)) out[k].message_limit = src[k].message_limit
+        if (isNum(src[k].char_limit, 1, 20000)) out[k].char_limit = src[k].char_limit
+      }
+    } else if (k === 'trigger_keywords'){
+      out[k] = Array.isArray(src[k]) ? src[k].map(String).slice(0, 50) : out[k]
+    } else {
+      out[k] = src[k]
+    }
+  })
+  return out
+}
+function importConfig(file){
+  var reader = new FileReader()
+  reader.onload = function(){
+    var banner = document.getElementById('cfg-error')
+    try {
+      var obj = JSON.parse(reader.result)
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('bad json')
+      var merged = mergeConfig(getBotConfig(state.currentBotId), obj)
+      var errs = validateConfig(merged)
+      if (errs.length) throw new Error('invalid: ' + errs.map(function(e){ return e.label }).join(','))
+      state.configs[state.currentBotId] = merged
+      renderConfigForm()
+      schedulePersist()
+      toast(t('toast.importOk', {name: state.currentBotId}))
+      logAppend('导入配置成功：' + state.currentBotId, 'info')
+    } catch(err){
+      if (banner){ banner.hidden = false; banner.querySelector('.err-msg').innerHTML = esc(t('configPanel.importFail')) }
+      toast(t('toast.importFail'), 'error')
+      logAppend('导入失败：JSON 解析或校验错误', 'error')
+    }
+  }
+  reader.onerror = function(){ toast(t('toast.importFail'), 'error') }
+  reader.readAsText(file)
+}
+/* ===== prompt-studio 视图（S1c，§4.4 模板 14 键 + 占位符分组 + 模拟器）===== */
+var psKey = 'message_format'
+var psTimer = null
+function renderPromptStudio(){
+  var host = document.getElementById('view-prompt-studio')
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('promptStudio.title') + '</h1><p class="page-sub">' + t('promptStudio.sub') + '</p></div>' + '<div class="card"><div class="skeleton" aria-hidden="true"><div class="sk-line" style="width:38%"></div><div class="sk-line" style="width:62%"></div><div class="sk-line" style="width:50%"></div></div></div>'
+  clearTimeout(psTimer)
+  psTimer = mockDelay(400, renderPsForm)
+}
+function renderPsForm(){
+  var host = document.getElementById('view-prompt-studio')
+  if (!state.templates || typeof state.templates !== 'object'){   /* 载入失败路径（loadState 已兜底，正常不可达；重试按钮挂点） */
+    host.innerHTML = '<div class="page-head"><h1 class="page-title">' + t('promptStudio.title') + '</h1></div>' + '<div class="error-banner" role="alert"><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg">' + esc(t('promptStudio.loadFail')) + '</span><button class="btn-secondary" data-action="ps-retry">' + t('actionBtn.retry') + '</button></div>'
+    return
+  }
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('promptStudio.title') + '</h1><p class="page-sub">' + t('promptStudio.sub') + '</p></div>' + '<div class="error-banner" id="ps-error" hidden><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg"></span></div>' + '<section class="card"><h2 class="card-title">' + t('promptStudio.templates') + ' <span class="hint">' + t('promptStudio.required') + ' / ' + t('promptStudio.optional') + ' · 必填键空值标红点</span></h2>' + '<div class="ps-layout"><div class="ps-side">' + '<div class="ps-side-head"><span class="hint">' + t('promptStudio.presetBar') + '</span></div>' + '<div class="ps-preset-bar" id="ps-preset-bar"></div>' + '<div class="ps-side-head"><button class="btn-mini" data-action="ps-new">＋ ' + t('promptStudio.newKey') + '</button></div>' + '<div class="ps-list" id="ps-list"></div>' + '</div><div class="ps-main">' + '<div class="ps-editor-head"><span class="hint" id="ps-key-label"></span>' + '<button class="btn-mini" data-action="ps-del">' + t('actionBtn.delete') + '</button>' + '<button class="btn-primary" data-action="ps-save" id="ps-save">' + t('promptStudio.save') + '</button></div>' + '<textarea class="input" id="ps-editor" rows="10" spellcheck="false"></textarea>' + '<div class="ph-panel"><span class="hint">' + t('promptStudio.ph') + '：</span><span id="ps-ph"></span></div>' + '</div></div>' + '</section>' + '<section class="card"><h2 class="card-title">' + t('promptStudio.roleCard') + '</h2><div class="ms-grid">' + '<div class="field"><label class="field-label">' + t('promptStudio.nickname') + '</label><input class="input" id="ps-nick" value="' + esc(state.psRole.nickname) + '"></div>' + '<div class="field"><label class="field-label">' + t('promptStudio.persona') + '</label><textarea class="input" id="ps-persona" rows="3" placeholder="' + t('promptStudio.personaPlaceholder') + '">' + esc(state.psRole.persona) + '</textarea></div>' + '</div></section>' + '<section class="card"><h2 class="card-title">' + t('promptStudio.simCard') + '</h2>' + '<div class="ms-grid">' + '<div class="field" style="grid-column:1/-1"><label class="field-label">' + t('promptStudio.simMsg') + '</label><textarea class="input" id="ps-sim-msg" rows="3" placeholder="' + t('promptStudio.simMsgPlaceholder') + '"></textarea></div>' + '<div class="field"><label class="field-label">' + t('promptStudio.simRole') + '</label><select class="select" id="ps-sim-role">' + '<option value="user">' + t('promptStudio.roleUser') + '</option><option value="admin">' + t('promptStudio.roleAdmin') + '</option>' + '<option value="owner">' + t('promptStudio.roleOwner') + '</option><option value="member">' + t('promptStudio.roleMember') + '</option></select></div>' + '<div class="field"><label class="field-label">' + t('promptStudio.simImages') + '</label><input class="input" id="ps-sim-images" type="number" min="0" max="9" value="0"></div>' + '<div class="field" style="grid-column:1/-1"><span class="field-label">' + t('promptStudio.simReply') + '</span>' + '<div class="switch-row"><span class="switch-label"></span><label class="switch"><input type="checkbox" id="ps-sim-reply" checked><span class="track"></span><span class="knob"></span></label></div></div>' + '</div>' + '<div class="form-actions"><button class="btn-primary" data-action="ps-build" id="ps-build">' + t('promptStudio.build') + '</button></div>' + '<div class="sim-layout" id="ps-sim-out" hidden>' + '<div><div class="field-label" style="margin-bottom:6px">' + t('promptStudio.simPreview') + '</div><div class="sim-pane" id="ps-preview"></div></div>' + '<div><div class="field-label" style="margin-bottom:6px">' + t('promptStudio.simRequest') + '</div><div class="sim-pane" id="ps-request"></div></div>' + '</div>' + '<div class="build-log" id="ps-buildlog" hidden></div>' + '</section>'
+  renderPsList()
+  renderPsEditor()
+  renderPresetBar()
+  refreshPsSnapshot()
+  dirtyFlags['prompt-studio'] = false
+}
+var psPresetName = '(默认)开箱即用'
+var DEFAULT_PRESET_NAME = '(默认)开箱即用'
+function presetNames(){ return [DEFAULT_PRESET_NAME].concat(Object.keys(state.presets)) }
+function renderPresetBar(){
+  var bar = document.getElementById('ps-preset-bar')
+  if (!bar) return
+  bar.innerHTML = '<div class="ps-preset-row" style="display:flex;gap:4px;align-items:center;flex-wrap:wrap;margin-bottom:6px">' + '<select class="select" id="ps-preset" style="flex:1;min-width:0;height:30px;font-size:12px">' + presetNames().map(function(n){
+    return '<option value="' + esc(n) + '"' + (n === psPresetName ? ' selected' : '') + '>' + esc(n) + '</option>'
+  }).join('') + '</select>' + '<button class="btn-mini" data-action="ps-preset-save">' + t('promptStudio.presetSave') + '</button>' + '<button class="btn-mini" data-action="ps-preset-load">' + t('promptStudio.presetLoad') + '</button>' + '<button class="btn-mini" data-action="ps-preset-del">' + t('actionBtn.delete') + '</button>' + '</div>'
+}
+function psPresetSave(){
+  promptModal(t('promptStudio.presetName'), t('promptStudio.presetNamePlaceholder'), function(name){
+    if (name === DEFAULT_PRESET_NAME){
+      toast(t('promptStudio.presetDefaultProtected', {name: DEFAULT_PRESET_NAME}), 'error')
+      logAppend('拒绝覆盖默认预设：' + DEFAULT_PRESET_NAME, 'error')
+      return
+    }
+    state.presets[name] = clone(state.templates)
+    psPresetName = name
+    renderPresetBar()
+    schedulePersist()
+    toast(t('promptStudio.presetSaved', {name: name}))
+    logAppend('预设已另存为：' + name)
+  })
+}
+function psPresetLoad(){
+  var sel = document.getElementById('ps-preset')
+  var name = sel ? sel.value : psPresetName
+  if (!name) return
+  if (name === DEFAULT_PRESET_NAME){
+    state.templates = makeDefaultTemplates()
+  } else if (state.presets[name]){
+    state.templates = clone(state.presets[name])
+  } else {
+    toast(t('promptStudio.presetMissing'), 'error')
+    return
+  }
+  psPresetName = name
+  renderPsList(); renderPsEditor(); renderPresetBar()
+  markDirty('prompt-studio')
+  schedulePersist()
+  toast(t('promptStudio.presetLoaded', {name: name}))
+  logAppend('加载预设：' + name)
+}
+function psPresetDel(){
+  var sel = document.getElementById('ps-preset')
+  var name = sel ? sel.value : psPresetName
+  if (!name) return
+  if (name === DEFAULT_PRESET_NAME){
+    toast(t('promptStudio.presetDefaultProtected', {name: DEFAULT_PRESET_NAME}), 'error')
+    logAppend('拒绝删除默认预设：' + DEFAULT_PRESET_NAME, 'error')
+    return
+  }
+  if (!state.presets[name]) return
+  delete state.presets[name]
+  psPresetName = DEFAULT_PRESET_NAME
+  renderPresetBar()
+  schedulePersist()
+  toast(t('promptStudio.presetDeleted', {name: name}))
+  logAppend('删除预设：' + name)
+}
+function renderPsList(){
+  var list = document.getElementById('ps-list')
+  if (!list) return
+  var html = ''
+  TEMPLATE_GROUPS.forEach(function(g){
+    html += '<div class="ps-group">' + g.name + '</div>'
+    g.keys.forEach(function(k){
+      var v = state.templates[k]
+      var empty = typeof v === 'string' && !v.trim()   /* 空数组（operational_instructions:[]）合法，不标红 */
+      html += '<button class="tpl-item' + (k === psKey ? ' active' : '') + (empty ? ' empty-flag' : '') + '" data-action="ps-select" data-key="' + k + '">' + esc(k) + '</button>'
+    })
+  })
+  var extra = Object.keys(state.templates).filter(function(k){
+    return TEMPLATE_GROUPS[0].keys.indexOf(k) === -1 && TEMPLATE_GROUPS[1].keys.indexOf(k) === -1
+  })
+  if (extra.length){
+    html += '<div class="ps-group">自定义</div>'
+    extra.forEach(function(k){
+      var v = state.templates[k]
+      html += '<button class="tpl-item' + (k === psKey ? ' active' : '') + ((typeof v === 'string' && !v.trim()) ? ' empty-flag' : '') + '" data-action="ps-select" data-key="' + esc(k) + '">' + esc(k) + '</button>'
+    })
+  }
+  list.innerHTML = html
+}
+function renderPsEditor(){
+  var label = document.getElementById('ps-key-label')
+  var editor = document.getElementById('ps-editor')
+  var ph = document.getElementById('ps-ph')
+  var val = state.templates[psKey]
+  if (label) label.textContent = t('promptStudio.editor', {key: psKey})
+  if (editor){
+    editor.value = Array.isArray(val) ? val.join('\n') : (val || '')
+    editor.dataset.key = psKey
+  }
+  if (ph){
+    var list = TEMPLATE_PH[psKey]
+    ph.innerHTML = list ? list.map(function(p){
+      return '<button class="ph-btn" data-action="ps-ph" data-ph="' + esc(p) + '">' + esc(p) + '</button>'
+    }).join('') : '<span class="hint">' + t('promptStudio.noPh') + '</span>'
+  }
+}
+function insertPh(ph){
+  var editor = document.getElementById('ps-editor')
+  if (!editor) return
+  var start = editor.selectionStart
+  var end = editor.selectionEnd
+  var v = editor.value
+  editor.value = v.slice(0, start) + ph + v.slice(end)
+  editor.selectionStart = editor.selectionEnd = start + ph.length
+  editor.focus()
+  state.templates[psKey] = editor.value
+  markDirty('prompt-studio')
+  toast(t('promptStudio.phInserted', {ph: ph}))
+}
+function psNewKey(name){
+  if (state.templates[name] !== undefined){ toast(t('promptStudio.keyDup'), 'warn'); return }
+  state.templates[name] = ''
+  psKey = name
+  renderPsList()
+  renderPsEditor()
+  markDirty('prompt-studio')
+  logAppend('新建模板键：' + name, 'debug')
+}
+function psDelKey(){
+  var delKey = psKey
+  if (TEMPLATE_GROUPS[0].keys.indexOf(delKey) !== -1){ toast(t('promptStudio.delRequired'), 'warn'); return }
+  confirmDialog(t('promptStudio.delConfirm', {key: delKey}), function(ok){
+    if (!ok) return
+    mockDelay(300, function(){
+      delete state.templates[delKey]
+      psKey = Object.keys(state.templates)[0] || 'message_format'
+      renderPsList()
+      renderPsEditor()
+      markDirty('prompt-studio')
+      logAppend('删除模板键：' + delKey)
+    })
+  })
+}
+function psSave(){
+  var btn = document.getElementById('ps-save')
+  if (!btn) return
+  var errs = TEMPLATE_GROUPS[0].keys.filter(function(k){
+    var v = state.templates[k]
+    return typeof v === 'string' && !v.trim()   /* 空数组（如 operational_instructions:[]）为合法默认，不判失败 */
+  })
+  var banner = document.getElementById('ps-error')
+  if (errs.length){
+    banner.hidden = false
+    banner.querySelector('.err-msg').textContent = t('promptStudio.validateFail', {keys: errs.join('、')})
+    toast(t('promptStudio.validateFail', {keys: errs[0]}), 'error')
+    logAppend('模板校验失败：' + errs.join('、'), 'error')
+    return
+  }
+  banner.hidden = true
+  btn.disabled = true
+  btn.textContent = t('promptStudio.saving')
+  mockDelay(150 + Math.random() * 250, function(){
+    btn.disabled = false
+    btn.textContent = t('promptStudio.save')
+    dirtyFlags['prompt-studio'] = false
+    refreshPsSnapshot()
+    schedulePersist()
+    toast(t('promptStudio.saved'))
+    logAppend('提示词模板已保存（' + Object.keys(state.templates).length + ' 键）')
+  })
+}
+function psBuild(){
+  var msgEl = document.getElementById('ps-sim-msg')
+  var msg = msgEl.value.trim()
+  msgEl.classList.remove('invalid')
+  if (!msg){ msgEl.classList.add('invalid'); toast(t('promptStudio.simEmpty'), 'error'); return }
+  var role = document.getElementById('ps-sim-role').value
+  var images = parseInt(document.getElementById('ps-sim-images').value, 10) || 0
+  var reply = document.getElementById('ps-sim-reply').checked
+  var btn = document.getElementById('ps-build')
+  var roleLabel = role === 'user' ? t('promptStudio.roleUser') : role === 'admin' ? t('promptStudio.roleAdmin') : role === 'owner' ? t('promptStudio.roleOwner') : t('promptStudio.roleMember')
+  var replyLabel = reply ? t('promptStudio.replyYes') : t('promptStudio.replyNo')
+  btn.disabled = true
+  btn.textContent = t('promptStudio.building')
+  mockDelay(600, function(){
+    btn.disabled = false
+    btn.textContent = t('promptStudio.build')
+    var tpl = state.templates
+    var persona = state.psRole.persona || t('promptStudio.noPersona')
+    var preview = [
+      tpl.system_prompt_foundation_header || '',
+      (tpl.system_prompt_persona_header || '') + persona,
+      (tpl.system_prompt_situation_header || '') + t('promptStudio.simLog2', {role: roleLabel, n: images, reply: replyLabel})
+    ].filter(Boolean).join('\n')
+    var parts = '用户：' + msg + (images > 0 ? '\n图片：' + images + ' 张' : '')
+    var request = (tpl.user_request_block || '').replace(/\{parts\}/g, parts)
+    var ms = 120 + Math.floor(Math.random() * 400)
+    var log = [
+      t('promptStudio.simLog1'),
+      t('promptStudio.simLog2', {role: roleLabel, n: images, reply: replyLabel}),
+      t('promptStudio.simLog3'),
+      t('promptStudio.simLog4', {ms: ms})
+    ]
+    document.getElementById('ps-preview').textContent = preview
+    document.getElementById('ps-request').textContent = request
+    document.getElementById('ps-sim-out').hidden = false
+    document.getElementById('ps-buildlog').innerHTML = log.map(function(l){
+      return '<div class="bl-row"><span class="bl-time">' + nowStamp() + '</span><span>' + esc(l) + '</span></div>'
+    }).join('')
+    document.getElementById('ps-buildlog').hidden = false
+    toast(t('promptStudio.simLog4', {ms: ms}))
+    logAppend('情景模拟构建完成：' + msg.slice(0, 20), 'debug')
+  })
+}
+/* ===== debugger 视图（S1c：模拟对话 / 历史 / 捕获 / 消毒 四 tab）===== */
+var dbgTab = 'chat'
+var dbgThinking = false
+function renderDebugger(){
+  var host = document.getElementById('view-debugger')
+  host.innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('debugger.title') + '</h1><p class="page-sub">' + t('debugger.sub') + '</p></div>' + '<div class="tabs" role="tablist">' + '<button class="tab" data-action="dbg-tab" data-tab="chat" role="tab">' + t('debugger.tabChat') + '</button>' + '<button class="tab" data-action="dbg-tab" data-tab="history" role="tab">' + t('debugger.tabHistory') + '</button>' + '<button class="tab" data-action="dbg-tab" data-tab="capture" role="tab">' + t('debugger.tabCapture') + '</button>' + '<button class="tab" data-action="dbg-tab" data-tab="sanitize" role="tab">' + t('debugger.tabSanitize') + '</button>' + '</div><div id="dbg-pane"></div>'
+  renderDbgTab(dbgTab)
+}
+function renderDbgTab(tab){
+  dbgTab = tab
+  document.querySelectorAll('#view-debugger .tab').forEach(function(b){ b.classList.toggle('active', b.dataset.tab === tab) })
+  var pane = document.getElementById('dbg-pane')
+  if (tab === 'chat') renderDbgChat(pane)
+  else if (tab === 'history') renderDbgHistory(pane)
+  else if (tab === 'capture') renderDbgCapture(pane)
+  else if (tab === 'sanitize') renderDbgSanitize(pane)
+}
+function renderDbgChat(pane){
+  pane.innerHTML =
+    '<section class="card"><h2 class="card-title">' + t('debugger.tabChat') + '</h2>' + '<div class="chat-box" id="dbg-chat" aria-live="polite"></div>' + '<div class="chat-input-row"><input class="input" id="dbg-input" placeholder="' + t('debugger.chatPlaceholder') + '" autocomplete="off"><button class="btn-primary" data-action="dbg-send">' + t('debugger.send') + '</button></div>' + '<div class="form-actions"><button class="btn-secondary" data-action="dbg-clear">' + t('debugger.clear') + '</button></div>' + '</section>'
+  renderDbgChatMsgs()
+}
+function renderDbgChatMsgs(){
+  var box = document.getElementById('dbg-chat')
+  var msgs = state.debugChat
+  if (!msgs.length){ box.innerHTML = '<div class="chat-empty">' + t('debugger.chatEmpty') + '</div>'; return }
+  box.innerHTML = msgs.map(function(m){
+    if (m.role === 'reasoning'){
+      return '<details class="reasoning-bubble"' + (m.open ? ' open' : '') + '><summary>' + t('debugger.reasoning') + '</summary><div class="reasoning-content">' + esc(m.text) + '</div></details>'
+    }
+    var cls = m.role === 'user' ? 'user' : 'bot'
+    return '<div class="chat-row ' + cls + '"><span class="chat-role">' + (m.role === 'user' ? '我' : 'AI') + '</span><div class="chat-bubble' + (m.role === 'thinking' ? ' thinking' : '') + '">' + esc(m.text) + '</div></div>'
+  }).join('')
+  if (!REDUCED) box.scrollTop = box.scrollHeight
+}
+function dbgSend(){
+  var input = document.getElementById('dbg-input')
+  var text = input.value.trim()
+  if (!text) return
+  if (dbgThinking){ toast(t('debugger.thinking'), 'warn'); return }
+  input.value = ''
+  dbgThinking = true
+  state.debugChat.push({role: 'user', text: text})
+  state.debugChat.push({role: 'reasoning', text: '（模拟思维链）用户说「' + text + '」。\n1. 解析意图：' + text.slice(0, 12) + '…\n2. 检索知识库：无强相关条目\n3. 拟定回复：简洁直接，符合人设。', open: false})
+  state.debugChat.push({role: 'thinking', text: t('debugger.thinking')})
+  renderDbgChatMsgs()
+  logAppend('调试对话发送：' + text.slice(0, 30), 'debug')
+  mockDelay(1200 + Math.random() * 800, function(){
+    dbgThinking = false
+    var arr = state.debugChat
+    for (var i = arr.length - 1; i >= 0; i--){ if (arr[i].role === 'thinking'){ arr.splice(i, 1); break } }
+    arr.push({role: 'bot', text: t('debugger.reply', {msg: text})})
+    renderDbgChatMsgs()
+    schedulePersist()
+    logAppend('调试对话回复完成', 'debug')
+  })
+}
+function dbgClearChat(){
+  mockDelay(300, function(){
+    state.debugChat = []
+    renderDbgChatMsgs()
+    schedulePersist()
+    toast(t('toast.cleared'))
+    logAppend('调试对话已清空')
+  })
+}
+function renderDbgHistory(pane){
+  pane.innerHTML =
+    '<section class="card"><h2 class="card-title">' + t('debugger.tabHistory') + '</h2>' + '<div class="table-wrap"><table class="data-table"><thead><tr>' + '<th>' + t('debugger.histTime') + '</th><th>' + t('debugger.histRole') + '</th><th>' + t('debugger.histSummary') + '</th><th>' + t('debugger.histTags') + '</th>' + '</tr></thead><tbody>' + state.history.map(function(h, i){
+      return '<tr data-action="dbg-hist" data-idx="' + i + '"><td class="cap-time">' + esc(h.t) + '</td><td>' + (h.role === 'user' ? t('debugger.roleUser') : t('debugger.roleBot')) + '</td>' + '<td>' + esc(h.summary) + '</td><td>' + (h.tags || []).map(function(tg){ return '<span class="tag">' + esc(tg) + '</span>' }).join(' ') + '</td></tr>'
+    }).join('') + '</tbody></table></div></section>'
+}
+function dbgShowHist(idx){
+  var h = state.history[idx]
+  if (!h) return
+  openModal({
+    title: t('debugger.histDetail'),
+    body: '<div class="kv-row"><span class="k">时间</span><span class="v">' + esc(h.t) + '</span></div>' + '<div class="kv-row"><span class="k">角色</span><span class="v">' + (h.role === 'user' ? t('debugger.roleUser') : t('debugger.roleBot')) + '</span></div>' + '<div class="kv-row"><span class="k">标签</span><span class="v">' + esc((h.tags || []).join('、')) + '</span></div>' + '<div class="field-label" style="margin:12px 0 6px">全文</div><div class="sim-pane" style="max-height:260px">' + esc(h.content) + '</div>',
+    actions: [{label: t('actionBtn.close'), cls: 'btn-secondary', cb: closeModal}]
+  })
+}
+function renderDbgCapture(pane){
+  pane.innerHTML =
+    '<section class="card"><div class="dbg-toolbar"><h2 class="card-title" style="margin-bottom:0">' + t('debugger.capTitle') + '</h2>' + '<button class="btn-mini" data-action="dbg-cap-clear">' + t('debugger.capClear') + '</button>' + '<button class="btn-mini" data-action="dbg-cap-new">' + t('debugger.capNew') + '</button>' + '</div><div id="dbg-caps">' + '<div class="skeleton" aria-hidden="true"><div class="sk-line" style="width:88%"></div><div class="sk-line" style="width:64%"></div><div class="sk-line" style="width:76%"></div></div>' + '</div></section>'
+  mockDelay(400, function(){
+    var capsBox = document.getElementById('dbg-caps')
+    if (!capsBox) return   /* 延迟期间已切走 tab */
+    if (!Array.isArray(state.captures)){   /* 加载失败路径（loadState 已兜底，正常不可达） */
+      capsBox.innerHTML = '<div class="error-banner" role="alert"><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg">' + esc(t('debugger.loadFail')) + '</span><button class="btn-secondary" data-action="dbg-cap-retry">' + t('debugger.retry') + '</button></div>'
+      return
+    }
+    renderDbgCapList()
+  })
+}
+function renderDbgCapList(){
+  var box = document.getElementById('dbg-caps')
+  if (!box) return
+  if (!state.captures.length){
+    box.innerHTML = '<div class="empty-state"><div class="empty-icon" aria-hidden="true">◇</div><div class="empty-title">' + t('debugger.capEmpty') + '</div><div class="empty-desc">' + t('debugger.capNew') + '</div></div>'
+    return
+  }
+  box.innerHTML = state.captures.map(function(c){
+    return '<div class="cap-item" data-action="dbg-cap" data-id="' + esc(c.id) + '">' + '<div class="cap-head"><span class="cap-id">' + esc(c.id) + '</span><span class="cap-time">' + esc(c.captured_at) + '</span>' + '<span class="cap-user">' + esc(c.user_name) + '</span><span class="cap-prov">' + esc(c.provider) + ' · ' + esc(c.model) + '</span><button class="btn-icon" data-action="dbg-cap-del" data-id="' + esc(c.id) + '" style="margin-left:auto" title="' + t('debugger.capDel') + '" aria-label="' + t('debugger.capDel') + '">🗑</button></div>' + '<div class="cap-msg">' + esc(c.raw_user_message) + '</div>' + '<div class="cap-detail" id="cap-detail-' + esc(c.id) + '"></div>' + '</div>'
+  }).join('')
+}
+function getCap(id){
+  for (var i = 0; i < state.captures.length; i++){ if (state.captures[i].id === id) return state.captures[i] }
+  return null
+}
+function dbgToggleCap(id){
+  var box = document.getElementById('cap-detail-' + id)
+  var item = document.querySelector('.cap-item[data-id="' + id + '"]')
+  var cap = getCap(id)
+  if (!box || !item || !cap) return
+  if (box.dataset.open === '1'){
+    box.innerHTML = ''
+    box.dataset.open = '0'
+    item.classList.remove('open')
+    return
+  }
+  box.innerHTML = '<div class="skeleton"><div class="sk-line" style="width:70%"></div></div>'
+  box.dataset.open = '1'
+  item.classList.add('open')
+  mockDelay(400, function(){
+    if (!cap.detail) cap.detail = makeCaptureDetail(cap)
+    box.innerHTML = renderCapDetail(cap)
+    logAppend('捕获详情已加载：' + id, 'debug')
+  })
+}
+function traceStageLabel(stage){
+  return t('debugger.trace' + stage.charAt(0).toUpperCase() + stage.slice(1))
+}
+function renderCapDetail(cap){
+  try{
+    return renderCapDetailInner(cap)
+  }catch(e){
+    logAppend('捕获详情解析失败：' + cap.id + '（降级显示原始内容）', 'warn')
+    return '<div class="field-label" style="margin-bottom:8px">' + t('debugger.detailFallback') + '</div>' + '<div class="error-banner" role="alert"><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg">' + esc(t('debugger.detailParseFail')) + '</span></div>' + '<details class="detail-fold" open><summary>' + t('debugger.detailRaw') + '</summary><div class="fold-body"><pre class="json-pre">' + esc(JSON.stringify(cap.detail, null, 2)) + '</pre></div></details>'
+  }
+}
+function renderCapDetailInner(cap){
+  var d = cap.detail
+  var steps = d.intermediate_llm_responses || []
+  var nodes = [{stage: 'request', name: cap.provider + ' · ' + cap.model, t: 0}]
+  var acc = 0
+  var costs = {reasoning: 120, tool_call: 120, tool_result: 340, response: 610}
+  steps.forEach(function(s){
+    acc += costs[s.stage] || 180
+    nodes.push({stage: s.stage, name: s.name || '', args: s.args || '', content: s.content || '', t: acc})
+  })
+  var tl = nodes.map(function(n){
+    var dot = n.stage === 'tool_call' ? 'warn' : 'ok'
+    var body = n.stage === 'tool_call'
+      ? '<div class="tl-head">' + traceStageLabel(n.stage) + ' · ' + esc(n.name) + '</div><div class="tl-meta">' + esc(n.args) + '</div>'
+      : n.content
+        ? '<div class="tl-head">' + traceStageLabel(n.stage) + '</div><div class="tl-meta">' + esc(n.content) + '</div>'
+        : '<div class="tl-head">' + traceStageLabel(n.stage) + (n.name ? ' · ' + esc(n.name) : '') + '</div>'
+    return '<div class="tl-node"><span class="tl-dot ' + dot + '"></span><div class="tl-body">' + body + '<div class="tl-time">+' + n.t + 'ms</div></div></div>'
+  }).join('')
+  var usage = d.usage || {}
+  return '<div class="field-label" style="margin-bottom:8px">' + t('debugger.trace') + '</div>' + '<div class="timeline">' + tl + '</div>' + '<div class="usage-row"><span>' + t('debugger.usage', {p: usage.prompt_tokens, c: usage.completion_tokens, t: usage.total_tokens}) + '</span></div>' + '<details class="detail-fold"><summary>' + t('debugger.detailSys') + '</summary><div class="fold-body"><div class="sim-pane" style="max-height:140px">' + esc(d.system_prompt) + '</div></div></details>' + '<details class="detail-fold"><summary>' + t('debugger.detailHistory') + '</summary><div class="fold-body">' + (d.history_for_llm || []).map(function(h){
+      return '<div class="chat-row ' + (h.role === 'user' ? 'user' : 'bot') + '"><span class="chat-role">' + (h.role === 'user' ? '我' : 'AI') + '</span><div class="chat-bubble">' + esc(h.content) + '</div></div>'
+    }).join('') + '</div></details>' + '<details class="detail-fold"><summary>' + t('debugger.detailRaw') + '</summary><div class="fold-body"><pre class="json-pre">' + esc(JSON.stringify(d, null, 2)) + '</pre></div></details>'
+}
+function dbgCapDel(id){
+  mockDelay(300, function(){
+    var i = -1
+    for (var j = 0; j < state.captures.length; j++){ if (state.captures[j].id === id){ i = j; break } }
+    if (i === -1) return
+    state.captures.splice(i, 1)
+    renderDbgCapList()
+    schedulePersist()
+    toast(t('debugger.capDeleted', {id: id}))
+    logAppend('删除捕获：' + id)
+  })
+}
+function dbgCapClear(){
+  mockDelay(300, function(){
+    state.captures = []
+    renderDbgCapList()
+    schedulePersist()
+    toast(t('debugger.capEmpty'))
+    logAppend('捕获列表已清空')
+  })
+}
+function dbgCapNew(){
+  var n = state.captures.length + 1
+  var id = 'cap_' + (n < 10 ? '0' + n : n)
+  state.captures.unshift({id: id, captured_at: nowStamp(), user_id: 'user_demo', user_name: '演示用户', provider: 'openai', model: 'gpt-4o', raw_user_message: '新建的演示捕获消息', trigger_sources: ['demo'], detail: null})
+  renderDbgCapList()
+  schedulePersist()
+  logAppend('新建捕获：' + id, 'info')
+  toast(t('toast.placeholder', {msg: '已新建捕获 ' + id}))
+}
+function renderDbgSanitize(pane){
+  pane.innerHTML =
+    '<section class="card"><h2 class="card-title">' + t('debugger.sanTitle') + '</h2>' + '<div class="dbg-san-layout">' + '<div class="field"><label class="field-label">' + t('debugger.sanInput') + '</label><textarea class="input" id="dbg-san-input" rows="8" placeholder="' + t('debugger.sanInputPlaceholder') + '"></textarea>' + '<div class="form-actions"><button class="btn-primary" data-action="dbg-san-run" id="dbg-san-run">' + t('debugger.run') + '</button>' + '<button class="btn-secondary" data-action="dbg-san-sample">' + t('debugger.sample') + '</button></div></div>' + '<div class="field"><label class="field-label">' + t('debugger.sanOutput') + '</label><div class="dbg-san-out" id="dbg-san-output"></div></div>' + '</div></section>'
+}
+function dbgSanitizeRun(){
+  var input = document.getElementById('dbg-san-input')
+  var btn = document.getElementById('dbg-san-run')
+  if (!input || !btn) return
+  btn.disabled = true
+  btn.textContent = t('debugger.running')
+  mockDelay(400 + Math.random() * 400, function(){
+    btn.disabled = false
+    btn.textContent = t('debugger.run')
+    var out = input.value
+      .replace(/\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b/g, '***@***.***')
+      .replace(/\b1[3-9]\d{9}\b/g, '***-***-****')
+      .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, 'sk-***')
+    document.getElementById('dbg-san-output').textContent = out
+    toast(t('debugger.sanitized'))
+    logAppend('日志消毒运行完成', 'debug')
+  })
+}
+function dbgSanFill(){
+  var input = document.getElementById('dbg-san-input')
+  if (!input) return
+  input.value = '联系人：张三 13800138000，邮箱 zhang.san@example.com\nAPI Key：sk-abcdef1234567890，备用 sk-test-key-0001\n（其余明文日志内容保持不变）'
+}
+/* ===== user-options 视图（S1d，§4.5 对齐 UserOptionsConfig）===== */
+var uoSnapshot = null
+function refreshUoSnapshot(){ uoSnapshot = clone(state.userOptions) }
+function renderUserOptions(){
+  var host = document.getElementById('view-user-options')
+  host.innerHTML = '<div class="page-head"><h1 class="page-title">' + t('userOptions.title') + '</h1><p class="page-sub">' + t('userOptions.sub') + '</p></div>' + '<div class="card"><div class="skeleton" aria-hidden="true"><div class="sk-line" style="width:44%"></div><div class="sk-line" style="width:70%"></div></div></div>'
+  mockDelay(400, function(){ renderUoForm(); refreshUoSnapshot(); dirtyFlags['user-options'] = false })
+}
+function uoOptsSel(id, i, opts, val){
+  return '<select class="select" id="' + id + '" data-idx="' + i + '">' + opts.map(function(o){ return '<option value="' + o + '"' + (val === o ? ' selected' : '') + '>' + o + '</option>' }).join('') + '</select>'
+}
+function uoRuleRow(name, i){
+  var r = state.userOptions.rules[name]
+  var users = Object.keys(r.users || {})
+  return '<div class="rule-row">' + '<span class="hint" style="font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(name) + '</span>' + uoOptsSel('uo-stype', i, ['global','guild','channel','dm'], r.scope_type) + '<input class="input" id="uo-scope" data-idx="' + i + '" value="' + esc(r.scope_id || '') + '" placeholder="id">' + uoOptsSel('uo-mode', i, ['blacklist','whitelist'], r.mode) + uoOptsSel('uo-beh', i, ['messages_only','triggers_only'], r.whitelist_behavior) + '<button class="btn-mini uop-btn" data-action="uo-del-rule" data-idx="' + i + '" aria-label="' + t('userOptions.delRule') + '">' + t('actionBtn.delete') + '</button>' + '</div><div class="uop-users">' + '<div class="hint" style="padding:4px 0 2px 14px">' + t('userOptions.usersTitle', {name: name}) + ' <button class="btn-mini" data-action="uo-add-user" data-idx="' + i + '">' + t('userOptions.addUser') + '</button></div>' + (users.length ? users.map(function(uid){ return uoUserRow(i, uid) }).join('') : '<div class="hint" style="padding:2px 0 6px 14px">' + t('userOptions.userEmpty') + '</div>') + '</div>'
+}
+function uoUserRow(i, uid){
+  var u = state.userOptions.rules[Object.keys(state.userOptions.rules)[i]].users[uid]
+  return '<div class="uop-user-row">' + '<input class="input" data-uop="uid" data-idx="' + i + '" data-uid="' + esc(uid) + '" value="' + esc(u.user_id) + '" placeholder="' + t('userOptions.uid') + '">' + '<input class="input" data-uop="uname" data-idx="' + i + '" data-uid="' + esc(uid) + '" value="' + esc(u.user_display_name || '') + '" placeholder="' + t('userOptions.uname') + '">' + '<select class="select" data-uop="bm" data-idx="' + i + '" data-uid="' + esc(uid) + '">' + ['negative_portrait','block_messages','deny_response'].map(function(o){ return '<option value="' + o + '"' + (u.blacklist_mode === o ? ' selected' : '') + '>' + o + '</option>' }).join('') + '</select>' + '<button class="btn-mini uop-btn" data-action="uo-del-user" data-idx="' + i + '" data-uid="' + esc(uid) + '" aria-label="' + t('actionBtn.delete') + '">✕</button></div>'
+}
+function renderUoForm(){
+  var uo = state.userOptions
+  var names = Object.keys(uo.rules)
+  document.getElementById('view-user-options').innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('userOptions.title') + '</h1><p class="page-sub">' + t('userOptions.sub') + '</p></div>' + '<div class="error-banner" id="uo-error" hidden><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg"></span></div>' + '<section class="card"><div class="ms-grid">' + '<div class="field"><div class="switch-row"><span class="switch-label">' + t('userOptions.enabled') + '</span><label class="switch"><input type="checkbox" id="uo-enabled"' + (uo.enabled ? ' checked' : '') + '><span class="track"></span><span class="knob"></span></label></div></div>' + '<div class="field"><label class="field-label">' + t('userOptions.timeout') + '</label><input class="input" id="uo-timeout" type="number" min="1000" max="30000" value="' + uo.member_search_timeout_ms + '"></div>' + '</div><div class="priority-bar">' + t('userOptions.priority') + '</div></section>' + '<section class="card"><h2 class="card-title">' + t('userOptions.ruleTable') + ' <span class="hint">' + names.length + '</span></h2>' + '<div class="form-actions"><button class="btn-mini" data-action="uo-add-rule">' + t('userOptions.addRule') + '</button></div>' + '<div class="rule-row head"><span>' + t('userOptions.name') + '</span><span>' + t('userOptions.scopeType') + '</span><span>' + t('userOptions.scopeId') + '</span><span>' + t('userOptions.mode') + '</span><span>' + t('userOptions.behavior') + '</span><span>' + t('userOptions.ops') + '</span></div>' + '<div id="uo-rules">' + (names.length ? names.map(uoRuleRow).join('') : '<div class="empty-state"><div class="empty-icon" aria-hidden="true">◇</div><div class="empty-title">' + t('userOptions.noRules') + '</div></div>') + '</div>' + '</section>' + '<div class="form-actions"><button class="btn-primary" data-action="uo-save">' + t('userOptions.save') + '</button></div>'
+}
+function uoRuleAt(i){ return state.userOptions.rules[Object.keys(state.userOptions.rules)[i]] }
+function uoAddRule(){
+  var n = Object.keys(state.userOptions.rules).length + 1
+  state.userOptions.rules['rule_' + n] = {scope_type:'global', scope_id:'', mode:'blacklist', whitelist_behavior:'triggers_only', users: {}}
+  renderUoForm(); markDirty('user-options')
+  logAppend('新建规则：rule_' + n, 'debug')
+}
+function uoDelRule(i){
+  var name = Object.keys(state.userOptions.rules)[i]
+  confirmDialog(t('userOptions.delRuleConfirm', {name: name}), function(ok){
+    if (!ok) return
+    mockDelay(300, function(){
+      delete state.userOptions.rules[name]
+      renderUoForm(); markDirty('user-options')
+      logAppend('删除规则：' + name)
+    })
+  })
+}
+function uoAddUser(i){
+  var r = uoRuleAt(i)
+  var uid = 'user_' + (Object.keys(r.users).length + 1)
+  r.users[uid] = {user_id: uid, user_display_name: '', blacklist_mode: 'negative_portrait', negative_portrait: ''}
+  renderUoForm(); markDirty('user-options')
+  logAppend('添加用户条目：' + uid, 'debug')
+}
+function uoDelUser(i, uid){
+  delete uoRuleAt(i).users[uid]
+  renderUoForm(); markDirty('user-options')
+  logAppend('移除用户条目：' + uid, 'debug')
+}
+function uoSave(){
+  var errs = []
+  Object.keys(state.userOptions.rules).forEach(function(name){
+    var r = state.userOptions.rules[name]
+    if (r.scope_type !== 'global' && !/^[0-9]+$/.test(r.scope_id || '')) errs.push(t('userOptions.validScope') + '：' + name)
+    Object.keys(r.users || {}).forEach(function(uid){
+      if (!r.users[uid].user_id || !r.users[uid].user_id.trim()) errs.push(t('userOptions.validUser') + '：' + name)
+    })
+  })
+  var banner = document.getElementById('uo-error')
+  if (errs.length){
+    banner.hidden = false
+    banner.querySelector('.err-msg').textContent = errs[0] + (errs.length > 1 ? '（+ ' + (errs.length - 1) + '）' : '')
+    toast(t('status.failed', {error: errs.length}), 'error')
+    logAppend('用户选项校验失败：' + errs[0], 'error')
+    return
+  }
+  banner.hidden = true
+  var btn = document.querySelector('[data-action="uo-save"]')
+  btn.disabled = true
+  btn.textContent = t('userOptions.saving')
+  mockDelay(150 + Math.random() * 250, function(){
+    btn.disabled = false
+    btn.textContent = t('userOptions.save')
+    dirtyFlags['user-options'] = false
+    refreshUoSnapshot(); schedulePersist()
+    toast(t('userOptions.saved'))
+    logAppend('用户选项已保存')
+  })
+}
+function discardUoEdits(){
+  if (!uoSnapshot) return
+  dirtyFlags['user-options'] = false
+  state.userOptions = clone(uoSnapshot)
+  if (renderedViews['user-options']) renderUoForm()
+  refreshUoSnapshot(); schedulePersist()
+  toast(t('dialog.discarded'), 'warn')
+  logAppend('已丢弃未保存的更改（脏表单确认）', 'warn')
+}
+/* ===== appearance 视图（S1d，M10：风格/配色/动画/特效/自定义 CSS/重置）===== */
+function renderAppearance(){
+  var a = state.appearance
+  var styles = [
+    {id:'aurora', name:'Aurora', cls:'sw-aurora', href:'aurora.html'},
+    {id:'matrix', name:t('appearance.styleMatrix'), cls:'sw-matrix', href:'matrix.html'},
+    {id:'zen', name:t('appearance.styleZen'), cls:'sw-zen', href:'zen.html'},
+    {id:'synthwave', name:'Synthwave', cls:'sw-synth', cur:true},
+    {id:'ink', name:t('appearance.styleInk'), cls:'sw-ink', href:'ink.html'},
+    {id:'pixel', name:t('appearance.stylePixel'), cls:'sw-pixel', href:'pixel.html'}
+  ]
+  document.getElementById('view-appearance').innerHTML =
+    '<div class="page-head"><h1 class="page-title">' + t('appearance.title') + '</h1><p class="page-sub">' + t('appearance.sub') + '</p></div>' + '<section class="card"><h2 class="card-title">' + t('appearance.style') + '</h2><div class="style-grid">' + styles.map(function(s){
+      return s.cur
+        ? '<div class="style-card cur"><div class="swatch ' + s.cls + '"></div><div class="sw-name">' + s.name + '</div><div class="sw-sub">' + t('appearance.currentStyle') + '</div></div>'
+        : '<a class="style-card" href="' + s.href + '"><div class="swatch ' + s.cls + '"></div><div class="sw-name">' + s.name + '</div><div class="sw-sub">' + t('appearance.styleNote') + '</div></a>'
+    }).join('') + '</div></section>' + '<section class="card"><h2 class="card-title">' + t('appearance.palette') + '</h2><div class="chip-row" id="ap-chips">' + '<button class="chip' + (a.scheme !== 'light' ? ' on' : '') + '" data-action="ap-chip" data-scheme="dark">' + t('appearance.chipDark') + '</button>' + '<button class="chip' + (a.scheme === 'light' ? ' on' : '') + '" data-action="ap-chip" data-scheme="light">' + t('appearance.chipLight') + '</button>' + '</div><div class="hint" style="margin-top:8px">' + t('appearance.paletteNote') + '</div></section>' + '<section class="card"><div class="switch-row"><span class="switch-label">' + t('appearance.anim') + '<small style="display:block;color:var(--fg-dim)">' + t('appearance.animDesc') + '</small></span>' + '<label class="switch"><input type="checkbox" id="ap-anim"' + (a.anim !== false ? ' checked' : '') + '><span class="track"></span><span class="knob"></span></label></div></section>' + '<section class="card"><h2 class="card-title">' + t('appearance.fxTitle') + '</h2><div id="ap-fx">' + FX_IDS.map(function(id){
+      return '<div class="fx-row"><span>' + t('fx.' + id) + '<small>' + t('fx.' + id + 'Desc') + '</small></span>' + '<span class="switch"><input type="checkbox" data-apfx="' + id + '"' + (a.fx[id] !== false ? ' checked' : '') + '><span class="track"></span><span class="knob"></span></span></div>'
+    }).join('') + '</div></section>' + '<section class="card"><h2 class="card-title">' + t('appearance.customCss') + '</h2>' + '<textarea class="input" id="ap-css" rows="5" placeholder="' + t('appearance.cssPlaceholder') + '" spellcheck="false">' + esc(a.customCss) + '</textarea>' + '<div class="form-actions"><button class="btn-primary" data-action="ap-css-apply">' + t('appearance.cssApply') + '</button><button class="btn-secondary" data-action="ap-css-clear">' + t('appearance.cssReset') + '</button></div>' + '</section>' + '<section class="card"><h2 class="card-title">' + t('appearance.resetData') + '</h2><p class="hint">' + t('appearance.perPageDesc') + '</p>' + '<div class="form-actions"><button class="btn-secondary btn-danger" data-action="ap-reset">' + t('appearance.resetData') + '</button></div></section>'
+}
+function renderApChips(){
+  document.querySelectorAll('#ap-chips .chip').forEach(function(c){ c.classList.toggle('on', c.dataset.scheme === state.appearance.scheme) })
+}
+function apSetScheme(scheme){
+  state.appearance.scheme = scheme
+  document.documentElement.setAttribute('data-scheme', scheme)
+  schedulePersist(); renderApChips()
+  logAppend('配色切换：' + scheme, 'debug')
+}
+function apToggleAnim(checked){
+  document.documentElement.classList.toggle('anim-off', !checked)
+  state.appearance.anim = checked
+  schedulePersist()
+  logAppend('界面动画' + (checked ? '已开启' : '已关闭'), 'debug')
+}
+function apToggleFx(id, checked){
+  document.documentElement.classList.toggle('fx-off-' + id, !checked)
+  state.appearance.fx[id] = checked
+  schedulePersist()
+  renderFxPanel()   /* 顶栏 fx 面板联动刷新（幂等） */
+}
+function renderApFxState(){
+  if (!renderedViews['appearance']) return
+  document.querySelectorAll('#ap-fx input[data-apfx]').forEach(function(cb){ cb.checked = state.appearance.fx[cb.dataset.apfx] !== false })
+  var anim = document.getElementById('ap-anim')
+  if (anim) anim.checked = state.appearance.anim !== false
+  renderApChips()
+}
+function applyCustomCss(){
+  var css = document.getElementById('ap-css').value
+  state.appearance.customCss = css
+  schedulePersist()
+  var el = document.getElementById('custom-css')
+  if (css.trim()){
+    if (!el){ el = document.createElement('style'); el.id = 'custom-css'; document.head.appendChild(el) }
+    el.textContent = css
+  } else if (el){ el.parentNode.removeChild(el) }
+  toast(t('appearance.cssApplied'))
+  logAppend('自定义 CSS 已应用（' + css.length + ' 字符）', 'debug')
+}
+function clearCustomCss(){
+  document.getElementById('ap-css').value = ''
+  state.appearance.customCss = ''
+  schedulePersist()
+  var el = document.getElementById('custom-css')
+  if (el) el.parentNode.removeChild(el)
+  toast(t('appearance.cssCleared'))
+  logAppend('自定义 CSS 已清除', 'debug')
+}
+function resetDemoData(){
+  confirmDialog(t('appearance.resetConfirm'), function(ok){
+    if (!ok) return
+    mockDelay(300, function(){
+      try{ localStorage.removeItem(LS_KEY) }catch(e){}
+      logAppend('演示数据已重置，页面即将重载', 'warn')
+      toast(t('appearance.resetDone'), 'warn')
+      setTimeout(function(){ try{ location.reload() }catch(e){} }, 300)
+    })
+  })
+}
+/* ===== Bot CRUD 状态机（S1d，M8：启停/重启/删除/新建/重命名/刷新）===== */
+function botAct(op, id){
+  var b = getBot(id)
+  if (!b) return
+  var disp = b.bot_name
+  if (op === 'delete'){
+    confirmDialog(t('sidebar.delConfirm', {name: disp}), function(ok){
+      if (!ok) return
+      mockDelay(300, function(){
+        state.bots.splice(state.bots.indexOf(b), 1)
+        if (state.currentBotId === id) state.currentBotId = state.bots.length ? state.bots[0].bot_id : ''
+        renderBotList()
+        if (state.currentBotId) refreshConfig(); else renderConfig()
+        schedulePersist()
+        toast(t('sidebar.deleted', {name: disp}))
+        logAppend('删除 Bot：' + disp)
+      })
+    })
+    return
+  }
+  if (op === 'start' || op === 'restart'){
+    b.status = 'starting'
+    renderBotList()
+    logAppend('正在启动 Bot：' + disp, 'debug')
+    mockDelay(600, function(){
+      b.status = 'running'
+      b.uptime_seconds = 0
+      renderBotList(); schedulePersist()
+      toast(t('sidebar.started', {name: disp}))
+      logAppend('Bot 已启动：' + disp)
+    })
+    return
+  }
+  if (op === 'stop'){
+    mockDelay(600, function(){
+      b.status = 'stopped'
+      renderBotList(); schedulePersist()
+      toast(t('sidebar.stopped', {name: disp}))
+      logAppend('Bot 已停止：' + disp)
+    })
+  }
+}
+function botNew(){
+  openModal({
+    title: t('sidebar.newTitle'),
+    body: '<div class="field"><label class="field-label">' + t('sidebar.botId') + '</label><input class="input" id="mb-id" autocomplete="off"></div>' + '<div class="field"><label class="field-label">' + t('sidebar.botName') + '</label><input class="input" id="mb-name" autocomplete="off"></div>' + '<div class="field"><label class="field-label">' + t('sidebar.platform') + '</label><select class="select" id="mb-platform"><option>discord</option><option>qq</option></select></div>' + '<div class="field"><label class="field-label">' + t('sidebar.llm') + '</label><select class="select" id="mb-prov"><option>openai</option><option>deepseek</option><option>anthropic</option><option>google</option><option>dashscope</option></select></div>' + '<div class="field"><label class="field-label">' + t('sidebar.modelName') + '</label><input class="input" id="mb-model" autocomplete="off" placeholder="' + t('sidebar.model') + '"></div>' + '<div class="error-banner" id="mb-error" hidden><span class="err-icon" aria-hidden="true">⚠</span><span class="err-msg"></span></div>',
+    actions: [
+      {label: t('actionBtn.cancel'), cls: 'btn-secondary', cb: closeModal},
+      {label: t('actionBtn.confirm'), cls: 'btn-primary', cb: submitNewBot}
+    ]
+  })
+}
+function submitNewBot(){
+  var id = document.getElementById('mb-id').value.trim()
+  var name = document.getElementById('mb-name').value.trim()
+  var err = document.getElementById('mb-error')
+  var showErr = function(m){ err.hidden = false; err.querySelector('.err-msg').textContent = m; return }
+  if (!id) return showErr(t('sidebar.idRequired'))
+  if (!/^[a-z0-9_-]+$/.test(id)) return showErr(t('sidebar.badId'))
+  if (getBot(id)) return showErr(t('sidebar.dup'))
+  if (!name) return showErr(t('sidebar.nameRequired'))
+  err.hidden = true
+  var prov = document.getElementById('mb-prov').value
+  var modelInput = document.getElementById('mb-model')
+  var defModel = (MOCK.providers.filter(function(p){ return p.name === prov })[0] || MOCK.providers[0]).model
+  var nb = {bot_id: id, bot_name: name, platform: document.getElementById('mb-platform').value, enabled: true,
+    status: 'stopped', uptime_seconds: 0, llm_provider: prov,
+    model_name: (modelInput && modelInput.value.trim()) || defModel,
+    trigger_keywords: []}
+  state.bots.push(nb)
+  state.currentBotId = id
+  state.configs[id] = makeBotConfig(nb)
+  renderBotList(); schedulePersist(); closeModal()
+  refreshConfig()
+  toast(t('sidebar.created', {name: name}))
+  logAppend('新建 Bot：' + name + '（' + id + '）')
+}
+function botRename(id){
+  var b = getBot(id)
+  if (!b) return
+  promptModal(t('sidebar.renameTitle'), t('sidebar.renamePlaceholder'), function(name){
+    mockDelay(600, function(){
+      b.bot_name = name
+      renderBotList()
+      if (state.currentBotId === id) refreshConfig()
+      schedulePersist()
+      toast(t('sidebar.renamed', {name: name}))
+      logAppend('Bot 重命名：' + name)
+    })
+  })
+}
+function botRefresh(){
+  document.getElementById('bot-list').innerHTML = '<div class="skeleton" aria-hidden="true"><div class="sk-line" style="width:86%"></div><div class="sk-line" style="width:70%"></div><div class="sk-line" style="width:80%"></div><div class="sk-line" style="width:62%"></div></div>'
+  mockDelay(300, function(){ renderBotList(); logAppend('Bot 列表已刷新', 'debug') })
+}
+/* ===== 日志面板补全（S1d）：清空 / 级别过滤 / 暂停 / 计数 ===== */
+function logSetFilter(f){
+  state.logFilter = f
+  schedulePersist()
+  renderLogToolbar()
+  renderLog()
+}
+function logTogglePause(){
+  state.logPaused = !state.logPaused
+  schedulePersist()
+  if (!state.logPaused) renderLog()
+  toast(state.logPaused ? t('logPanel.paused') : t('logPanel.resume'))
+  logAppend(state.logPaused ? '日志已暂停' : '日志已恢复', 'debug')
+}
+function logClear(){
+  mockDelay(300, function(){
+    state.logEntries = []
+    renderLog()
+    schedulePersist()
+    toast(t('logPanel.cleared'))
+  })
+}
+function renderLogToolbar(){
+  var bar = document.getElementById('log-toolbar')
+  if (!bar) return
+  bar.innerHTML = ['ALL','INFO','WARN','ERROR','DEBUG'].map(function(f){
+    return '<button class="log-filter' + (state.logFilter === f ? ' active' : '') + '" data-logf="' + f + '">' + t('logPanel.' + f.toLowerCase()) + '</button>'
+  }).join('') + '<span class="log-count" id="log-count"></span>' + '<button class="btn-mini" data-logf-cmd="pause">' + (state.logPaused ? t('logPanel.resume') : t('logPanel.pause')) + '</button>' + '<button class="btn-mini" data-logf-cmd="clear">' + t('logPanel.clear') + '</button>'
+  var cnt = document.getElementById('log-count')
+  if (cnt) cnt.textContent = t('logPanel.count', {n: state.logEntries.length})
+}
+/* ===== 语言切换（§6.1：英文为结构预留，点击提示不切换）===== */
+function selectBot(id){
+  if (hasDirtyForm('config')){   /* M8：切换前若 config 表单脏 → 确认（§1.2） */
+    confirmDialog(t('dialog.dirtyConfirm'), function(ok){
+      if (!ok) return
+      discardCfgEdits()
+      doSelectBot(id)
+    })
+    return
+  }
+  doSelectBot(id)
+}
+function doSelectBot(id){
+  state.currentBotId = id
+  schedulePersist()
+  renderBotList()
+  var b = getBot(id)
+  var disp = b ? b.bot_name : id
+  toast(t('toast.botSelected', {name: disp}))
+  logAppend('选中 Bot：' + disp)
+  refreshConfig()   /* M8→config 联动：整表单重渲染（幂等） */
+}
+function setCurrentProvider(name){
+  if (hasDirtyForm('model-settings')){   /* M1：切换前若 model-settings 表单脏 → 确认（§1.2） */
+    confirmDialog(t('dialog.dirtyConfirm'), function(ok){
+      if (!ok) return
+      discardMsEdits()
+      doSetCurrentProvider(name)
+    })
+    return
+  }
+  doSetCurrentProvider(name)
+}
+function doSetCurrentProvider(name){
+  state.providers.forEach(function(p){ p.is_current = p.name === name })
+  state.currentProvider = name
+  schedulePersist()
+  var disp = MOCK.providerNames[name] || name
+  toast(t('toast.switched', {name: disp}))
+  logAppend('当前提供商已切换：' + disp)
+  renderProviders()
+  refreshModelSettings()   /* M1→M2 联动：model-settings 局部重渲染（幂等） */
+}
+var viewRenderers = {providers: renderProviders, 'model-settings': renderModelSettings, config: renderConfig, 'prompt-studio': renderPromptStudio, debugger: renderDebugger, 'user-options': renderUserOptions, appearance: renderAppearance}
+var viewRefreshHooks = {'model-settings': refreshModelSettings, config: refreshConfig, appearance: renderApFxState}   /* appearance 激活时同步顶栏 fx/动画开关状态 */
+
+/* ============ 6. 入口 —— hash 初始化 / 导航 / 事件委托 / splash / 初始化日志 ============ */
+var VIEWS = {providers:1, 'model-settings':1, config:1, 'prompt-studio':1, debugger:1, 'user-options':1, appearance:1}
+var DEFAULT_VIEW = 'config'   /* 设计 §1.2：缺省视图 = config（控制面板），S1b 起生效 */
+var renderedViews = {}
+function showView(id){
+  if (!VIEWS[id]) return
+  if (hasDirtyForm(getActiveView())){   /* 脏表单确认（§1.2）：确认 → 丢弃本地编辑并继续；取消 → 中止切换（点击驱动时 hash 尚未变化，无回滚问题） */
+    confirmDialog(t('dialog.dirtyConfirm'), function(ok){
+      if (!ok) return
+      discardDirtyEdits()
+      doShowView(id)
+    })
+    return
+  }
+  doShowView(id)
+}
+function doShowView(id){
+  document.querySelectorAll('.view').forEach(function(v){ v.hidden = v.dataset.view !== id })
+  document.querySelectorAll('.nav-item').forEach(function(n){
+    var on = n.dataset.view === id
+    n.classList.toggle('active', on)
+    if (on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current')
+  })
+  if (!renderedViews[id]){ if (viewRenderers[id]) viewRenderers[id](); renderedViews[id] = true }
+  if (viewRefreshHooks[id]) viewRefreshHooks[id]()   /* 视图激活刷新钩子（幂等，§1.2） */
+  if (location.hash.slice(1) !== id) location.hash = id
+}
+window.addEventListener('hashchange', function(){
+  var v = location.hash.slice(1)
+  if (VIEWS[v]) showView(v)
+})
+var initView = location.hash.slice(1)
+if (!VIEWS[initView]) initView = DEFAULT_VIEW
+showView(initView)
+document.querySelectorAll('.nav-item').forEach(function(n){
+  n.addEventListener('click', function(e){
+    e.preventDefault()
+    showView(n.dataset.view)
+  })
+})
+
+var langBtn = document.getElementById('lang-btn')
+var langMenu = document.getElementById('lang-menu')
+langBtn.addEventListener('click', function(){
+  var open = langMenu.hidden
+  langMenu.hidden = !open
+  langBtn.setAttribute('aria-expanded', String(open))
+  if (open){ var first = langMenu.querySelector('button'); if (first) first.focus(); else langMenu.setAttribute('tabindex', '-1'), langMenu.focus() }
+})
+langMenu.querySelectorAll('button').forEach(function(opt){
+  opt.addEventListener('click', function(){
+    langMenu.hidden = true
+    langBtn.setAttribute('aria-expanded', 'false')
+    langBtn.focus()
+    if (opt.dataset.lang === 'English'){
+      toast(t('toast.langReserved'), 'warn')
+      logAppend('英文版为结构预留，语言保持中文', 'warn')
+    } else {
+      toast(t('toast.langZh'))
+      logAppend('界面语言：简体中文', 'info')
+    }
+  })
+})
+var fxBtn = document.getElementById('fx-btn')
+var fxWrap = document.getElementById('fx-wrap')
+renderFxPanel()
+fxBtn.addEventListener('click', function(){
+  var open = fxWrap.hidden
+  fxWrap.hidden = !open
+  fxBtn.setAttribute('aria-expanded', String(open))
+  if (open){ var first = fxWrap.querySelector('input[data-fx]'); if (first) first.focus(); else fxWrap.setAttribute('tabindex', '-1'), fxWrap.focus() }
+  else fxBtn.focus()
+})
+document.getElementById('theme-btn').addEventListener('click', function(){ showView('appearance') })
+document.addEventListener('click', function(e){
+  if (!e.target.closest('.lang-wrap')){ langMenu.hidden = true; langBtn.setAttribute('aria-expanded', 'false') }
+  if (!e.target.closest('.fx-outer')){ if (!fxWrap.hidden){ fxWrap.hidden = true; fxBtn.setAttribute('aria-expanded', 'false') } }
+})
+function trapTab(scope, e){
+  if (scope.hidden || !scope.contains(e.target)) return false
+  var f = getFocusables(scope)
+  if (!f.length) return false
+  if (e.shiftKey && e.target === f[0]){ e.preventDefault(); f[f.length - 1].focus(); return true }
+  if (!e.shiftKey && e.target === f[f.length - 1]){ e.preventDefault(); f[0].focus(); return true }
+  return false
+}
+document.addEventListener('keydown', function(e){
+  if (e.key === 'Escape'){
+    if (!fxWrap.hidden){ fxWrap.hidden = true; fxBtn.setAttribute('aria-expanded', 'false'); fxBtn.focus() }
+    else if (!langMenu.hidden){ langMenu.hidden = true; langBtn.setAttribute('aria-expanded', 'false'); langBtn.focus() }
+    else if (!document.getElementById('modal').hidden) closeModal()
+    return
+  }
+  if (e.key === 'Tab'){   /* 焦点圈闭（§9）：modal / fx-wrap / lang-menu */
+    if (trapTab(document.getElementById('modal'), e)) return
+    if (trapTab(fxWrap, e)) return
+    trapTab(langMenu, e)
+  }
+})
+document.getElementById('modal-close').addEventListener('click', closeModal)
+document.getElementById('modal-overlay').addEventListener('click', closeModal)
+document.getElementById('content-inner').addEventListener('click', function(e){
+  var el = e.target.closest('[data-action]')
+  if (!el) return
+  var act = el.dataset.action
+  if (act === 'set-provider') setCurrentProvider(el.dataset.provider)
+  else if (act === 'prov-test') provTest(el.dataset.provider)
+  else if (act === 'ms-test') testConnection()
+  else if (act === 'ms-save') saveModelSettings()
+  else if (act === 'ms-add-row') addKvRow(el.dataset.kind)
+  else if (act === 'ms-del-row') delKvRow(el.dataset.kind, parseInt(el.dataset.idx, 10))
+  else if (act === 'ms-toggle-key') toggleApiKey()
+  else if (act === 'pg-send') sendChat()
+  else if (act === 'pg-clear') clearChat()
+  else if (act === 'pg-retry') pgRetry()
+  else if (act === 'cfg-save') saveConfig()
+  else if (act === 'cfg-export') exportConfig()
+  else if (act === 'cfg-import-btn'){ var fi = document.getElementById('cfg-file'); if (fi) fi.click() }
+  else if (act === 'cfg-tag-del') delTag(el.dataset.tag)
+  else if (act === 'cfg-toggle-secret') toggleSecret()
+  else if (act === 'cfg-toggle-pw') cfgTogglePw(el.dataset.pw)
+  else if (act === 'cfg-reset') resetConfig()
+  else if (act === 'ps-select'){ psKey = el.dataset.key; renderPsList(); renderPsEditor() }
+  else if (act === 'ps-new'){ promptModal(t('promptStudio.newKey'), t('promptStudio.keyName'), psNewKey) }
+  else if (act === 'ps-del') psDelKey()
+  else if (act === 'ps-save') psSave()
+  else if (act === 'ps-ph') insertPh(el.dataset.ph)
+  else if (act === 'ps-build') psBuild()
+  else if (act === 'ps-retry') renderPromptStudio()
+  else if (act === 'ps-preset-save') psPresetSave()
+  else if (act === 'ps-preset-load') psPresetLoad()
+  else if (act === 'ps-preset-del') psPresetDel()
+  else if (act === 'dbg-tab') renderDbgTab(el.dataset.tab)
+  else if (act === 'dbg-send') dbgSend()
+  else if (act === 'dbg-clear') dbgClearChat()
+  else if (act === 'dbg-hist') dbgShowHist(parseInt(el.dataset.idx, 10))
+  else if (act === 'dbg-cap') dbgToggleCap(el.dataset.id)
+  else if (act === 'dbg-cap-del') dbgCapDel(el.dataset.id)
+  else if (act === 'dbg-cap-clear') dbgCapClear()
+  else if (act === 'dbg-cap-new') dbgCapNew()
+  else if (act === 'dbg-cap-retry') renderDbgTab('capture')
+  else if (act === 'dbg-san-run') dbgSanitizeRun()
+  else if (act === 'dbg-san-sample') dbgSanFill()
+  else if (act === 'uo-add-rule') uoAddRule()
+  else if (act === 'uo-del-rule') uoDelRule(parseInt(el.dataset.idx, 10))
+  else if (act === 'uo-add-user') uoAddUser(parseInt(el.dataset.idx, 10))
+  else if (act === 'uo-del-user') uoDelUser(parseInt(el.dataset.idx, 10), el.dataset.uid)
+  else if (act === 'uo-save') uoSave()
+  else if (act === 'ap-chip') apSetScheme(el.dataset.scheme)
+  else if (act === 'ap-css-apply') applyCustomCss()
+  else if (act === 'ap-css-clear') clearCustomCss()
+  else if (act === 'ap-reset') resetDemoData()
+})
+document.getElementById('content-inner').addEventListener('input', function(e){
+  var t = e.target
+  if (!t.closest('#view-model-settings')) return
+  if (t.dataset.param){
+    state.params[t.dataset.param] = parseFloat(t.value)
+    var v = document.getElementById('slider-val-' + t.dataset.param)
+    if (v) v.textContent = t.value
+    refreshReqSummary()
+    markDirty('model-settings')
+  } else if (t.dataset.kv){
+    state[t.dataset.kv][parseInt(t.dataset.idx, 10)][t.dataset.field] = t.value
+    markDirty('model-settings')
+  } else if (t.id === 'ms-model'){ state.msForm.model = t.value; markDirty('model-settings') }
+  else if (t.id === 'ms-apikey'){ state.msForm.apiKey = t.value; markDirty('model-settings') }
+  else if (t.id === 'ms-baseurl'){ state.msForm.baseUrl = t.value; markDirty('model-settings') }
+})
+document.getElementById('content-inner').addEventListener('input', function(e){
+  var t = e.target
+  if (!t.closest('#view-config')) return
+  if (!t.dataset.cfg) return
+  if (t.type === 'range'){
+    setCfgValueOn(getBotConfig(state.currentBotId), t.dataset.cfg, parseFloat(t.value))
+    var sv = document.getElementById('cfg-slider-val-' + t.dataset.cfg.replace(/\./g, '_'))
+    if (sv) sv.textContent = t.value
+  }
+  t.classList.remove('invalid')
+  markDirty('config')
+})
+document.getElementById('content-inner').addEventListener('input', function(e){
+  var t = e.target
+  if (!t.closest('#view-prompt-studio')) return
+  if (t.id === 'ps-editor'){
+    state.templates[psKey] = t.dataset.key === 'operational_instructions' ? t.value.split('\n').filter(Boolean) : t.value
+    markDirty('prompt-studio')
+  } else if (t.id === 'ps-nick'){ state.psRole.nickname = t.value; markDirty('prompt-studio') }
+  else if (t.id === 'ps-persona'){ state.psRole.persona = t.value; markDirty('prompt-studio') }
+})
+document.getElementById('content-inner').addEventListener('input', function(e){
+  var t = e.target
+  if (!t.closest('#view-user-options')) return
+  if (t.id === 'uo-timeout'){ state.userOptions.member_search_timeout_ms = parseInt(t.value, 10) || 0; markDirty('user-options') }
+  else if (t.id === 'uo-scope'){ uoRuleAt(parseInt(t.dataset.idx, 10)).scope_id = t.value; markDirty('user-options') }
+  else if (t.dataset.uop){
+    var u = uoRuleAt(parseInt(t.dataset.idx, 10)).users[t.dataset.uid]
+    if (u) u[t.dataset.uop === 'uid' ? 'user_id' : 'user_display_name'] = t.value
+    markDirty('user-options')
+  }
+})
+document.getElementById('content-inner').addEventListener('change', function(e){
+  var t = e.target
+  if (!t.closest('#view-user-options')) return
+  if (t.id === 'uo-enabled'){ state.userOptions.enabled = t.checked; markDirty('user-options') }
+  else if (t.id === 'uo-stype'){ uoRuleAt(parseInt(t.dataset.idx, 10)).scope_type = t.value; markDirty('user-options') }
+  else if (t.id === 'uo-mode'){ uoRuleAt(parseInt(t.dataset.idx, 10)).mode = t.value; markDirty('user-options') }
+  else if (t.id === 'uo-beh'){ uoRuleAt(parseInt(t.dataset.idx, 10)).whitelist_behavior = t.value; markDirty('user-options') }
+  else if (t.dataset.uop === 'bm'){
+    var u = uoRuleAt(parseInt(t.dataset.idx, 10)).users[t.dataset.uid]
+    if (u) u.blacklist_mode = t.value
+    markDirty('user-options')
+  }
+})
+document.getElementById('content-inner').addEventListener('change', function(e){
+  var t = e.target
+  if (!t.closest('#view-appearance')) return
+  if (t.id === 'ap-anim') apToggleAnim(t.checked)
+  else if (t.dataset.apfx) apToggleFx(t.dataset.apfx, t.checked)
+})
+document.getElementById('content-inner').addEventListener('change', function(e){
+  var t = e.target
+  if (!t.closest('#view-model-settings')) return
+  if (t.id === 'ms-provider'){ onProviderSelect(); refreshReqSummary() }
+  else if (t.id === 'ms-model'){ state.msForm.model = t.value; markDirty('model-settings'); refreshReqSummary() }
+})
+document.getElementById('content-inner').addEventListener('change', function(e){
+  var t = e.target
+  if (!t.closest('#view-prompt-studio')) return
+  if (t.id === 'ps-preset'){
+    psPresetName = t.value
+    renderPresetBar()
+  }
+})
+document.getElementById('content-inner').addEventListener('change', function(e){
+  var t = e.target
+  if (!t.closest('#view-config')) return
+  if (t.id === 'cfg-file'){
+    var f = t.files && t.files[0]
+    if (f) importConfig(f)
+    t.value = ''
+    return
+  }
+  if (!t.dataset.cfg) return
+  setCfgValueOn(getBotConfig(state.currentBotId), t.dataset.cfg, t.type === 'checkbox' ? t.checked : t.value)
+  markDirty('config')
+})
+document.getElementById('content-inner').addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && e.target.id === 'pg-input'){ e.preventDefault(); sendChat() }
+  else if (e.key === 'Enter' && e.target.id === 'cfg-tag-input'){ e.preventDefault(); addTag() }
+  else if (e.key === 'Enter' && e.target.id === 'dbg-input'){ e.preventDefault(); dbgSend() }
+})
+var botList = document.getElementById('bot-list')
+botList.addEventListener('click', function(e){
+  var act = e.target.closest('.act-btn')
+  if (act){
+    var card = e.target.closest('.bot-card')
+    if (card) botAct(act.dataset.act, card.dataset.bot)
+    return
+  }
+  var card = e.target.closest('.bot-card')
+  if (card) selectBot(card.dataset.bot)
+})
+botList.addEventListener('dblclick', function(e){   /* S1d：双击重命名（600ms） */
+  var card = e.target.closest('.bot-card')
+  if (card) botRename(card.dataset.bot)
+})
+botList.addEventListener('keydown', function(e){
+  if (e.key !== 'Enter' && e.key !== ' ') return
+  var card = e.target.closest('.bot-card')
+  if (card){ e.preventDefault(); selectBot(card.dataset.bot) }
+})
+document.getElementById('btn-new').addEventListener('click', botNew)
+document.getElementById('btn-refresh').addEventListener('click', botRefresh)
+document.getElementById('log-toolbar').addEventListener('click', function(e){
+  var f = e.target.closest('[data-logf]')
+  if (f){ logSetFilter(f.dataset.logf); return }
+  var cmd = e.target.closest('[data-logf-cmd]')
+  if (!cmd) return
+  if (cmd.dataset.logfCmd === 'clear') logClear()
+  else if (cmd.dataset.logfCmd === 'pause') logTogglePause()
+})
+
+var splash = document.getElementById('splash')
+setTimeout(function(){
+  splash.classList.add('hide')
+  setTimeout(function(){ if (splash.parentNode) splash.parentNode.removeChild(splash) }, 400)
+}, 600)
+
+document.documentElement.setAttribute('data-scheme', state.appearance.scheme)
+if (state.appearance.customCss){
+  var ce = document.createElement('style')
+  ce.id = 'custom-css'
+  ce.textContent = state.appearance.customCss
+  document.head.appendChild(ce)
+}
+renderBotList()
+renderLogToolbar()
+renderLog()
+logAppend('演示页初始化完成：7 视图 · ' + MOCK.providers.length + ' 家提供商 · ' + MOCK.bots.length + ' 个 Bot')
+logAppend('演示状态已加载（localStorage key: ' + LS_KEY + '）', 'debug')
+if (_resetFlag){ toast(t('toast.resetData'), 'warn'); logAppend('数据损坏，已恢复默认（存储损坏兜底，§5.3）', 'warn') }
+})()
+</script>
+</body>
+</html>

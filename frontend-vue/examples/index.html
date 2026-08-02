@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<!--
+  文件：方案总览页 index.html
+  定位：ELA-Bot 前端美术方案选型 —— 为 Vue3 + Naive UI 新版控制面板制作的
+        6 套视觉方案（Aurora 极光 / Matrix 终端矩阵 / Zen 极简纸感 /
+        Synthwave 蒸汽波 / Ink 水墨禅意 / Pixel 复古像素）原型入口
+  页面底色：#0f1620 深色；标题强调色沿用现有主题 --primary-color: #45a3e6
+  注意：本页与 6 个方案页均为纯静态单文件原型，file:// 协议下可直接打开。
+        每个示例页顶栏带「特效」按钮，演示外观设置页的特效开关机制。
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELA-Bot · 前端美术方案选型</title>
+<style>
+:root{
+  --bg:#0f1620;
+  --card:#1a2431;
+  --border:#2a3b52;
+  --fg:#e5edf6;
+  --fg-muted:#9fb0c4;
+  --fg-dim:#64788f;
+  --primary:#45a3e6;
+  --mono:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  font-size:14px;line-height:1.7;
+  color:var(--fg);
+  background:
+    radial-gradient(800px 500px at 80% -10%, rgba(69,163,230,.10), transparent 60%),
+    radial-gradient(700px 460px at 8% 100%, rgba(69,163,230,.06), transparent 60%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(148,163,184,.28);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(148,163,184,.5)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding:48px 24px 40px}
+/* ============ 页头 ============ */
+.head{text-align:center;margin-bottom:44px;animation:fadeIn .5s ease both}
+.brand{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:13px;font-weight:600;letter-spacing:.12em;
+  color:var(--fg-dim);
+}
+.brand::before,.brand::after{content:'';width:28px;height:1px;background:var(--border)}
+.head h1{
+  margin-top:16px;font-size:30px;font-weight:700;letter-spacing:.01em;
+  color:var(--primary);
+}
+.head .sub{margin-top:10px;font-size:14px;color:var(--fg-muted);max-width:640px;margin-left:auto;margin-right:auto}
+.head .sub code{
+  font-family:var(--mono);font-size:12px;color:var(--primary);
+  background:rgba(69,163,230,.1);border:1px solid rgba(69,163,230,.25);
+  border-radius:4px;padding:1px 6px;
+}
+/* ============ 方案卡片 ============ */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.scheme-card{
+  display:flex;flex-direction:column;
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:20px;overflow:hidden;
+  transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;
+  animation:fadeIn .5s ease both;
+}
+.scheme-card:nth-child(2){animation-delay:.08s}
+.scheme-card:nth-child(3){animation-delay:.16s}
+.scheme-card:nth-child(4){animation-delay:.24s}
+.scheme-card:nth-child(5){animation-delay:.32s}
+.scheme-card:nth-child(6){animation-delay:.4s}
+.scheme-card h2{font-size:18px;font-weight:600;margin-top:18px;display:flex;align-items:baseline;gap:8px}
+.scheme-card h2 .en{font-size:12px;font-weight:500;color:var(--fg-dim);font-family:var(--mono);letter-spacing:.06em}
+.scheme-card .tagline{margin-top:6px;font-size:13px;color:var(--fg-muted)}
+.scheme-card .palette{margin-top:12px;list-style:none;flex:1}
+.scheme-card .palette li{
+  position:relative;padding-left:14px;font-size:12.5px;color:var(--fg-muted);line-height:2;
+}
+.scheme-card .palette li::before{
+  content:'';position:absolute;left:0;top:13px;width:6px;height:6px;border-radius:2px;
+  background:var(--dot,var(--primary));
+}
+.scheme-card .palette li code{
+  font-family:var(--mono);font-size:11.5px;color:var(--fg);
+  background:rgba(148,163,184,.12);border-radius:3px;padding:0 5px;
+}
+.view-link{
+  display:inline-flex;align-items:center;gap:6px;
+  margin-top:16px;padding:8px 16px;border-radius:8px;
+  font-size:13px;font-weight:600;text-decoration:none;
+  transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;
+}
+.view-link:hover{transform:translateY(-1px)}
+/* —— hover 反馈与各方案一致 —— */
+.scheme-card.aurora:hover{
+  transform:translateY(-2px);
+  border-color:rgba(94,234,212,.4);
+  box-shadow:0 20px 50px rgba(0,0,0,.45);
+}
+.scheme-card.aurora .view-link{background:linear-gradient(135deg,#22d3ee,#818cf8);color:#fff}
+.scheme-card.aurora .view-link:hover{box-shadow:0 8px 24px rgba(99,102,241,.35)}
+.scheme-card.matrix:hover{
+  border-color:rgba(0,255,136,.5);
+  box-shadow:0 0 24px rgba(0,255,136,.10);
+}
+.scheme-card.matrix .view-link{background:rgba(0,255,136,.12);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.scheme-card.matrix .view-link:hover{box-shadow:0 0 14px rgba(0,255,136,.35)}
+.scheme-card.zen:hover{
+  transform:translateY(-2px);
+  border-color:#d8d2c8;
+}
+.scheme-card.zen .view-link{background:var(--primary);color:#fff}
+.scheme-card.zen .view-link:hover{background:#2f4bc4}
+.scheme-card.synthwave:hover{
+  border-color:rgba(255,110,199,.55);
+  box-shadow:0 0 26px rgba(255,110,199,.16);
+}
+.scheme-card.synthwave .view-link{background:#ff6ec7;color:#12082a}
+.scheme-card.synthwave .view-link:hover{box-shadow:0 0 16px rgba(255,110,199,.55)}
+.scheme-card.ink:hover{
+  transform:translateY(-2px);
+  border-color:#c9bda9;
+}
+.scheme-card.ink .view-link{background:#b3402a;color:#fbf8f2}
+.scheme-card.ink .view-link:hover{background:#96351f}
+.scheme-card.pixel:hover{
+  border-color:#ffd23f;
+  box-shadow:4px 4px 0 rgba(0,0,0,.45);
+  transform:translate(-2px,-2px);
+}
+.scheme-card.pixel .view-link{background:#ffd23f;color:#141821;border:2px solid #141821;border-radius:0;box-shadow:2px 2px 0 rgba(0,0,0,.45)}
+.scheme-card.pixel .view-link:hover{transform:translate(2px,2px);box-shadow:none}
+/* ============ 迷你预览 ============ */
+.preview{
+  position:relative;height:150px;border-radius:10px;
+  overflow:hidden;padding:16px;
+  display:flex;flex-direction:column;justify-content:flex-end;gap:8px;
+}
+.preview::after{
+  content:'';position:absolute;top:12px;left:14px;
+  width:34px;height:5px;border-radius:3px;
+  background:rgba(255,255,255,.09);
+}
+.pv-cards{display:flex;gap:8px}
+.pv-card{width:70px;height:34px;border-radius:6px}
+.pv-btn{width:52px;height:18px;border:none;border-radius:4px}
+/* —— 各方案迷你预览质感（内联 style 复刻主色与卡片） —— */
+/* ============ 页脚说明 ============ */
+.foot{
+  margin-top:40px;padding:16px 18px;
+  border:1px dashed var(--border);border-radius:10px;
+  font-size:12.5px;color:var(--fg-muted);line-height:1.9;
+  animation:fadeIn .5s ease .24s both;
+}
+.foot strong{color:var(--fg)}
+.foot code{
+  font-family:var(--mono);font-size:11.5px;color:var(--primary);
+  background:rgba(69,163,230,.08);border-radius:3px;padding:0 5px;
+}
+.foot a{color:var(--primary);text-decoration:none}
+.foot a:hover{text-decoration:underline}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (max-width:900px){
+  .cards{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="brand">ELA-BOT</div>
+    <h1>ELA-Bot 前端美术方案选型</h1>
+    <p class="sub">
+      为 <code>Vue3 + Naive UI</code> 新版控制面板制作的 6 套纯静态视觉方案原型。
+      各页面单文件自包含（零外部依赖、零网络请求），可直接双击在浏览器中体验。
+    </p>
+  </header>
+
+  <main class="cards">
+
+    <!-- 方案 A：Aurora 极光 -->
+    <section class="scheme-card aurora" style="--dot:#5eead4">
+      <div class="preview" style="background:#070b16;background-image:radial-gradient(200px 130px at 12% 0%,rgba(34,211,238,.22),transparent 60%),radial-gradient(200px 140px at 88% 8%,rgba(167,139,250,.18),transparent 60%),radial-gradient(180px 120px at 80% 96%,rgba(244,114,182,.13),transparent 60%)">
+        <div class="pv-cards">
+          <div class="pv-card" style="background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.12);border-radius:8px;backdrop-filter:blur(4px)"></div>
+          <div class="pv-card" style="background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.12);border-radius:8px;backdrop-filter:blur(4px)"></div>
+        </div>
+        <button class="pv-btn" style="background:linear-gradient(135deg,#22d3ee,#818cf8);border-radius:5px" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Aurora 极光 <span class="en">/ A</span></h2>
+      <p class="tagline">深邃宇宙 + 流动极光 + 玻璃拟态 —— 现有 glass 风格的进阶版</p>
+      <ul class="palette">
+        <li>底色 <code>#070b16</code> 近黑深蓝，叠加青 / 紫 / 粉三处固定光斑</li>
+        <li>主色 <code>#5eead4</code> 青 · 辅助 <code>#a78bfa</code> 紫</li>
+        <li>玻璃卡片：<code>blur(18px)</code> + 顶部 1px 高光线 + 渐变主按钮</li>
+        <li>18s 极光漂移动效 + 渐变文字标题，旗舰演示质感</li>
+      </ul>
+      <a class="view-link" href="aurora.html">查看完整示例 →</a>
+    </section>
+
+    <!-- 方案 B：Matrix 终端矩阵 -->
+    <section class="scheme-card matrix" style="--dot:#00ff88">
+      <div class="preview" style="background:#020604;background-image:linear-gradient(rgba(0,255,136,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,.07) 1px,transparent 1px);background-size:26px 26px">
+        <div class="pv-cards">
+          <div class="pv-card" style="position:relative;background:#060d09;border:1px solid rgba(0,255,136,.35);border-radius:4px">
+            <span style="position:absolute;top:-1px;left:-1px;width:8px;height:8px;border-top:2px solid #00ff88;border-left:2px solid #00ff88"></span>
+          </div>
+          <div class="pv-card" style="position:relative;background:#060d09;border:1px solid rgba(0,255,136,.35);border-radius:4px">
+            <span style="position:absolute;top:-1px;left:-1px;width:8px;height:8px;border-top:2px solid #00ff88;border-left:2px solid #00ff88"></span>
+          </div>
+        </div>
+        <button class="pv-btn" style="background:#00ff88;border-radius:2px" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Matrix 终端矩阵 <span class="en">/ B</span></h2>
+      <p class="tagline">黑底荧光绿终端 —— 现有 neon / cyberpunk 风格的「纯终端」变体</p>
+      <ul class="palette">
+        <li>底色 <code>#020604</code> 近黑墨绿，42px 网格 + 7s 扫描亮线</li>
+        <li>主色 <code>#00ff88</code> 荧光绿 · 辅助 <code>#00d8ff</code> 青</li>
+        <li>卡片左上角角标装饰 + <code>[ 激活项 ]</code> 方括号导航</li>
+        <li>bot_id / 日志 / 数值一律等宽字体，尊重减少动效偏好</li>
+      </ul>
+      <a class="view-link" href="matrix.html">查看完整示例 →</a>
+    </section>
+
+    <!-- 方案 C：Zen 极简纸感 -->
+    <section class="scheme-card zen" style="--dot:#3b5bdb">
+      <div class="preview" style="background:#faf8f5;background-image:radial-gradient(circle at 20% 0%,rgba(59,91,219,.06),transparent 45%)">
+        <div class="pv-cards">
+          <div class="pv-card" style="background:#ffffff;border:1px solid #ece7e0;border-radius:6px;box-shadow:0 1px 2px rgba(31,36,48,.04)"></div>
+          <div class="pv-card" style="background:#ffffff;border:1px solid #ece7e0;border-radius:6px;box-shadow:0 1px 2px rgba(31,36,48,.04)"></div>
+        </div>
+        <button class="pv-btn" style="background:#3b5bdb;border-radius:4px" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Zen 极简纸感 <span class="en">/ C</span></h2>
+      <p class="tagline">日式纸感极简 —— 现有 minimal / dawn 风格的精致化</p>
+      <ul class="palette">
+        <li>底色 <code>#faf8f5</code> 米白纸色 · 主色 <code>#3b5bdb</code> 靛蓝</li>
+        <li>白纸卡片 + <code>#ece7e0</code> 细边框，全页无阴影无渐变按钮</li>
+        <li>靛蓝细线小标题装饰 + 日志级别小圆点标记</li>
+        <li>安静的专业感：仅保留 transition 与淡入，附暗色纸感变体</li>
+      </ul>
+      <a class="view-link" href="zen.html">查看完整示例 →</a>
+    </section>
+
+    <!-- 方案 D：Synthwave 蒸汽波 -->
+    <section class="scheme-card synthwave" style="--dot:#ff6ec7">
+      <div class="preview" style="background:#12082a;background-image:radial-gradient(110px 110px at 50% 34%,#ffd319 0%,#ff6ec7 45%,transparent 70%),linear-gradient(rgba(255,110,199,.18) 1px,transparent 1px),linear-gradient(90deg,rgba(45,226,230,.18) 1px,transparent 1px);background-size:auto,44px 44px,44px 44px">
+        <div class="pv-cards">
+          <div class="pv-card" style="background:#1c0f38;border:1px solid rgba(255,110,199,.45);border-radius:4px"></div>
+          <div class="pv-card" style="background:#1c0f38;border:1px solid rgba(45,226,230,.45);border-radius:4px"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:#ff6ec7;text-shadow:0 0 10px rgba(255,110,199,.6)">SYNTHWAVE</div>
+        <button class="pv-btn" style="background:#ff6ec7;border-radius:4px" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Synthwave 蒸汽波 <span class="en">/ D</span></h2>
+      <p class="tagline">80 年代复古未来 —— 紫粉日落 + 网格地平线 + 霓虹字体</p>
+      <ul class="palette">
+        <li>底色 <code>#12082a</code> 深紫黑 · 主色 <code>#ff6ec7</code> 粉霓虹</li>
+        <li>辅助 <code>#2de2e6</code> 青 · <code>#ffd319</code> 黄 · 错误 <code>#ff3860</code></li>
+        <li>12s 呼吸「太阳」光带 + 55° 透视网格 + CRT 扫描线</li>
+        <li>顶栏「特效」按钮演示 4 个特效开关（日落 / 网格 / 扫描线 / 辉光）</li>
+      </ul>
+      <a class="view-link" href="synthwave.html">查看完整示例 →</a>
+    </section>
+
+    <!-- 方案 E：Ink 水墨禅意 -->
+    <section class="scheme-card ink" style="--dot:#b3402a">
+      <div class="preview" style="background:#f6f2ea;background-image:radial-gradient(150px 110px at 16% 0%,rgba(80,70,60,.07),transparent 60%),radial-gradient(140px 100px at 88% 30%,rgba(80,70,60,.05),transparent 60%)">
+        <div class="pv-cards">
+          <div class="pv-card" style="background:#fbf8f2;border:1px solid #e2dacb;border-radius:4px;box-shadow:0 1px 2px rgba(60,50,40,.05)"></div>
+          <div class="pv-card" style="background:#fbf8f2;border:1px solid #e2dacb;border-radius:4px;box-shadow:0 1px 2px rgba(60,50,40,.05)"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-family:'Songti SC','STSong','SimSun',serif;font-size:12px;letter-spacing:.2em;color:#2f2b26">
+          <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#b3402a"></span>INK 水墨
+        </div>
+        <button class="pv-btn" style="background:#b3402a;border-radius:2px" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Ink 水墨禅意 <span class="en">/ E</span></h2>
+      <p class="tagline">东方水墨 + 宣纸质感 + 朱砂点缀 —— 安静雅致的明色面板</p>
+      <ul class="palette">
+        <li>底色 <code>#f6f2ea</code> 宣纸米黄 · 墨 <code>#2f2b26</code> · 朱砂 <code>#b3402a</code></li>
+        <li>青瓷 <code>#5d8a7d</code> 次要信息 · 宋体标题字距 0.12em + 朱砂竖线</li>
+        <li>右下角「雅」印章角标 + 三处极淡墨色晕染</li>
+        <li>特效极少：仅「水墨晕染」与「极淡入淡出」两个开关</li>
+      </ul>
+      <a class="view-link" href="ink.html">查看完整示例 →</a>
+    </section>
+
+    <!-- 方案 F：Pixel 复古像素 -->
+    <section class="scheme-card pixel" style="--dot:#ffd23f">
+      <div class="preview" style="background:#141821;background-image:linear-gradient(rgba(76,201,240,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(76,201,240,.06) 1px,transparent 1px);background-size:26px 26px">
+        <div class="pv-cards">
+          <div class="pv-card" style="background:#1e2430;border:3px solid #2e3544;border-radius:0;box-shadow:3px 3px 0 rgba(0,0,0,.45)"></div>
+          <div class="pv-card" style="background:#1e2430;border:3px solid #2e3544;border-radius:0;box-shadow:3px 3px 0 rgba(0,0,0,.45)"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:#4cc9f0">▮▮ PIXEL ▮▮</div>
+        <button class="pv-btn" style="background:#ffd23f;border-radius:0;border:2px solid #141821;box-shadow:2px 2px 0 rgba(0,0,0,.45)" tabindex="-1" aria-hidden="true"></button>
+      </div>
+      <h2>Pixel 复古像素 <span class="en">/ F</span></h2>
+      <p class="tagline">8-bit 复古游戏机风格 —— 硬边框 + 像素感，70% 实用 30% 趣味</p>
+      <ul class="palette">
+        <li>底色 <code>#141821</code> 深蓝灰 · 主色 <code>#ffd23f</code> 金 · <code>#4cc9f0</code> 蓝</li>
+        <li>全页零圆角 + 3px 硬边框 + 硬偏移投影，按钮按下位移模拟按压</li>
+        <li>顶栏三色分段条 + 方块状态点 steps 硬切换闪烁</li>
+        <li>特效开关：方块闪烁 / 像素扫描线 / 标题彩虹 6s 周期</li>
+      </ul>
+      <a class="view-link" href="pixel.html">查看完整示例 →</a>
+    </section>
+
+  </main>
+
+  <footer class="foot">
+    <strong>如何接入现有主题系统：</strong>
+    将任一方案的色板落为 <code>src/themes/themes.ts</code> 的 48 键 token 体系
+    （20 基础色 + 24 样式级默认 + 4 配色方案专属），并在 <code>themes/naiveMapping.ts</code>
+    中完成 naive-ui 组件主题映射；组件内一律使用 <code>var(--xxx)</code>，即可在
+    「外观设置」中与现有 9 种 style 平级切换。完整映射规则与 token 对照表见
+    <a href="README.md">examples/README.md</a> 设计文档。
+    <br>
+    每个示例页顶栏带「特效」按钮，演示外观设置页的特效开关机制
+    （切换 <code>html.fx-off-&lt;id&gt;</code> class 即时关闭对应装饰动画）。
+  </footer>
+
+</div>
+</body>
+</html>

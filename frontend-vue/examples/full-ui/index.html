@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<!--
+  文件：full-ui/index.html · 完整功能演示总览入口
+  定位：ELA-Bot 完整 UI 功能演示 —— 6 套完整版（7 视图 + Bot CRUD + 日志面板
+        + toast/弹窗/splash）的风格总览与入口页
+  页面：中性深色基线；6 卡各带风格色块与专属 hover 反馈；零外部依赖；无 JS
+  链接：同目录相对链接（aurora.html / matrix.html / zen.html /
+        synthwave.html / ink.html / pixel.html），file:// 双击即可
+  说明：演示数据存储于浏览器 localStorage，可在各页「外观设置」中一键重置
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELA-Bot · 完整功能演示</title>
+<style>
+:root{
+  --bg:#0f1620;
+  --card:#1a2431;
+  --border:#2a3b52;
+  --fg:#e5edf6;
+  --fg-muted:#9fb0c4;
+  --fg-dim:#64788f;
+  --primary:#45a3e6;
+  --mono:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  font-size:14px;line-height:1.7;
+  color:var(--fg);
+  background:
+    radial-gradient(800px 500px at 80% -10%, rgba(69,163,230,.10), transparent 60%),
+    radial-gradient(700px 460px at 8% 100%, rgba(69,163,230,.06), transparent 60%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(148,163,184,.28);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:rgba(148,163,184,.5)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+.wrap{max-width:1120px;margin:0 auto;padding:48px 24px 40px}
+/* ============ 页头 ============ */
+.head{text-align:center;margin-bottom:40px;animation:fadeIn .5s ease both}
+.brand{
+  display:inline-flex;align-items:center;gap:8px;
+  font-size:13px;font-weight:600;letter-spacing:.12em;
+  color:var(--fg-dim);
+}
+.brand::before,.brand::after{content:'';width:28px;height:1px;background:var(--border)}
+.head h1{
+  margin-top:16px;font-size:30px;font-weight:700;letter-spacing:.01em;
+  color:var(--primary);
+}
+.head .sub{
+  margin-top:10px;font-size:14px;color:var(--fg-muted);
+  max-width:680px;margin-left:auto;margin-right:auto;
+}
+.head .sub code{
+  font-family:var(--mono);font-size:12px;color:var(--primary);
+  background:rgba(69,163,230,.1);border:1px solid rgba(69,163,230,.25);
+  border-radius:4px;padding:1px 6px;
+}
+/* ============ 功能清单徽章 ============ */
+.modules{
+  margin-top:18px;display:flex;flex-wrap:wrap;justify-content:center;gap:8px;
+}
+.module-badge{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.03em;
+  color:var(--fg-muted);
+  background:rgba(148,163,184,.08);border:1px solid var(--border);
+  border-radius:999px;padding:3px 12px;
+}
+.module-badge b{color:var(--primary);font-weight:600;margin-right:5px}
+/* ============ 方案卡片 ============ */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.scheme-card{
+  display:flex;flex-direction:column;
+  background:var(--card);border:1px solid var(--border);border-radius:14px;
+  padding:18px;overflow:hidden;
+  transition:transform .25s ease,border-color .25s ease,box-shadow .25s ease;
+  animation:fadeIn .5s ease both;
+}
+.scheme-card:nth-child(2){animation-delay:.08s}
+.scheme-card:nth-child(3){animation-delay:.16s}
+.scheme-card:nth-child(4){animation-delay:.24s}
+.scheme-card:nth-child(5){animation-delay:.32s}
+.scheme-card:nth-child(6){animation-delay:.4s}
+.scheme-card h2{font-size:18px;font-weight:600;margin-top:16px;display:flex;align-items:baseline;gap:8px}
+.scheme-card h2 .en{font-size:12px;font-weight:500;color:var(--fg-dim);font-family:var(--mono);letter-spacing:.06em}
+.scheme-card .tagline{margin-top:6px;font-size:13px;color:var(--fg-muted)}
+/* —— 风格色块小样（swatch）—— */
+.swatch{
+  position:relative;height:64px;border-radius:10px;overflow:hidden;
+  display:flex;align-items:flex-end;gap:6px;padding:10px;
+  border:1px solid rgba(255,255,255,.08);
+}
+.swatch .pips{display:flex;gap:6px;margin-left:auto}
+.swatch .pip{
+  width:14px;height:14px;border-radius:4px;
+  background:var(--c);border:1px solid rgba(255,255,255,.25);
+  box-shadow:0 0 8px var(--c);
+}
+.swatch .pip.solid{box-shadow:none}
+/* 各风格 swatch 底色（复刻各页主视觉） */
+.sw-aurora{background:#070b16;background-image:radial-gradient(120px 80px at 18% 0%,rgba(34,211,238,.30),transparent 60%),radial-gradient(120px 90px at 85% 12%,rgba(167,139,250,.24),transparent 60%),radial-gradient(110px 80px at 78% 100%,rgba(244,114,182,.18),transparent 60%)}
+.sw-matrix{background:#020604;background-image:linear-gradient(rgba(0,255,136,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,.10) 1px,transparent 1px);background-size:18px 18px}
+.sw-zen{background:#faf8f5;background-image:radial-gradient(circle at 20% 0%,rgba(59,91,219,.08),transparent 45%)}
+.sw-synthwave{background:#12082a;background-image:radial-gradient(90px 90px at 50% 40%,#ffd319 0%,#ff6ec7 45%,transparent 70%),linear-gradient(rgba(255,110,199,.22) 1px,transparent 1px),linear-gradient(90deg,rgba(45,226,230,.22) 1px,transparent 1px);background-size:auto,26px 26px,26px 26px}
+.sw-ink{background:#f6f2ea;background-image:radial-gradient(110px 80px at 16% 0%,rgba(80,70,60,.10),transparent 60%),radial-gradient(100px 70px at 88% 40%,rgba(80,70,60,.07),transparent 60%)}
+.sw-pixel{background:#141821;background-image:linear-gradient(rgba(76,201,240,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(76,201,240,.10) 1px,transparent 1px);background-size:16px 16px}
+/* —— hover 反馈（每风格各不同，与 6 个完整版页观感一致）—— */
+.scheme-card.aurora:hover{
+  transform:translateY(-2px);
+  border-color:rgba(94,234,212,.4);
+  box-shadow:0 20px 50px rgba(0,0,0,.45);
+}
+.scheme-card.matrix:hover{
+  border-color:rgba(0,255,136,.5);
+  box-shadow:0 0 24px rgba(0,255,136,.10);
+}
+.scheme-card.zen:hover{
+  transform:translateY(-2px);
+  border-color:#d8d2c8;
+}
+.scheme-card.synthwave:hover{
+  border-color:rgba(255,110,199,.55);
+  box-shadow:0 0 26px rgba(255,110,199,.16);
+}
+.scheme-card.ink:hover{
+  transform:translateY(-2px);
+  border-color:#c9bda9;
+}
+.scheme-card.pixel:hover{
+  border-color:#ffd23f;
+  box-shadow:4px 4px 0 rgba(0,0,0,.45);
+  transform:translate(-2px,-2px);
+}
+.view-link{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  margin-top:16px;padding:8px 16px;border-radius:8px;
+  font-size:13px;font-weight:600;text-decoration:none;
+  transition:background .2s,border-color .2s,transform .2s,box-shadow .2s;
+}
+.view-link:hover{transform:translateY(-1px)}
+.scheme-card.aurora .view-link{background:linear-gradient(135deg,#22d3ee,#818cf8);color:#fff}
+.scheme-card.aurora .view-link:hover{box-shadow:0 8px 24px rgba(99,102,241,.35)}
+.scheme-card.matrix .view-link{background:rgba(0,255,136,.12);border:1px solid rgba(0,255,136,.4);color:#00ff88}
+.scheme-card.matrix .view-link:hover{box-shadow:0 0 14px rgba(0,255,136,.35)}
+.scheme-card.zen .view-link{background:var(--primary);color:#fff}
+.scheme-card.zen .view-link:hover{background:#2f4bc4}
+.scheme-card.synthwave .view-link{background:#ff6ec7;color:#12082a}
+.scheme-card.synthwave .view-link:hover{box-shadow:0 0 16px rgba(255,110,199,.55)}
+.scheme-card.ink .view-link{background:#b3402a;color:#fbf8f2}
+.scheme-card.ink .view-link:hover{background:#96351f}
+.scheme-card.pixel .view-link{background:#ffd23f;color:#141821;border:2px solid #141821;border-radius:0;box-shadow:2px 2px 0 rgba(0,0,0,.45)}
+.scheme-card.pixel .view-link:hover{transform:translate(2px,2px);box-shadow:none}
+/* ============ 特效 id 差异表 ============ */
+.fx-table{margin-top:44px;animation:fadeIn .5s ease .16s both}
+.fx-table h2{font-size:16px;font-weight:600;color:var(--fg)}
+.fx-table .sub{margin-top:6px;font-size:12.5px;color:var(--fg-muted)}
+.fx-table table{width:100%;margin-top:14px;border-collapse:collapse;font-size:13px}
+.fx-table th,.fx-table td{padding:8px 12px;border-bottom:1px solid var(--border);text-align:left}
+.fx-table th{font-size:12px;color:var(--fg-dim);letter-spacing:.06em}
+.fx-table code{font-family:var(--mono);font-size:11.5px;color:var(--primary);background:rgba(69,163,230,.08);border:1px solid rgba(69,163,230,.2);border-radius:4px;padding:1px 6px;margin-right:4px}
+/* ============ 页脚说明 ============ */
+.foot{
+  margin-top:40px;padding:16px 18px;
+  border:1px dashed var(--border);border-radius:10px;
+  font-size:12.5px;color:var(--fg-muted);line-height:1.9;
+  animation:fadeIn .5s ease .24s both;
+}
+.foot strong{color:var(--fg)}
+.foot code{
+  font-family:var(--mono);font-size:11.5px;color:var(--primary);
+  background:rgba(69,163,230,.08);border-radius:3px;padding:0 5px;
+}
+.foot a{color:var(--primary);text-decoration:none}
+.foot a:hover{text-decoration:underline}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (max-width:900px){
+  .cards{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="brand">ELA-BOT</div>
+    <h1>ELA-Bot 完整功能演示</h1>
+    <p class="sub">
+      <code>完整功能版</code> 纯前端演示 · 每个页面单文件自包含（零外部依赖、零网络请求），
+      双击 <code>file://</code> 即可体验 6 套视觉方案下的完整控制面板。
+    </p>
+    <div class="modules" aria-label="功能清单">
+      <span class="module-badge"><b>01</b>提供商</span>
+      <span class="module-badge"><b>02</b>模型设置</span>
+      <span class="module-badge"><b>03</b>控制面板</span>
+      <span class="module-badge"><b>04</b>提示词工坊</span>
+      <span class="module-badge"><b>05</b>调试器</span>
+      <span class="module-badge"><b>06</b>用户选项</span>
+      <span class="module-badge"><b>07</b>外观设置</span>
+      <span class="module-badge"><b>08</b>Bot CRUD</span>
+      <span class="module-badge"><b>09</b>日志</span>
+      <span class="module-badge"><b>10</b>Toast</span>
+    </div>
+  </header>
+
+  <main class="cards">
+
+    <!-- 方案 A：Aurora 极光 -->
+    <section class="scheme-card aurora">
+      <div class="swatch sw-aurora" aria-hidden="true">
+        <div class="pips">
+          <span class="pip" style="--c:#5eead4"></span>
+          <span class="pip" style="--c:#a78bfa"></span>
+          <span class="pip solid" style="--c:#22d3ee"></span>
+        </div>
+      </div>
+      <h2>Aurora 极光 <span class="en">/ A</span></h2>
+      <p class="tagline">深邃宇宙 + 流动极光 + 玻璃拟态 —— 旗舰演示质感</p>
+      <a class="view-link" href="aurora.html">进入演示 →</a>
+    </section>
+
+    <!-- 方案 B：Matrix 终端矩阵 -->
+    <section class="scheme-card matrix">
+      <div class="swatch sw-matrix" aria-hidden="true">
+        <div class="pips">
+          <span class="pip" style="--c:#00ff88"></span>
+          <span class="pip solid" style="--c:#00d8ff"></span>
+        </div>
+      </div>
+      <h2>Matrix 终端矩阵 <span class="en">/ B</span></h2>
+      <p class="tagline">黑底荧光绿纯终端 —— 网格 + 扫描线 + 闪烁辉光</p>
+      <a class="view-link" href="matrix.html">进入演示 →</a>
+    </section>
+
+    <!-- 方案 C：Zen 极简纸感 -->
+    <section class="scheme-card zen">
+      <div class="swatch sw-zen" aria-hidden="true">
+        <div class="pips">
+          <span class="pip solid" style="--c:#3b5bdb"></span>
+          <span class="pip solid" style="--c:#ffffff"></span>
+        </div>
+      </div>
+      <h2>Zen 极简纸感 <span class="en">/ C</span></h2>
+      <p class="tagline">米白纸感 + 靛蓝细线 —— 安静专业的无特效极简面板</p>
+      <a class="view-link" href="zen.html">进入演示 →</a>
+    </section>
+
+    <!-- 方案 D：Synthwave 蒸汽波 -->
+    <section class="scheme-card synthwave">
+      <div class="swatch sw-synthwave" aria-hidden="true">
+        <div class="pips">
+          <span class="pip" style="--c:#ff6ec7"></span>
+          <span class="pip" style="--c:#2de2e6"></span>
+          <span class="pip solid" style="--c:#ffd319"></span>
+        </div>
+      </div>
+      <h2>Synthwave 蒸汽波 <span class="en">/ D</span></h2>
+      <p class="tagline">紫粉日落 + 霓虹网格 + CRT 扫描线 —— 80 年代复古未来</p>
+      <a class="view-link" href="synthwave.html">进入演示 →</a>
+    </section>
+
+    <!-- 方案 E：Ink 水墨禅意 -->
+    <section class="scheme-card ink">
+      <div class="swatch sw-ink" aria-hidden="true">
+        <div class="pips">
+          <span class="pip solid" style="--c:#2f2b26"></span>
+          <span class="pip solid" style="--c:#b3402a"></span>
+          <span class="pip solid" style="--c:#5d8a7d"></span>
+        </div>
+      </div>
+      <h2>Ink 水墨禅意 <span class="en">/ E</span></h2>
+      <p class="tagline">宣纸 + 朱砂 + 青瓷 —— 东方雅致的明色面板</p>
+      <a class="view-link" href="ink.html">进入演示 →</a>
+    </section>
+
+    <!-- 方案 F：Pixel 复古像素 -->
+    <section class="scheme-card pixel">
+      <div class="swatch sw-pixel" aria-hidden="true">
+        <div class="pips">
+          <span class="pip" style="--c:#ffd23f"></span>
+          <span class="pip" style="--c:#4cc9f0"></span>
+        </div>
+      </div>
+      <h2>Pixel 复古像素 <span class="en">/ F</span></h2>
+      <p class="tagline">8-bit 硬边框 + 偏移投影 —— 70% 实用 30% 趣味</p>
+      <a class="view-link" href="pixel.html">进入演示 →</a>
+    </section>
+
+  </main>
+
+  <section class="fx-table">
+    <h2>特效 id 差异表</h2>
+    <p class="sub">各风格页顶栏「特效」面板可用的特效 id（对应 <code>html.fx-off-&lt;id&gt;</code> 关闭机制）</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>风格页</th><th>特效 id</th></tr></thead>
+      <tbody>
+        <tr><td>Aurora 极光</td><td><code>aurora</code><code>glassblur</code><code>glow</code></td></tr>
+        <tr><td>Matrix 终端矩阵</td><td><code>grid</code><code>scanline</code><code>blink</code><code>glow</code></td></tr>
+        <tr><td>Zen 极简纸感</td><td>（无特效 id，面板显示空态）</td></tr>
+        <tr><td>Synthwave 蒸汽波</td><td><code>sunset</code><code>grid</code><code>scanline</code><code>glow</code></td></tr>
+        <tr><td>Ink 水墨禅意</td><td><code>wash</code><code>fade</code></td></tr>
+        <tr><td>Pixel 复古像素</td><td><code>blink</code><code>scanline</code><code>shine</code></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <footer class="foot">
+    <strong>使用说明：</strong>
+    每页均为完整交互演示（7 视图 + Bot CRUD + 日志面板 + toast/弹窗 + splash）。
+    演示数据存储于浏览器 <code>localStorage</code>，六个页面各自独立、互不影响；
+    如需清空，可在任意页面「<code>外观设置</code> → 重置演示数据」一键恢复默认。
+    <br>
+    每个页面顶栏带「<code>特效</code>」按钮，演示外观设置的特效开关机制
+    （切换 <code>html.fx-off-&lt;id&gt;</code> class 即时关闭对应装饰动画）；
+    <code>外观设置</code> 内亦提供风格切换（跳转对应演示页）、配色、动画与自定义 CSS。
+    返回本入口：<a href="index.html">总览</a>。
+  </footer>
+
+</div>
+</body>
+</html>

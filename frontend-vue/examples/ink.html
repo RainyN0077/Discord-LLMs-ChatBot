@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<!--
+  方案名称：Ink 水墨禅意（方案 E）
+  设计定位：东方水墨 + 宣纸质感 + 朱砂点缀 —— 安静雅致的明色控制面板
+  色板清单：
+    --bg         #f6f2ea  宣纸米黄（底）
+    主色          #2f2b26  墨（近黑暖墨，标题 / 正文）
+    强调色        #b3402a  朱砂（按钮 / 激活线 / 印章 / ERROR 日志）
+    次要色        #5d8a7d  青瓷（INFO 日志 / 次要信息）
+    警告          #a07d2f  土黄（WARN 日志）
+    卡片          #fbf8f2  白纸底 + 1px #e2dacb 墨线边框，hover #c9bda9
+    晕染          rgba(80,70,60,.05) 三处 radial 水墨
+    日志底        #fbf8f2  白纸
+  特效开关（顶栏 ⚡ 面板，html.fx-off-* 关闭）：
+    wash      背景水墨晕染是否显示（关闭后纯宣纸底）
+    fade      卡片极淡淡入动画（关闭后立即出现）
+    本风格特效极少：无发光、无渐变按钮、无扫描类动画
+  动画约束：仅 transition 与 1.2s 极慢淡入；状态点 3s 慢速呼吸
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ELA-Bot</title>
+<style>
+/* ============ 基础与变量 ============ */
+:root{
+  --bg:#f6f2ea;
+  --ink:#2f2b26;
+  --ink-muted:#6f675c;
+  --ink-dim:#a89f8f;
+  --cinnabar:#b3402a;
+  --cinnabar-hover:#96351f;
+  --celadon:#5d8a7d;
+  --warn:#a07d2f;
+  --card-bg:#fbf8f2;
+  --card-border:#e2dacb;
+  --card-border-hover:#c9bda9;
+  --row-line:#ece4d5;
+  --input-bg:#ffffff;
+  --log-bg:#fbf8f2;
+  --mono:"JetBrains Mono","Fira Code",Consolas,"Courier New",monospace;
+  --serif:"Songti SC","STSong","SimSun",serif;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei","Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Helvetica Neue",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--font);
+  font-size:14px;line-height:1.7;
+  color:var(--ink);
+  overflow:hidden;
+  background-color:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+/* ============ 背景水墨晕染（wash 特效） ============ */
+.ink-wash{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background:
+    radial-gradient(560px 380px at 12% 8%, rgba(80,70,60,.05), transparent 60%),
+    radial-gradient(520px 360px at 88% 30%, rgba(80,70,60,.04), transparent 62%),
+    radial-gradient(600px 400px at 62% 94%, rgba(80,70,60,.045), transparent 60%),
+    radial-gradient(rgba(80,70,60,.028) 1px, transparent 1px);
+  background-size:auto,auto,auto,150px 150px;
+}
+/* 右下角印章角标：朱砂半透明圆 + 「雅」白字，旋转 -8deg */
+.seal{
+  position:fixed;right:30px;bottom:214px;z-index:-1;pointer-events:none;
+  width:54px;height:54px;border-radius:50%;
+  background:rgba(179,64,42,.5);
+  color:var(--bg);font-family:var(--serif);font-size:23px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;
+  transform:rotate(-8deg);opacity:.5;user-select:none;
+}
+/* ============ 滚动条 ============ */
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--row-line);border-radius:4px}
+::-webkit-scrollbar-thumb:hover{background:var(--card-border-hover)}
+/* ============ 焦点可见 ============ */
+:focus-visible{outline:2px solid var(--cinnabar);outline-offset:2px;border-radius:2px}
+/* ============ 布局骨架 ============ */
+.app{height:100vh;display:flex;flex-direction:column}
+.topbar{
+  position:sticky;top:0;z-index:50;
+  height:48px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;gap:12px;
+  background:var(--bg);
+  border-bottom:1px solid var(--card-border);
+}
+.brand{
+  font-family:var(--serif);font-size:17px;font-weight:700;
+  letter-spacing:.14em;color:var(--ink);white-space:nowrap;
+}
+.main-nav{flex:1;min-width:0;display:flex;align-items:stretch;height:100%;overflow-x:auto;scrollbar-width:none}
+.main-nav::-webkit-scrollbar{display:none}
+.nav-item{
+  position:relative;display:flex;align-items:center;
+  padding:0 12px;white-space:nowrap;text-decoration:none;
+  color:var(--ink-muted);font-size:13px;
+  transition:color .2s;
+}
+.nav-item:hover{color:var(--ink)}
+.nav-item.active{color:var(--ink);font-weight:700}
+.nav-item.active::after{
+  content:'';position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+  width:70%;height:2px;background:var(--cinnabar);
+}
+.topbar-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.lang-wrap,.fx-wrap{position:relative}
+.lang-btn,.theme-btn{
+  display:inline-flex;align-items:center;gap:4px;
+  height:28px;padding:0 10px;border-radius:4px;
+  background:var(--card-bg);border:1px solid var(--card-border);
+  color:var(--ink-muted);font-size:12px;cursor:pointer;
+  transition:border-color .2s,color .2s,background .2s;
+}
+.lang-btn:hover,.theme-btn:hover{color:var(--ink);border-color:var(--card-border-hover)}
+.lang-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:80;
+  min-width:120px;padding:4px;border-radius:6px;
+  background:var(--card-bg);border:1px solid var(--card-border);
+  box-shadow:0 4px 14px rgba(60,50,40,.08);
+}
+.lang-menu[hidden]{display:none}
+.lang-menu button{
+  display:block;width:100%;text-align:left;
+  padding:7px 10px;border:none;border-radius:4px;
+  background:transparent;color:var(--ink);font-size:13px;cursor:pointer;
+}
+.lang-menu button:hover{background:rgba(179,64,42,.06)}
+.lang-menu button.selected{color:var(--cinnabar)}
+/* ============ 特效开关面板 ============ */
+.fx-menu{
+  position:absolute;top:calc(100% + 6px);right:0;z-index:80;
+  width:252px;padding:12px;border-radius:6px;
+  background:var(--card-bg);border:1px solid var(--card-border);
+  box-shadow:0 4px 14px rgba(60,50,40,.08);
+}
+.fx-menu[hidden]{display:none}
+.fx-title{font-family:var(--serif);font-size:14px;font-weight:700;letter-spacing:.14em;color:var(--ink)}
+.fx-note{font-size:11px;color:var(--ink-muted);margin:4px 0 6px}
+.fx-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 2px;border-top:1px solid var(--row-line);
+  font-size:12.5px;color:var(--ink);cursor:pointer;
+}
+.fx-row small{display:block;font-size:10.5px;color:var(--ink-muted);margin-top:1px}
+.fx-row input{width:15px;height:15px;flex-shrink:0;accent-color:var(--cinnabar);cursor:pointer}
+.fx-row input:focus-visible{outline:2px solid var(--cinnabar);outline-offset:2px}
+/* ============ 外壳：侧栏 + 内容 ============ */
+.shell{flex:1;min-height:0;display:flex}
+.sider{
+  width:260px;flex-shrink:0;
+  display:flex;flex-direction:column;min-height:0;
+  background:rgba(244,238,226,.7);
+  border-right:1px solid var(--card-border);
+  transition:width .25s ease;
+}
+.sider-title{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 12px 8px;flex-shrink:0;
+}
+.sider-title-text{
+  font-family:var(--serif);font-weight:700;font-size:13px;
+  letter-spacing:.24em;color:var(--ink);
+}
+.sider-title-text::before{content:'';display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:var(--cinnabar);opacity:.75}
+.sider-actions{display:flex;gap:4px}
+.btn-icon{
+  width:26px;height:26px;display:inline-flex;align-items:center;justify-content:center;
+  border:none;border-radius:4px;background:transparent;color:var(--ink-muted);
+  font-size:13px;cursor:pointer;transition:color .2s,background .2s;
+}
+.btn-icon:hover{color:var(--cinnabar);background:rgba(179,64,42,.06)}
+.bot-list{flex:1;min-height:0;overflow-y:auto;padding:2px 0 12px}
+/* ============ Bot 卡片 ============ */
+.bot-card{
+  position:relative;margin:4px 8px;padding:10px 12px;
+  border-radius:6px;
+  background:var(--card-bg);
+  border:1px solid var(--card-border);
+  box-shadow:0 1px 3px rgba(60,50,40,.06);
+  cursor:pointer;
+  transition:border-color .2s,box-shadow .2s;
+}
+.bot-card:hover{border-color:var(--card-border-hover)}
+.bot-card.active{border-color:var(--cinnabar);background:rgba(179,64,42,.035)}
+.card-actions{
+  position:absolute;top:6px;right:6px;z-index:2;
+  display:flex;gap:2px;
+  opacity:0;pointer-events:none;transition:opacity .15s;
+}
+.bot-card:hover .card-actions,.bot-card:focus-visible .card-actions,.bot-card.active .card-actions{opacity:1;pointer-events:auto}
+.act-btn{
+  width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--card-border);border-radius:3px;background:var(--card-bg);
+  color:var(--ink-muted);font-size:11px;cursor:pointer;
+  transition:color .15s,border-color .15s;
+}
+.act-btn:hover{color:var(--cinnabar);border-color:var(--card-border-hover)}
+.act-btn.danger:hover{color:var(--cinnabar);border-color:var(--cinnabar)}
+.card-row{display:flex;align-items:center;gap:6px;min-width:0}
+.card-row-main{padding-right:56px}
+.card-row-id{margin-top:2px}
+.card-row-meta{margin-top:6px;gap:8px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:var(--ink-dim);flex-shrink:0}
+.status-dot.running{background:var(--cinnabar);animation:ink-pulse 3s ease-in-out infinite}
+.status-dot.error{background:#8e2f22}
+@keyframes ink-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+.bot-name{font-size:13px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-id{
+  font-family:var(--mono);font-size:12px;color:var(--ink-muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:text;
+}
+.platform-badge{
+  font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  padding:1px 6px;border-radius:3px;flex-shrink:0;
+}
+.platform-badge.discord{background:rgba(93,138,125,.12);color:var(--celadon)}
+.platform-badge.qq{background:rgba(179,64,42,.08);color:var(--cinnabar)}
+.card-meta{font-size:12px;color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.keyword-tag{
+  font-size:11px;padding:1px 7px;border-radius:3px;
+  background:var(--bg);border:1px solid var(--card-border);
+  color:var(--ink-muted);line-height:1.6;
+}
+/* ============ 内容区 ============ */
+.content{flex:1;min-width:0;overflow-y:auto;padding:20px}
+.content-inner{max-width:1240px;margin:0 auto}
+/* 极慢淡入（fade 特效，1.2s） */
+.content-inner > *{animation:inkFade 1.2s ease both}
+.content-inner > *:nth-child(2){animation-delay:.15s}
+.content-inner > *:nth-child(3){animation-delay:.3s}
+.content-inner > *:nth-child(4){animation-delay:.45s}
+.content-inner > *:nth-child(5){animation-delay:.6s}
+.content-inner > *:nth-child(6){animation-delay:.75s}
+@keyframes inkFade{from{opacity:0}to{opacity:1}}
+.page-head{margin-bottom:18px}
+.page-title{
+  font-family:var(--serif);font-size:26px;font-weight:700;
+  letter-spacing:.12em;color:var(--ink);
+}
+.page-sub{margin-top:6px;font-size:13px;color:var(--ink-muted);letter-spacing:.05em}
+/* ============ 统计小卡 ============ */
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.stat-card{
+  padding:16px 18px;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:6px;
+  box-shadow:0 1px 3px rgba(60,50,40,.06);
+  transition:border-color .2s,transform .2s;
+}
+.stat-card:hover{border-color:var(--card-border-hover);transform:translateY(-2px)}
+.stat-label{font-size:12px;color:var(--ink-muted)}
+.stat-value{margin-top:8px;display:flex;align-items:baseline;gap:4px}
+.stat-num{font-family:var(--mono);font-size:28px;font-weight:600;color:var(--ink);letter-spacing:-.01em}
+.stat-unit{font-size:12px;color:var(--ink-muted)}
+.stat-trend{margin-top:8px;font-family:var(--mono);font-size:12px}
+.stat-trend.up{color:var(--celadon)}
+.stat-trend.down{color:var(--cinnabar)}
+/* ============ 通用卡片 ============ */
+.card{
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:6px;
+  box-shadow:0 1px 3px rgba(60,50,40,.06);
+  padding:18px 20px;margin-bottom:18px;
+  transition:border-color .2s;
+}
+.card:hover{border-color:var(--card-border-hover)}
+.card-title{
+  font-family:var(--serif);font-size:15.5px;font-weight:700;
+  letter-spacing:.1em;color:var(--ink);
+  margin-bottom:14px;display:flex;align-items:center;gap:10px;
+}
+.card-title::before{
+  content:'';width:2px;align-self:stretch;flex-shrink:0;
+  background:var(--cinnabar);
+}
+.card-title .hint{font-size:12px;font-weight:400;color:var(--ink-muted);font-family:var(--font);letter-spacing:0}
+/* ============ Provider 卡片 ============ */
+.providers-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.provider-card{
+  padding:16px;
+  background:var(--card-bg);border:1px solid var(--card-border);border-radius:6px;
+  box-shadow:0 1px 3px rgba(60,50,40,.06);
+  transition:border-color .2s,transform .2s;
+}
+.provider-card:hover{border-color:var(--card-border-hover);transform:translateY(-2px)}
+.prov-head{display:flex;align-items:center;gap:10px}
+.monogram{
+  width:34px;height:34px;border-radius:5px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-family:var(--serif);font-size:15px;font-weight:700;
+  background:var(--bg);border:1px solid var(--card-border);
+  color:var(--cinnabar);
+}
+.prov-name{font-size:14px;font-weight:600;flex:1;min-width:0}
+.health-chip{
+  font-size:11px;padding:2px 8px;border-radius:20px;flex-shrink:0;
+  background:var(--bg);border:1px solid;
+}
+.health-chip.ok{color:var(--celadon);border-color:rgba(93,138,125,.4)}
+.health-chip.slow{color:var(--warn);border-color:rgba(160,125,47,.4)}
+.health-chip.off{color:var(--cinnabar);border-color:rgba(179,64,42,.45)}
+.prov-model{margin-top:10px;font-family:var(--mono);font-size:13px;color:var(--ink)}
+.prov-meta{margin-top:6px;font-size:12px;color:var(--ink-muted)}
+.prov-meta .latency{font-family:var(--mono);color:var(--ink)}
+/* ============ 表单 ============ */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field-label{font-size:12px;color:var(--ink-muted)}
+.input,.select{
+  width:100%;height:36px;padding:0 12px;
+  background:var(--input-bg);border:1px solid var(--card-border);
+  border-radius:4px;color:var(--ink);font-size:13px;font-family:inherit;
+  transition:border-color .2s;
+}
+.input::placeholder{color:var(--ink-dim)}
+.input:focus,.select:focus{outline:none;border-color:var(--cinnabar)}
+.select{appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%236f675c' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>");background-repeat:no-repeat;background-position:right 12px center;cursor:pointer}
+.select option{background:var(--card-bg);color:var(--ink)}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0}
+.switch-label{font-size:13px;color:var(--ink)}
+.switch-label small{display:block;font-size:11px;color:var(--ink-muted);margin-top:1px}
+.switch{position:relative;width:38px;height:20px;flex-shrink:0}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+.switch .track{
+  position:absolute;inset:0;border-radius:2px;
+  background:var(--row-line);border:1px solid var(--card-border);
+  transition:background .2s;
+}
+.switch .knob{
+  position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:2px;
+  background:var(--card-bg);transition:transform .2s;
+}
+.switch input:checked ~ .track{background:var(--cinnabar);border-color:var(--cinnabar)}
+.switch input:checked ~ .knob{transform:translateX(18px)}
+.switch input:focus-visible ~ .track{outline:2px solid var(--cinnabar);outline-offset:2px}
+.form-actions{display:flex;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--row-line)}
+.btn-primary{
+  padding:8px 20px;border:none;border-radius:4px;cursor:pointer;
+  background:var(--cinnabar);color:#fbf8f2;
+  font-size:13px;font-weight:600;font-family:inherit;
+  transition:background .2s;
+}
+.btn-primary:hover{background:var(--cinnabar-hover)}
+.btn-secondary{
+  padding:8px 18px;border-radius:4px;cursor:pointer;
+  background:var(--card-bg);border:1px solid var(--card-border-hover);
+  color:var(--ink-muted);font-size:13px;font-family:inherit;
+  transition:border-color .2s,color .2s;
+}
+.btn-secondary:hover{color:var(--ink);border-color:var(--ink-muted)}
+/* ============ 表格 ============ */
+.table-wrap{overflow-x:auto}
+.data-table{width:100%;border-collapse:collapse;min-width:640px}
+.data-table th{
+  text-align:left;font-family:var(--serif);font-size:12px;font-weight:700;
+  letter-spacing:.18em;color:var(--ink-muted);
+  padding:8px 10px;border-bottom:1px solid var(--row-line);
+  white-space:nowrap;
+}
+.data-table td{padding:10px;font-size:13px;border-bottom:1px solid var(--row-line);vertical-align:middle}
+.data-table tbody tr{transition:background .15s}
+.data-table tbody tr:hover{background:var(--bg)}
+.data-table tr.deleted td{color:var(--cinnabar);opacity:.85}
+.mem-content{max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mem-src,.mem-user{font-family:var(--mono);font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.mem-time{font-family:var(--mono);font-size:12px;color:var(--ink-dim);white-space:nowrap}
+.status-badge{font-size:11px;padding:2px 9px;border-radius:20px;white-space:nowrap;background:var(--bg)}
+.status-badge.ok{color:var(--celadon)}
+.status-badge.cand{color:var(--warn)}
+.status-badge.del{color:var(--cinnabar)}
+/* ============ 日志面板 ============ */
+.log-footer{
+  position:relative;flex-shrink:0;height:180px;
+  background:var(--log-bg);
+  border-top:1px solid var(--card-border);
+  overflow:hidden;display:flex;flex-direction:column;
+  transition:height .2s ease;
+}
+.log-footer.collapsed{height:34px}
+.log-handle{
+  position:absolute;top:0;left:0;right:0;height:6px;z-index:3;
+  cursor:ns-resize;touch-action:none;
+}
+.log-handle::after{
+  content:'';position:absolute;top:2px;left:50%;transform:translateX(-50%);
+  width:48px;height:2px;border-radius:1px;background:var(--card-border);
+  transition:background .2s,width .2s;
+}
+.log-handle:hover::after,.log-handle.dragging::after{background:var(--cinnabar);width:72px}
+.log-toggle{
+  position:absolute;top:8px;right:14px;z-index:4;
+  width:24px;height:20px;border:none;border-radius:3px;
+  background:transparent;color:var(--ink-dim);font-size:10px;cursor:pointer;
+}
+.log-toggle:hover{color:var(--ink)}
+.log-body{flex:1;min-height:0;overflow-y:auto;padding:12px 16px;font-family:var(--mono);font-size:12px;line-height:1.9}
+.log-row{display:flex;gap:8px;white-space:nowrap}
+.log-time{color:var(--ink-dim);flex-shrink:0}
+.log-dot{width:7px;height:7px;border-radius:50%;align-self:center;flex-shrink:0}
+.log-dot.info{background:var(--celadon)}
+.log-dot.warn{background:var(--warn)}
+.log-dot.error{background:var(--cinnabar)}
+.log-dot.debug{background:var(--ink-dim)}
+.log-level{flex-shrink:0;font-size:11px;color:var(--ink-muted);align-self:center}
+.log-msg{color:var(--ink-muted);overflow:hidden;text-overflow:ellipsis}
+/* ============ Toast ============ */
+.toast{
+  position:fixed;left:50%;bottom:64px;z-index:100;
+  transform:translate(-50%,12px);
+  padding:9px 18px;border-radius:4px;
+  background:var(--card-bg);border:1px solid var(--card-border-hover);
+  color:var(--ink);font-size:13px;
+  box-shadow:0 1px 3px rgba(60,50,40,.06);
+  opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+/* ============ 特效关闭（html.fx-off-*） ============ */
+html.fx-off-wash .ink-wash{opacity:0}
+html.fx-off-wash .seal{opacity:0}
+html.fx-off-fade .content-inner > *{animation:none;opacity:1}
+/* ============ 响应式 ============ */
+@media (max-width:1100px){
+  .stats-grid{grid-template-columns:repeat(2,1fr)}
+  .providers-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:900px){
+  .sider{width:64px}
+  .sider-title-text,.bot-name,.card-id,.card-meta,.platform-badge,.card-tags,.card-actions{display:none}
+  .bot-card{display:flex;justify-content:center;padding:12px 0}
+  .card-row{padding:0}
+}
+@media (max-width:768px){
+  .form-grid{grid-template-columns:1fr}
+  .brand{display:none}
+}
+@media (max-width:640px){
+  .sider{display:none}
+  .stats-grid{grid-template-columns:1fr}
+  .providers-grid{grid-template-columns:1fr}
+  .content{padding:14px}
+}
+/* ============ 减少动态效果偏好 ============ */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+  .status-dot.running{opacity:1}
+}
+</style>
+</head>
+<body>
+<div class="ink-wash" aria-hidden="true"></div>
+<div class="seal" aria-hidden="true">雅</div>
+<div class="app">
+
+  <!-- ===== 顶栏 ===== -->
+  <header class="topbar">
+    <div class="brand">ELA-Bot</div>
+    <nav class="main-nav" aria-label="主导航">
+      <a class="nav-item" href="#" onclick="return false">提供商</a>
+      <a class="nav-item" href="#" onclick="return false">模型设置</a>
+      <a class="nav-item active" href="#" onclick="return false" aria-current="page">控制面板</a>
+      <a class="nav-item" href="#" onclick="return false">提示词工坊</a>
+      <a class="nav-item" href="#" onclick="return false">调试器</a>
+      <a class="nav-item" href="#" onclick="return false">用户选项</a>
+      <a class="nav-item" href="#" onclick="return false">外观设置</a>
+    </nav>
+    <div class="topbar-right">
+      <div class="lang-wrap">
+        <button class="lang-btn" id="lang-btn" aria-haspopup="listbox" aria-expanded="false" aria-label="切换语言">zh ▼</button>
+        <div class="lang-menu" id="lang-menu" role="listbox" hidden>
+          <button role="option" data-lang="简体中文" class="selected">简体中文</button>
+          <button role="option" data-lang="English">English</button>
+          <button role="option" data-lang="日本語">日本語</button>
+        </div>
+      </div>
+      <div class="fx-wrap">
+        <button class="theme-btn" id="fx-btn" title="特效开关（外观设置演示）" aria-label="特效开关" aria-haspopup="dialog" aria-expanded="false">⚡ 特效</button>
+        <div class="fx-menu" id="fx-menu" role="dialog" aria-label="特效开关面板" hidden>
+          <div class="fx-title">特效开关</div>
+          <div class="fx-note">关闭后对应装饰动画立即消失 · 本风格特效极少</div>
+          <label class="fx-row">
+            <span class="fx-label">水墨晕染<small>背景三处极淡墨色晕染是否显示</small></span>
+            <input type="checkbox" checked data-fx="wash" aria-label="水墨晕染">
+          </label>
+          <label class="fx-row">
+            <span class="fx-label">极淡入淡出<small>卡片 1.2s 极慢淡入动画</small></span>
+            <input type="checkbox" checked data-fx="fade" aria-label="极淡入淡出">
+          </label>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== 外壳 ===== -->
+  <div class="shell">
+
+    <!-- ===== 左侧 Bot 列表 ===== -->
+    <aside class="sider" aria-label="Bot 列表">
+      <div class="sider-title">
+        <span class="sider-title-text">Bots</span>
+        <div class="sider-actions">
+          <button class="btn-icon" id="btn-new" title="新建 Bot" aria-label="新建 Bot">＋</button>
+          <button class="btn-icon" id="btn-refresh" title="刷新列表" aria-label="刷新列表">↻</button>
+        </div>
+      </div>
+      <div class="bot-list" id="bot-list">
+        <div class="bot-card active" data-bot="bot_main" role="button" tabindex="0">
+          <div class="card-actions">
+            <button class="act-btn" title="启动 bot_main" aria-label="启动">▶</button>
+            <button class="act-btn" title="停止 bot_main" aria-label="停止">■</button>
+            <button class="act-btn" title="重启 bot_main" aria-label="重启">↻</button>
+            <button class="act-btn danger" title="删除 bot_main" aria-label="删除">🗑</button>
+          </div>
+          <div class="card-row card-row-main">
+            <span class="status-dot running" aria-hidden="true"></span>
+            <span class="bot-name">主机器人</span>
+          </div>
+          <div class="card-row card-row-id"><span class="card-id">bot_main</span></div>
+          <div class="card-row card-row-meta">
+            <span class="platform-badge discord">discord</span>
+            <span class="card-meta">gpt-4o · openai</span>
+          </div>
+          <div class="card-tags">
+            <span class="keyword-tag">你好</span><span class="keyword-tag">帮助</span><span class="keyword-tag">周报</span>
+          </div>
+        </div>
+        <div class="bot-card" data-bot="bot_alpha" role="button" tabindex="0">
+          <div class="card-actions">
+            <button class="act-btn" title="启动 bot_alpha" aria-label="启动">▶</button>
+            <button class="act-btn" title="停止 bot_alpha" aria-label="停止">■</button>
+            <button class="act-btn" title="重启 bot_alpha" aria-label="重启">↻</button>
+            <button class="act-btn danger" title="删除 bot_alpha" aria-label="删除">🗑</button>
+          </div>
+          <div class="card-row card-row-main">
+            <span class="status-dot running" aria-hidden="true"></span>
+            <span class="bot-name">阿尔法测试机</span>
+          </div>
+          <div class="card-row card-row-id"><span class="card-id">bot_alpha</span></div>
+          <div class="card-row card-row-meta">
+            <span class="platform-badge qq">qq</span>
+            <span class="card-meta">qwen-plus · dashscope</span>
+          </div>
+          <div class="card-tags"><span class="keyword-tag">测试</span><span class="keyword-tag">ping</span></div>
+        </div>
+        <div class="bot-card" data-bot="bot_stats" role="button" tabindex="0">
+          <div class="card-actions">
+            <button class="act-btn" title="启动 bot_stats" aria-label="启动">▶</button>
+            <button class="act-btn" title="停止 bot_stats" aria-label="停止">■</button>
+            <button class="act-btn" title="重启 bot_stats" aria-label="重启">↻</button>
+            <button class="act-btn danger" title="删除 bot_stats" aria-label="删除">🗑</button>
+          </div>
+          <div class="card-row card-row-main">
+            <span class="status-dot stopped" aria-hidden="true"></span>
+            <span class="bot-name">统计播报员</span>
+          </div>
+          <div class="card-row card-row-id"><span class="card-id">bot_stats</span></div>
+          <div class="card-row card-row-meta">
+            <span class="platform-badge discord">discord</span>
+            <span class="card-meta">claude-sonnet-4 · anthropic</span>
+          </div>
+          <div class="card-tags"><span class="keyword-tag">日报</span><span class="keyword-tag">统计</span></div>
+        </div>
+        <div class="bot-card" data-bot="bot_legacy" role="button" tabindex="0">
+          <div class="card-actions">
+            <button class="act-btn" title="启动 bot_legacy" aria-label="启动">▶</button>
+            <button class="act-btn" title="停止 bot_legacy" aria-label="停止">■</button>
+            <button class="act-btn" title="重启 bot_legacy" aria-label="重启">↻</button>
+            <button class="act-btn danger" title="删除 bot_legacy" aria-label="删除">🗑</button>
+          </div>
+          <div class="card-row card-row-main">
+            <span class="status-dot error" aria-hidden="true"></span>
+            <span class="bot-name">旧版实例</span>
+          </div>
+          <div class="card-row card-row-id"><span class="card-id">bot_legacy</span></div>
+          <div class="card-row card-row-meta">
+            <span class="platform-badge discord">discord</span>
+            <span class="card-meta">deepseek-chat · deepseek</span>
+          </div>
+          <div class="card-tags"><span class="keyword-tag">迁移</span></div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ===== 主内容 ===== -->
+    <main class="content">
+      <div class="content-inner">
+        <div class="page-head">
+          <h1 class="page-title">控制面板</h1>
+          <p class="page-sub">Providers 概览 · 实时状态与配置中心</p>
+        </div>
+
+        <!-- 统计小卡 -->
+        <section class="stats-grid" aria-label="状态统计">
+          <div class="stat-card">
+            <div class="stat-label">在线 Bot</div>
+            <div class="stat-value"><span class="stat-num">4</span><span class="stat-unit">个</span></div>
+            <div class="stat-trend up">▲ +1 今日启动</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">总消息</div>
+            <div class="stat-value"><span class="stat-num">128,430</span><span class="stat-unit">条</span></div>
+            <div class="stat-trend up">▲ +8.2% 本周</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">今日 Tokens</div>
+            <div class="stat-value"><span class="stat-num">1.24M</span></div>
+            <div class="stat-trend down">▼ -3.1% 较昨日</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">知识条目</div>
+            <div class="stat-value"><span class="stat-num">2,847</span><span class="stat-unit">条</span></div>
+            <div class="stat-trend up">▲ +45 本周</div>
+          </div>
+        </section>
+
+        <!-- LLM 提供商 -->
+        <section class="card" aria-label="LLM 提供商">
+          <h2 class="card-title">LLM 提供商 <span class="hint">4 家已配置 · 3 家在线</span></h2>
+          <div class="providers-grid">
+            <div class="provider-card">
+              <div class="prov-head">
+                <span class="monogram">O</span>
+                <span class="prov-name">OpenAI</span>
+                <span class="health-chip ok">正常</span>
+              </div>
+              <div class="prov-model">gpt-4o</div>
+              <div class="prov-meta">延迟 <span class="latency">243 ms</span> · 最近检测 2 分钟前</div>
+            </div>
+            <div class="provider-card">
+              <div class="prov-head">
+                <span class="monogram">A</span>
+                <span class="prov-name">Anthropic</span>
+                <span class="health-chip ok">正常</span>
+              </div>
+              <div class="prov-model">claude-sonnet-4</div>
+              <div class="prov-meta">延迟 <span class="latency">318 ms</span> · 最近检测 2 分钟前</div>
+            </div>
+            <div class="provider-card">
+              <div class="prov-head">
+                <span class="monogram">G</span>
+                <span class="prov-name">Google Gemini</span>
+                <span class="health-chip slow">缓慢</span>
+              </div>
+              <div class="prov-model">gemini-2.5-pro</div>
+              <div class="prov-meta">延迟 <span class="latency">812 ms</span> · 最近检测 5 分钟前</div>
+            </div>
+            <div class="provider-card">
+              <div class="prov-head">
+                <span class="monogram">D</span>
+                <span class="prov-name">DeepSeek</span>
+                <span class="health-chip off">离线</span>
+              </div>
+              <div class="prov-model">deepseek-chat</div>
+              <div class="prov-meta">延迟 <span class="latency">—</span> · 最近检测 32 分钟前</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 基础配置 -->
+        <section class="card" aria-label="基础配置">
+          <h2 class="card-title">基础配置 <span class="hint">bot_main · 主机器人</span></h2>
+          <form id="config-form" class="form-grid">
+            <div class="field">
+              <label class="field-label" for="f-botid">Bot ID</label>
+              <input class="input" id="f-botid" type="text" value="bot_main" autocomplete="off">
+            </div>
+            <div class="field">
+              <label class="field-label" for="f-name">Bot 名称</label>
+              <input class="input" id="f-name" type="text" value="主机器人">
+            </div>
+            <div class="field">
+              <label class="field-label" for="f-platform">平台</label>
+              <select class="select" id="f-platform">
+                <option value="discord" selected>Discord</option>
+                <option value="qq">QQ</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field-label" for="f-apikey">API Key</label>
+              <input class="input" id="f-apikey" type="password" value="sk-demo-8f3a9c2e" autocomplete="off">
+            </div>
+            <div class="field">
+              <label class="field-label" for="f-model">模型名</label>
+              <input class="input" id="f-model" type="text" value="gpt-4o">
+            </div>
+            <div class="field">
+              <span class="field-label">功能开关</span>
+              <div>
+                <div class="switch-row">
+                  <span class="switch-label">自动记忆摄取<small>从对话中提取 &lt;memory&gt; 标签入库</small></span>
+                  <label class="switch"><input type="checkbox" checked aria-label="自动记忆摄取"><span class="track"></span><span class="knob"></span></label>
+                </div>
+                <div class="switch-row">
+                  <span class="switch-label">流式输出<small>SSE 流式渲染回复</small></span>
+                  <label class="switch"><input type="checkbox" checked aria-label="流式输出"><span class="track"></span><span class="knob"></span></label>
+                </div>
+                <div class="switch-row">
+                  <span class="switch-label">并发消息锁<small>Redis 防重复处理</small></span>
+                  <label class="switch"><input type="checkbox" checked aria-label="并发消息锁"><span class="track"></span><span class="knob"></span></label>
+                </div>
+                <div class="switch-row">
+                  <span class="switch-label">调试日志<small>记录完整请求 / 响应体</small></span>
+                  <label class="switch"><input type="checkbox" aria-label="调试日志"><span class="track"></span><span class="knob"></span></label>
+                </div>
+              </div>
+            </div>
+          </form>
+          <div class="form-actions">
+            <button class="btn-primary" type="button" id="btn-save">保存更改</button>
+            <button class="btn-secondary" type="button" id="btn-reset">重置</button>
+          </div>
+        </section>
+
+        <!-- 知识库记忆 -->
+        <section class="card" aria-label="知识库记忆">
+          <h2 class="card-title">知识库记忆 <span class="hint">最近 6 条 · 全文 FTS5 + 向量召回</span></h2>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr><th>内容</th><th>来源</th><th>用户</th><th>时间</th><th>状态</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="mem-content">用户「张三」提到需要每周五生成项目周报并同步到频道</td>
+                  <td class="mem-src">discord</td><td class="mem-user">user_8842</td><td class="mem-time">07-31 09:12</td>
+                  <td><span class="status-badge ok">已启用</span></td>
+                </tr>
+                <tr>
+                  <td class="mem-content">知识库新增「部署手册」第 3 章，含回滚步骤</td>
+                  <td class="mem-src">web</td><td class="mem-user">admin</td><td class="mem-time">07-30 16:45</td>
+                  <td><span class="status-badge ok">已启用</span></td>
+                </tr>
+                <tr>
+                  <td class="mem-content">测试：关于公司食堂营业时间的回答</td>
+                  <td class="mem-src">qq</td><td class="mem-user">user_1203</td><td class="mem-time">07-30 10:02</td>
+                  <td><span class="status-badge cand">候选</span></td>
+                </tr>
+                <tr class="deleted">
+                  <td class="mem-content">旧版本地调试备注（已废弃，勿引用）</td>
+                  <td class="mem-src">api</td><td class="mem-user">bot_legacy</td><td class="mem-time">07-28 22:31</td>
+                  <td><span class="status-badge del">已删除</span></td>
+                </tr>
+                <tr>
+                  <td class="mem-content">「API 限流策略」条目已更新为 v2</td>
+                  <td class="mem-src">web</td><td class="mem-user">admin</td><td class="mem-time">07-28 09:20</td>
+                  <td><span class="status-badge ok">已启用</span></td>
+                </tr>
+                <tr>
+                  <td class="mem-content">用户「Alice」对早安问候的偏好记录</td>
+                  <td class="mem-src">discord</td><td class="mem-user">user_7741</td><td class="mem-time">07-27 08:55</td>
+                  <td><span class="status-badge ok">已启用</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- ===== 日志面板 ===== -->
+  <footer class="log-footer" id="log-footer" aria-label="日志面板">
+    <div class="log-handle" id="log-handle" title="拖拽调整日志高度"></div>
+    <button class="log-toggle" id="log-toggle" title="折叠 / 展开日志面板" aria-expanded="true">▼</button>
+    <div class="log-body" id="log-body">
+      <div class="log-row"><span class="log-time">09:41:02.318</span><span class="log-dot info"></span><span class="log-level">INFO</span><span class="log-msg">Bot 'bot_main' 已上线，WebSocket 连接建立</span></div>
+      <div class="log-row"><span class="log-time">09:41:02.402</span><span class="log-dot info"></span><span class="log-level">INFO</span><span class="log-msg">知识库加载完成：2,847 条记忆 · 186 条世界书</span></div>
+      <div class="log-row"><span class="log-time">09:41:05.117</span><span class="log-dot debug"></span><span class="log-level">DEBUG</span><span class="log-msg">recall 命中 6 条记忆（fts5 4 + 向量 2），耗时 38ms</span></div>
+      <div class="log-row"><span class="log-time">09:41:07.901</span><span class="log-dot info"></span><span class="log-level">INFO</span><span class="log-msg">OpenAI · gpt-4o 请求完成：prompt 1,204 · completion 382 tokens</span></div>
+      <div class="log-row"><span class="log-time">09:41:12.340</span><span class="log-dot warn"></span><span class="log-level">WARN</span><span class="log-msg">provider 'google' 响应延迟 812ms，超出阈值 600ms</span></div>
+      <div class="log-row"><span class="log-time">09:41:18.055</span><span class="log-dot error"></span><span class="log-level">ERROR</span><span class="log-msg">bot_legacy 心跳超时，第 3 次重连失败，进入错误状态</span></div>
+      <div class="log-row"><span class="log-time">09:41:19.221</span><span class="log-dot debug"></span><span class="log-level">DEBUG</span><span class="log-msg">自动记忆候选提升检查：0 条达到阈值</span></div>
+      <div class="log-row"><span class="log-time">09:41:24.882</span><span class="log-dot info"></span><span class="log-level">INFO</span><span class="log-msg">WebUI 会话接入：10.0.0.5 · GET /api/health 200</span></div>
+    </div>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+  'use strict'
+  var toastEl = document.getElementById('toast')
+  var toastTimer = null
+  function toast(msg){
+    toastEl.textContent = msg
+    toastEl.classList.add('show')
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show') }, 1800)
+  }
+
+  /* ---- 导航：静态原型，仅切换激活态 ---- */
+  var navItems = document.querySelectorAll('.nav-item')
+  navItems.forEach(function(item){
+    item.addEventListener('click', function(){
+      navItems.forEach(function(n){ n.classList.remove('active'); n.removeAttribute('aria-current') })
+      item.classList.add('active')
+      item.setAttribute('aria-current', 'page')
+    })
+  })
+
+  /* ---- 语言下拉 ---- */
+  var langBtn = document.getElementById('lang-btn')
+  var langMenu = document.getElementById('lang-menu')
+  langBtn.addEventListener('click', function(){
+    var open = !langMenu.hidden
+    langMenu.hidden = open
+    langBtn.setAttribute('aria-expanded', String(!open))
+  })
+  langMenu.querySelectorAll('button').forEach(function(opt){
+    opt.addEventListener('click', function(){
+      langBtn.innerHTML = (opt.dataset.lang === '简体中文' ? 'zh' : opt.dataset.lang === '日本語' ? 'ja' : 'en') + ' ▼'
+      langMenu.querySelectorAll('button').forEach(function(b){ b.classList.remove('selected') })
+      opt.classList.add('selected')
+      langMenu.hidden = true
+      langBtn.setAttribute('aria-expanded', 'false')
+      toast('语言已切换：' + opt.dataset.lang + '（演示）')
+    })
+  })
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('.lang-wrap')) { langMenu.hidden = true; langBtn.setAttribute('aria-expanded','false') }
+  })
+
+  /* ---- 特效开关：给 <html> 加 / 去 fx-off-<id> class ---- */
+  var fxBtn = document.getElementById('fx-btn')
+  var fxMenu = document.getElementById('fx-menu')
+  fxBtn.addEventListener('click', function(){
+    var open = !fxMenu.hidden
+    fxMenu.hidden = open
+    fxBtn.setAttribute('aria-expanded', String(!open))
+  })
+  fxMenu.querySelectorAll('input[data-fx]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      document.documentElement.classList.toggle('fx-off-' + cb.dataset.fx, !cb.checked)
+    })
+  })
+  document.addEventListener('click', function(e){
+    if (!e.target.closest('.fx-wrap')) { fxMenu.hidden = true; fxBtn.setAttribute('aria-expanded','false') }
+  })
+
+  /* ---- 侧栏按钮 ---- */
+  document.getElementById('btn-new').addEventListener('click', function(){ toast('演示：打开「新建 Bot」弹窗（静态原型）') })
+  document.getElementById('btn-refresh').addEventListener('click', function(){ toast('演示：刷新 Bot 列表（静态原型）') })
+
+  /* ---- Bot 卡片：选中 + 悬停操作 ---- */
+  var botCards = document.querySelectorAll('.bot-card')
+  botCards.forEach(function(card){
+    card.addEventListener('click', function(e){
+      if (e.target.closest('.act-btn')) return
+      botCards.forEach(function(c){ c.classList.remove('active') })
+      card.classList.add('active')
+    })
+    card.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click() }
+    })
+    card.querySelectorAll('.act-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){ toast('演示：' + btn.title) })
+    })
+  })
+
+  /* ---- 配置表单 ---- */
+  document.getElementById('btn-save').addEventListener('click', function(){ toast('演示：配置已保存（未写入后端）') })
+  document.getElementById('btn-reset').addEventListener('click', function(){ toast('演示：已重置为默认值（静态原型）') })
+
+  /* ---- 日志面板：拖拽高度 + 折叠 ---- */
+  var footer = document.getElementById('log-footer')
+  var handle = document.getElementById('log-handle')
+  var toggle = document.getElementById('log-toggle')
+  var dragging = false
+  handle.addEventListener('pointerdown', function(e){
+    e.preventDefault()
+    dragging = true
+    handle.classList.add('dragging')
+    document.body.style.userSelect = 'none'
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+  })
+  function onMove(e){
+    if (!dragging) return
+    var h = Math.max(120, Math.min(500, window.innerHeight - e.clientY))
+    footer.style.height = h + 'px'
+    footer.classList.remove('collapsed')
+    toggle.textContent = '▼'
+    toggle.setAttribute('aria-expanded','true')
+  }
+  function onUp(){
+    dragging = false
+    handle.classList.remove('dragging')
+    document.body.style.userSelect = ''
+    document.removeEventListener('pointermove', onMove)
+    document.removeEventListener('pointerup', onUp)
+  }
+  toggle.addEventListener('click', function(){
+    var collapsed = footer.classList.toggle('collapsed')
+    toggle.textContent = collapsed ? '▲' : '▼'
+    toggle.setAttribute('aria-expanded', String(!collapsed))
+  })
+})()
+</script>
+</body>
+</html>
