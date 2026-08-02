@@ -113,3 +113,597 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.55);
 }
+
+/* FX: effect toggles (grid / scanline / glow / blink / glassblur)
+   ------------------------------------------------------------------
+   The theme store writes a space-separated list of enabled effect ids to
+   <html data-effects> (e.g. 'grid scanline glow blink glassblur'), persisted
+   under `frontend-vue-effects` and defaulting to fully enabled.
+
+   Decoration layers (per-style grid backgrounds, CRT scanlines, neon glows,
+   status dot blinks, glass backdrop-filter) — which are still to be ported
+   from the legacy Svelte frontend into this Vue app — MUST hook on the
+   `data-effects` attribute instead of the bare style selectors.
+
+   Example — positive hook (default-on state, identical rendering to today):
+
+     :root[data-style='cyberpunk'][data-effects~='scanline'] body::after {
+       background: repeating-linear-gradient(...);
+     }
+
+   Example — matching off rule (kill the decoration, keep layout/color/font):
+
+     :root[data-style='cyberpunk']:not([data-effects~='scanline']) body::after {
+       display: none;
+     }
+
+   Every positive hook must ship with a matching off rule. Effects only
+   gate animation / filter / decoration layers — never layout, colors,
+   fonts or spacing. The `data-animations` switch keeps controlling page
+   transitions as before. */
+
+/* ================================================================
+   NEON FX  (style: neon — effects: grid / glow / blink)
+   Ported from legacy Svelte frontend global.css (L179-191 grid,
+   L241-255 inputs/buttons, L257-261 nav) + Sidebar.svelte neonPulse.
+   Animations are positively gated on [data-animations='on'] so the
+   existing animation switch kills them with no extra rules. Scoped
+   component animations (e.g. BotCard dot-pulse) are not governed by
+   this switch — pre-existing behavior, kept as-is.
+   ================================================================ */
+
+/* Style-level color repair (not an effect): neon needs an opaque body
+   so the grid layer / transparent layout bleed render on a dark base.
+   The radial halo (legacy L171-177) is a color layer, not an effect: it
+   stays on regardless of the grid toggle, which only hides the grid
+   pseudo-layer (body::before) when off. */
+:root[data-style='neon'] body {
+  background:
+    radial-gradient(circle at 15% 10%, rgba(0, 229, 255, .12), transparent 45%),
+    radial-gradient(circle at 85% 5%, rgba(0, 255, 136, .08), transparent 35%),
+    radial-gradient(circle at 50% 90%, rgba(102, 170, 255, .06), transparent 40%),
+    var(--bg-color);
+}
+
+/* FX: grid — neon grid background (legacy L179-191) */
+:root[data-style='neon'][data-effects~='grid'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    linear-gradient(rgba(0, 229, 255, .04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, .04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at 50% 50%, black 30%, transparent 70%);
+}
+
+:root[data-style='neon']:not([data-effects~='grid']) body::before {
+  display: none;
+}
+
+/* FX: grid — bleed the main layout so the grid shows through the content
+   area (naive layout paints an opaque bodyColor background otherwise). */
+:root[data-style='neon'][data-effects~='grid'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='neon']:not([data-effects~='grid']) .n-layout {
+  background-color: var(--bg-color);
+}
+
+/* FX: glow — input focus glow (legacy L241-251 box-shadow style; the
+   native naive focus ring stays untouched on .n-input__state-border). */
+:root[data-style='neon'][data-effects~='glow'] .n-input:focus-within {
+  box-shadow: 0 0 12px rgba(0, 229, 255, .25), 0 0 0 2px rgba(0, 229, 255, .15);
+}
+
+:root[data-style='neon']:not([data-effects~='glow']) .n-input:focus-within {
+  box-shadow: none;
+}
+
+/* FX: glow — button halo (legacy L253-255) */
+:root[data-style='neon'][data-effects~='glow'] .n-button {
+  box-shadow: 0 2px 8px rgba(0, 229, 255, .12);
+}
+
+:root[data-style='neon'][data-effects~='glow'] .n-button:not(:disabled):hover {
+  box-shadow: 0 0 18px rgba(0, 229, 255, .25);
+}
+
+:root[data-style='neon']:not([data-effects~='glow']) .n-button {
+  box-shadow: none;
+}
+
+:root[data-style='neon']:not([data-effects~='glow']) .n-button:not(:disabled):hover {
+  box-shadow: none;
+}
+
+/* FX: glow — top nav active item glow + gradient underline bar. Naive
+   horizontal menu marks the active item with .n-menu-item-content--selected
+   (verified in naive-ui es/menu styles; its ::before is display:none in
+   horizontal mode, so ::after is free). */
+:root[data-style='neon'][data-effects~='glow'] .n-menu-item-content--selected::after {
+  content: '';
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  bottom: 0;
+  height: 2px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, #00e5ff, transparent);
+  box-shadow: 0 0 8px rgba(0, 229, 255, .5);
+}
+
+:root[data-style='neon'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: 0 0 8px rgba(0, 229, 255, .45);
+}
+
+:root[data-style='neon']:not([data-effects~='glow']) .n-menu-item-content--selected::after {
+  display: none;
+}
+
+/* Off rule keeps the neon cyan text (color semantics), drops the glow. */
+:root[data-style='neon']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: none;
+}
+
+/* FX: blink — running status dot pulse (legacy Sidebar.svelte L699-706
+   neonPulse; overrides the scoped dot-pulse while the effect is on). */
+@keyframes fx-neon-pulse {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 4px currentColor); }
+  50% { opacity: .6; filter: drop-shadow(0 0 8px currentColor); }
+}
+
+:root[data-style='neon'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+  animation: fx-neon-pulse 1.5s ease-in-out infinite;
+}
+
+:root[data-style='neon']:not([data-effects~='blink']) .bot-card .status-dot.running {
+  animation: none;
+  opacity: 1;
+}
+
+/* ================================================================
+   CYBERPUNK FX  (style: cyberpunk — effects: grid / scanline / glow / blink)
+   Ported from legacy global.css L566-1049 + L929-961 (bot-card/badge).
+   Card clip-path uses a conservative 8px cut so naive NCard header /
+   content / action slots are never clipped; corner brackets stay inside.
+   ================================================================ */
+
+@keyframes fx-cp-scanline-flicker {
+  0%, 100% { opacity: .03; }
+  50% { opacity: .05; }
+  92% { opacity: .03; }
+  93% { opacity: .08; }
+  94% { opacity: .03; }
+}
+
+@keyframes fx-cp-neon-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--pulse-color, var(--primary-color)); }
+  50% { box-shadow: 0 0 18px var(--pulse-color, var(--primary-color)), 0 0 32px var(--pulse-color, var(--primary-color)); }
+}
+
+@keyframes fx-cp-border-scan {
+  0% { border-color: var(--border-color); }
+  50% { border-color: var(--primary-color); }
+  100% { border-color: var(--border-color); }
+}
+
+@keyframes fx-cp-bracket-pulse {
+  0%, 100% { opacity: .4; }
+  50% { opacity: .9; }
+}
+
+@keyframes fx-cp-hud-sweep {
+  0% { background-position: -100% 0, 0 0; }
+  100% { background-position: 200% 0, 0 0; }
+}
+
+@keyframes fx-cp-dot-blink {
+  0%, 100% { opacity: 1; box-shadow: 0 0 4px currentColor; }
+  35% { opacity: .3; box-shadow: 0 0 12px currentColor; }
+  50% { opacity: .5; box-shadow: 0 0 6px currentColor; }
+  80% { opacity: 1; box-shadow: 0 0 3px currentColor; }
+  85% { opacity: .2; box-shadow: 0 0 14px currentColor; }
+}
+
+/* FX: scanline — fullscreen CRT overlay (legacy L633-646). Static layer
+   survives the animation switch; the flicker needs [data-animations='on']. */
+:root[data-style='cyberpunk'][data-effects~='scanline'] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 230, 0, .015) 2px,
+    rgba(255, 230, 0, .015) 4px
+  );
+}
+
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='scanline'] body::after {
+  animation: fx-cp-scanline-flicker 4s infinite;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='scanline']) body::after {
+  display: none;
+}
+
+/* FX: scanline — top header scan stripes (legacy L820-833). Naive header
+   has no pseudo-element usage; position:relative is decoration plumbing. */
+:root[data-style='cyberpunk'][data-effects~='scanline'] .n-layout-header {
+  position: relative;
+}
+
+/* Off rule: only fall back to static for non-absolute headers so the
+   naive absolute-positioned mode keeps its own positioning. */
+:root[data-style='cyberpunk']:not([data-effects~='scanline']) .n-layout-header:not(.n-layout-header--absolute-positioned) {
+  position: static;
+}
+
+:root[data-style='cyberpunk'][data-effects~='scanline'] .n-layout-header::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(255, 230, 0, .01) 3px,
+    rgba(255, 230, 0, .01) 4px
+  );
+  opacity: .5;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='scanline']) .n-layout-header::after {
+  display: none;
+}
+
+/* FX: glow — card skeleton: 8px octagon clip-path + 1px border + inner
+   outline + corner brackets (legacy L651-702). The clip-path / brackets
+   are style skeleton and survive glow-off; animations/glows do not.
+   Note: the clip-path crops box-shadow, so the hover glow below is not
+   visible on chamfered cards (legacy-sourced quirk; skeleton kept). */
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card {
+  border-radius: 0;
+  clip-path: polygon(
+    8px 0, calc(100% - 8px) 0,
+    100% 8px, 100% calc(100% - 8px),
+    calc(100% - 8px) 100%, 8px 100%,
+    0 calc(100% - 8px), 0 8px
+  );
+  border: 1px solid var(--border-color);
+  outline: 1px solid rgba(255, 230, 0, .08);
+  outline-offset: -4px;
+  background-image:
+    linear-gradient(90deg, transparent 0%, var(--primary-color) 50%, transparent 100%) 0 0 / 200% 1px no-repeat,
+    radial-gradient(ellipse at 50% 30%, rgba(255, 230, 0, .03), transparent 60%);
+  transition: box-shadow .3s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card {
+  animation: fx-cp-hud-sweep 8s linear infinite, fx-cp-border-scan 4s infinite;
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card:hover {
+  box-shadow: 0 0 28px rgba(255, 230, 0, .12), 0 8px 32px rgba(0, 0, 0, .4);
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  top: 8px;
+  left: 8px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--primary-color);
+  border-left: 2px solid var(--primary-color);
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  bottom: 8px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--primary-color);
+  border-right: 2px solid var(--primary-color);
+}
+
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card::before {
+  animation: fx-cp-bracket-pulse 3s infinite;
+}
+
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card::after {
+  animation: fx-cp-bracket-pulse 3s infinite;
+  animation-delay: .8s;
+}
+
+/* Off rules: keep clip-path + brackets (skeleton), kill glow/animation. */
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card {
+  border-radius: 0;
+  clip-path: polygon(
+    8px 0, calc(100% - 8px) 0,
+    100% 8px, 100% calc(100% - 8px),
+    calc(100% - 8px) 100%, 8px 100%,
+    0 calc(100% - 8px), 0 8px
+  );
+  border: 1px solid var(--border-color);
+  outline: 1px solid rgba(255, 230, 0, .08);
+  outline-offset: -4px;
+  background-image: none;
+  box-shadow: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card {
+  animation: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card:hover {
+  box-shadow: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  top: 8px;
+  left: 8px;
+  width: 10px;
+  height: 10px;
+  border-top: 2px solid var(--primary-color);
+  border-left: 2px solid var(--primary-color);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card::before {
+  animation: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  bottom: 8px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  border-bottom: 2px solid var(--primary-color);
+  border-right: 2px solid var(--primary-color);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-card::after {
+  animation: none;
+}
+
+/* FX: glow — button 6px clip-path skeleton + hover yellow glow
+   (legacy L763-770; clip survives glow-off). Note: the clip-path crops
+   box-shadow, so this hover glow is not visible on chamfered buttons
+   (legacy-sourced quirk; skeleton kept). */
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-button {
+  border-radius: 0;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-button:not(:disabled):hover {
+  box-shadow: 0 0 16px var(--primary-color), 0 4px 12px rgba(0, 0, 0, .3);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-button {
+  border-radius: 0;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-button:not(:disabled):hover {
+  box-shadow: none;
+}
+
+/* FX: glow — top nav active item: yellow text + breathing halo
+   (legacy L793-803 cp-neon-pulse). Yellow text survives glow-off. */
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-menu-item-content--selected {
+  --pulse-color: var(--primary-color);
+  box-shadow: 0 0 12px var(--primary-color);
+}
+
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-menu-item-content--selected {
+  animation: fx-cp-neon-pulse 2s ease-in-out infinite;
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: 0 0 8px rgba(255, 230, 0, .35);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-menu-item-content--selected {
+  box-shadow: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-menu-item-content--selected {
+  animation: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header {
+  color: var(--primary-color);
+  text-shadow: none;
+}
+
+/* FX: glow — platform badge yellow border + micro glow (legacy L957-961;
+   border is skeleton; the global rule's higher specificity overrides the
+   scoped discord/qq background tint while the effect is on). */
+:root[data-style='cyberpunk'][data-effects~='glow'] .bot-card .platform-badge {
+  background: rgba(255, 230, 0, .08);
+  border: 1px solid var(--primary-color);
+  box-shadow: 0 0 4px rgba(255, 230, 0, .12);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .bot-card .platform-badge {
+  border: 1px solid var(--primary-color);
+  box-shadow: none;
+}
+
+/* FX: glow — inputs / selects 6px clip-path skeleton + focus yellow glow
+   (legacy L837-849; clip survives glow-off, focus glow does not). */
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-input,
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-select {
+  border-radius: 0;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-input:focus-within,
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-select:focus-within {
+  box-shadow: 0 0 14px var(--primary-color), 0 0 0 2px rgba(255, 230, 0, .15);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-input,
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-select {
+  border-radius: 0;
+  clip-path: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-input:focus-within,
+:root[data-style='cyberpunk']:not([data-effects~='glow']) .n-select:focus-within {
+  box-shadow: none;
+}
+
+/* FX: grid — sider scan stripes + right edge light line (legacy L890-922).
+   background-image only: naive paints the sider background-color itself. */
+:root[data-style='cyberpunk'][data-effects~='grid'] .n-layout-sider {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 230, 0, .012) 2px,
+    rgba(255, 230, 0, .012) 3px
+  );
+}
+
+:root[data-style='cyberpunk'][data-effects~='grid'] .n-layout-sider::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 8%;
+  width: 2px;
+  height: 84%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--primary-color) 8%,
+    transparent 25%,
+    transparent 75%,
+    var(--primary-color) 92%,
+    transparent
+  );
+  opacity: .4;
+  pointer-events: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) .n-layout-sider {
+  background-image: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) .n-layout-sider::after {
+  display: none;
+}
+
+/* FX: grid — yellow scrollbars (legacy L868-886), static decoration.
+   Off rules restore the base scrollbar palette from global.css L99-115. */
+:root[data-style='cyberpunk'][data-effects~='grid'] *::-webkit-scrollbar-track {
+  background: rgba(20, 20, 20, .8);
+}
+
+:root[data-style='cyberpunk'][data-effects~='grid'] *::-webkit-scrollbar-thumb {
+  background: rgba(255, 230, 0, .2);
+  border-radius: 6px;
+  box-shadow: 0 0 6px rgba(255, 230, 0, .1);
+}
+
+:root[data-style='cyberpunk'][data-effects~='grid'] *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 230, 0, .35);
+  box-shadow: 0 0 12px rgba(255, 230, 0, .2);
+}
+
+:root[data-style='cyberpunk'][data-effects~='grid'] * {
+  scrollbar-color: rgba(255, 230, 0, .2) rgba(20, 20, 20, .8);
+  scrollbar-width: thin;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) *::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, .35);
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) *::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, .55);
+  box-shadow: none;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) * {
+  scrollbar-color: auto;
+  scrollbar-width: auto;
+}
+
+/* FX: blink — hard-switch status dot blink (legacy L994-997 cp-dot-blink;
+   the cyberpunk primary yellow background overrides the scoped running
+   green while the blink is on). */
+:root[data-style='cyberpunk'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+  background: var(--primary-color);
+  color: var(--primary-color);
+  animation: fx-cp-dot-blink 1.5s infinite;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='blink']) .bot-card .status-dot.running {
+  animation: none;
+  opacity: 1;
+}
+
+/* ================================================================
+   GLASS FX  (style: glass — effect: glassblur)
+   Frosted panels: legacy L541-546 semantics. Header/sider get a
+   translucent --bg-color mix (with a literal rgba fallback) so their
+   backdrop-filter is visible. The NCard previously blurred too, but it
+   sits on an opaque layout background — never visible, GPU cost per
+   card — so cards no longer get a backdrop-filter.
+   ================================================================ */
+
+/* FX: glassblur — backdrop blur on the top header and sider only */
+:root[data-style='glass'][data-effects~='glassblur'] .n-layout-header,
+:root[data-style='glass'][data-effects~='glassblur'] .n-layout-sider {
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+}
+
+/* FX: glassblur — translucent header/sider surfaces + lightened border */
+:root[data-style='glass'][data-effects~='glassblur'] .n-layout-header,
+:root[data-style='glass'][data-effects~='glassblur'] .n-layout-sider {
+  background-color: rgba(26, 26, 46, .72);
+  background-color: color-mix(in srgb, var(--bg-color) 72%, transparent);
+  border-color: rgba(255, 255, 255, .18);
+}
+
+:root[data-style='glass']:not([data-effects~='glassblur']) .n-layout-header,
+:root[data-style='glass']:not([data-effects~='glassblur']) .n-layout-sider {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+:root[data-style='glass']:not([data-effects~='glassblur']) .n-layout-header,
+:root[data-style='glass']:not([data-effects~='glassblur']) .n-layout-sider {
+  background-color: var(--bg-color);
+  border-color: var(--border-color);
+}

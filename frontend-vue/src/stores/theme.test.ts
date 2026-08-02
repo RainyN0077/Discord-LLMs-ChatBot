@@ -17,7 +17,10 @@ const STYLE_KEY = 'frontend-vue-style'
 const SCHEME_KEY = 'frontend-vue-scheme'
 const CSS_KEY = 'frontend-vue-custom-css'
 const ANIM_KEY = 'frontend-vue-animations'
+const EFFECTS_KEY = 'frontend-vue-effects'
 const LEGACY_THEME_KEY = 'frontend-vue-theme'
+
+const EFFECT_ID_LIST = ['grid', 'scanline', 'glow', 'blink', 'glassblur'] as const
 
 function makeStore() {
   setActivePinia(createPinia())
@@ -254,6 +257,96 @@ describe('theme store — DOM side effects', () => {
   })
 })
 
+describe('theme store — effects', () => {
+  it('enables every effect by default and lists all ids in the dataset', () => {
+    const store = makeStore()
+    for (const id of EFFECT_ID_LIST) {
+      expect(store.effects[id]).toBe(true)
+    }
+    const enabled = (document.documentElement.dataset.effects ?? '').split(' ')
+    for (const id of EFFECT_ID_LIST) {
+      expect(enabled).toContain(id)
+    }
+  })
+
+  it('persists a toggled-off effect to localStorage as JSON false', async () => {
+    const store = makeStore()
+    store.toggleEffect('grid')
+    await nextTick()
+    const parsed = JSON.parse(localStorage.getItem(EFFECTS_KEY) ?? '{}')
+    expect(parsed.grid).toBe(false)
+    expect(parsed.scanline).toBe(true) // untouched effects stay enabled
+  })
+
+  it('drops the toggled-off effect id from the dataset', async () => {
+    const store = makeStore()
+    store.toggleEffect('scanline')
+    await nextTick()
+    const enabled = (document.documentElement.dataset.effects ?? '').split(' ')
+    expect(enabled).not.toContain('scanline')
+    expect(enabled).toContain('grid') // other effects unaffected
+  })
+
+  it('resetAll re-enables every effect', async () => {
+    const store = makeStore()
+    store.toggleEffect('grid')
+    store.toggleEffect('glow')
+    await nextTick()
+
+    store.resetAll()
+    await nextTick()
+
+    expect(store.effects.grid).toBe(true)
+    expect(store.effects.glow).toBe(true)
+    const enabled = (document.documentElement.dataset.effects ?? '').split(' ')
+    for (const id of EFFECT_ID_LIST) {
+      expect(enabled).toContain(id)
+    }
+  })
+
+  it('falls back to fully enabled when the stored JSON is corrupt', () => {
+    localStorage.setItem(EFFECTS_KEY, '{oops not json')
+    const store = makeStore()
+    for (const id of EFFECT_ID_LIST) {
+      expect(store.effects[id]).toBe(true)
+    }
+  })
+
+  it('reads partially disabled persisted effects', () => {
+    localStorage.setItem(EFFECTS_KEY, JSON.stringify({ grid: false }))
+    const store = makeStore()
+    expect(store.effects.grid).toBe(false)
+    expect(store.effects.scanline).toBe(true)
+    expect(store.effects.glassblur).toBe(true)
+  })
+
+  it('availableEffects follows the active style', () => {
+    const store = makeStore() // 'dark' — no effect applies
+    expect(store.availableEffects).toEqual([])
+
+    store.setStyle('neon')
+    expect(store.availableEffects.map((e) => e.id).sort()).toEqual(
+      ['grid', 'glow', 'blink'].sort(),
+    )
+
+    store.setStyle('cyberpunk')
+    expect(store.availableEffects.map((e) => e.id).sort()).toEqual(
+      ['grid', 'scanline', 'glow', 'blink'].sort(),
+    )
+
+    store.setStyle('glass')
+    expect(store.availableEffects.map((e) => e.id)).toEqual(['glassblur'])
+  })
+
+  it('ignores unknown ids in toggleEffect', async () => {
+    const store = makeStore()
+    store.toggleEffect('no-such-effect')
+    await nextTick()
+    // No state change → nothing is written back (initialization never writes).
+    expect(localStorage.getItem(EFFECTS_KEY)).toBeNull()
+  })
+})
+
 describe('initThemeSync — startup migration', () => {
   it('migrates the legacy key, writes the style key and applies the dataset', () => {
     localStorage.setItem(LEGACY_THEME_KEY, 'dark')
@@ -266,6 +359,8 @@ describe('initThemeSync — startup migration', () => {
     expect(el!.textContent).toContain('--primary-color')
     expect(document.documentElement.dataset.theme).toBe('dark')
     expect(document.documentElement.dataset.style).toBe('dark')
+    // Effects default to fully enabled, so data-effects lists every id.
+    expect(document.documentElement.dataset.effects).toContain('grid')
   })
 
   it('is a no-op for unknown legacy values (keeps default dark)', () => {

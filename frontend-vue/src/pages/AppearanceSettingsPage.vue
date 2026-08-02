@@ -142,6 +142,25 @@ const cssLimitHint = () => {
       </div>
     </SectionCard>
 
+    <SectionCard :title="t('appearance.effectSettings')">
+      <div v-if="themeStore.availableEffects.length === 0" class="effect-row">
+        <span class="toggle-label">{{ t('appearance.noEffects') }}</span>
+      </div>
+      <div v-else class="effect-rows">
+        <div
+          v-for="fx in themeStore.availableEffects"
+          :key="fx.id"
+          class="effect-row"
+        >
+          <span class="toggle-label">{{ t(fx.labelKey) }}</span>
+          <n-switch
+            :value="!!themeStore.effects[fx.id]"
+            @update:value="() => themeStore.toggleEffect(fx.id)"
+          />
+        </div>
+      </div>
+    </SectionCard>
+
     <SectionCard :title="t('appearance.customCSS')">
       <n-input
         v-model:value="cssDraft"
@@ -301,6 +320,19 @@ const cssLimitHint = () => {
 
 .toggle-label {
   font-size: 0.85rem;
+}
+
+/* FX: per-effect toggle rows (same rhythm as .toggle-row). */
+.effect-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.effect-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .css-input {
