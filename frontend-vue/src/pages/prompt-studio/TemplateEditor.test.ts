@@ -9,12 +9,22 @@
  *  - editing emits a full update:templates payload
  *  - the operational_instructions column lists/adds/removes instructions
  *
+ * S4 (design §5 / §7.1): placeholder click insertion + keyboard a11y:
+ *  - click / Enter / Space insert the token at the caret (selected text is
+ *    replaced), emit the full new value, restore the caret and show the
+ *    phInserted toast
+ *  - graceful degradation when the inner textarea is unavailable
+ *
  * Mount cost is low (no stores/router needed), so the full editor is
- * exercised instead of a reduced logical subset.
+ * exercised instead of a reduced logical subset. The editor is mounted under
+ * NMessageProvider (ProvidersPage.test.ts same pattern) with a reactive
+ * v-model harness so emits flow back into props like a real parent.
  */
 
 import { describe, expect, it } from 'vitest'
+import { h, reactive } from 'vue'
 import { mount, type VueWrapper } from '@vue/test-utils'
+import { NInput, NMessageProvider } from 'naive-ui'
 import { i18n } from '@/locales'
 import TemplateEditor from '@/pages/prompt-studio/TemplateEditor.vue'
 import type { PromptTemplate } from '@/api/prompts'
@@ -38,11 +48,30 @@ function makeTemplates(): PromptTemplate {
   }
 }
 
+/**
+ * Mount the editor under NMessageProvider (useMessage) with a reactive
+ * v-model harness: `update:templates` emits flow back into props, so the
+ * NInput stays controlled like in a real parent (cursor math stays valid).
+ * `attachTo: document.body` keeps the tree connected — jsdom ignores
+ * focus() on detached elements, which would break caret/focus assertions.
+ * Returns the TemplateEditor wrapper — emitted() reports its own events.
+ */
 function mountEditor(templates: PromptTemplate = makeTemplates()): VueWrapper {
-  return mount(TemplateEditor, {
-    props: { templates },
+  const state = reactive({ templates })
+  const provider = mount(NMessageProvider, {
+    attachTo: document.body,
     global: { plugins: [i18n] },
+    slots: {
+      default: () =>
+        h(TemplateEditor, {
+          templates: state.templates,
+          'onUpdate:templates': (v: PromptTemplate) => {
+            state.templates = v
+          },
+        }),
+    },
   })
+  return provider.findComponent(TemplateEditor)
 }
 
 function navItems(wrapper: VueWrapper): { label: string; click: () => Promise<void>; isActive: boolean }[] {
@@ -184,5 +213,114 @@ describe('TemplateEditor — operational instructions column', () => {
 
     const payload = wrapper.emitted('update:templates')![0][0] as PromptTemplate
     expect(payload.operational_instructions).toEqual(['规则二：保持简洁'])
+  })
+})
+
+describe('TemplateEditor — placeholder click insertion (S4)', () => {
+  // Default key (message_format) shows {author_id_str} first.
+  const PH = '{author_id_str}'
+
+  /** Focus the textarea and return its raw element (caret math is direct). */
+  function focusedTextarea(wrapper: VueWrapper): HTMLTextAreaElement {
+    const el = wrapper.find('textarea').element as HTMLTextAreaElement
+    el.focus()
+    return el
+  }
+
+  /** Latest full update:templates payload emitted by the editor. */
+  function lastEmittedTemplates(wrapper: VueWrapper): PromptTemplate {
+    const emitted = wrapper.emitted('update:templates')
+    expect(emitted).toBeTruthy()
+    const last = emitted![emitted!.length - 1]
+    return last[0] as PromptTemplate
+  }
+
+  /** Wait for the rAF callback that restores the caret after the value flush. */
+  function flushRaf(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  it('clicks a placeholder, inserting it at the caret and emitting the full new value', async () => {
+    const wrapper = mountEditor()
+    const el = focusedTextarea(wrapper)
+    el.value = 'AB'
+    el.setSelectionRange(1, 1)
+
+    await wrapper.find('.placeholder-tag').trigger('click')
+
+    const payload = lastEmittedTemplates(wrapper)
+    expect(payload.message_format).toBe(`A${PH}B`)
+    // Spread emit preserves every other key.
+    expect(payload.system_prompt_foundation_header).toBe('你是一个乐于助人的 AI 助手。')
+    expect(payload.operational_instructions).toEqual(['规则一：先回复再行动', '规则二：保持简洁'])
+  })
+
+  it('replaces the selected text with the placeholder', async () => {
+    const wrapper = mountEditor()
+    const el = focusedTextarea(wrapper)
+    el.value = 'ABCD'
+    el.setSelectionRange(1, 3) // "BC" selected
+
+    await wrapper.find('.placeholder-tag').trigger('click')
+
+    expect(lastEmittedTemplates(wrapper).message_format).toBe(`A${PH}D`)
+  })
+
+  it('restores the caret right after the inserted placeholder and refocuses the textarea', async () => {
+    const wrapper = mountEditor()
+    const el = focusedTextarea(wrapper)
+    el.value = 'AB'
+    el.setSelectionRange(1, 1)
+
+    await wrapper.find('.placeholder-tag').trigger('click')
+    await flushRaf()
+
+    expect(el.selectionStart).toBe(1 + PH.length)
+    expect(el.selectionEnd).toBe(1 + PH.length)
+    expect(document.activeElement).toBe(el)
+  })
+
+  it('triggers insertion from the keyboard via Enter and Space (a11y)', async () => {
+    const wrapper = mountEditor()
+    const el = focusedTextarea(wrapper)
+    el.value = 'AB'
+    el.setSelectionRange(0, 0)
+    const tag = wrapper.find('.placeholder-tag')
+    expect(tag.attributes('tabindex')).toBe('0')
+    expect(tag.attributes('role')).toBe('button')
+
+    await tag.trigger('keydown.enter')
+    expect(lastEmittedTemplates(wrapper).message_format).toBe(`${PH}AB`)
+
+    el.setSelectionRange(0, 0)
+    await tag.trigger('keydown.space')
+    expect(lastEmittedTemplates(wrapper).message_format).toBe(`${PH}${PH}AB`)
+  })
+
+  it('degrades silently (no crash, no emit) when the inner textarea is unavailable', async () => {
+    const wrapper = mountEditor()
+    const nInput = wrapper.findComponent(NInput)
+    const el = wrapper.find('textarea').element as HTMLTextAreaElement
+    // Break both lookup paths: DOM removal + exposed ref nulled.
+    el.remove()
+    const vm = nInput.vm as unknown as { textareaElRef?: unknown }
+    vm.textareaElRef = null
+
+    await wrapper.find('.placeholder-tag').trigger('click')
+
+    expect(wrapper.emitted('update:templates')).toBeUndefined()
+  })
+
+  it('shows the phInserted toast on successful insertion', async () => {
+    const wrapper = mountEditor()
+    const el = focusedTextarea(wrapper)
+    el.value = 'AB'
+    el.setSelectionRange(1, 1)
+
+    await wrapper.find('.placeholder-tag').trigger('click')
+    await flushRaf()
+
+    expect(document.body.textContent).toContain('已插入占位符')
+    expect(document.body.textContent).toContain(PH)
   })
 })

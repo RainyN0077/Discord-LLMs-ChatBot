@@ -16,6 +16,23 @@
 const KEY_STORAGE = '_ak'
 const AUTH_STATUS_URL = '/api/auth/status'
 
+/**
+ * sec-M1: the backend signals LLM provider failures with a 500 whose detail
+ * starts with `LLM_PROVIDER_ERROR:` (backend/app/llm_providers/base.py). The
+ * raw detail may embed provider internals (model names, quotas, raw SDK
+ * errors), so toApiError replaces it with this generic message — the detail
+ * is kept for the logs only, never rendered to the user. The user-facing
+ * i18n text lives in the UI layer (playground.providerError), not here.
+ */
+const LLM_PROVIDER_ERROR_PREFIX = 'LLM_PROVIDER_ERROR:'
+
+/**
+ * 泛化文案的统一前缀（qa LOW-4）——PlaygroundCard 复用它识别 provider
+ * 错误，避免「client.ts 泛化文案」与「UI 层判定前缀」两处独立字符串漂移。
+ */
+export const PROVIDER_ERROR_PREFIX = 'LLM provider error'
+const LLM_PROVIDER_ERROR_MESSAGE = `${PROVIDER_ERROR_PREFIX}. Check backend logs.`
+
 export class AuthError extends Error {
   status: number
 
@@ -157,6 +174,14 @@ export async function toApiError(res: Response): Promise<ApiErrorBody> {
   } catch {
     const text = await res.text().catch(() => '')
     if (text) message = text.slice(0, 500)
+  }
+  // sec-M1: 500 errors carrying the provider-error prefix are surfaced as a
+  // generic message; the original detail goes to console.error only —
+  // truncated to 500 chars (perf LOW-3 / qa LOW-1: the raw detail can embed
+  // long SDK error bodies and must not flood the console unbounded).
+  if (res.status === 500 && message.startsWith(LLM_PROVIDER_ERROR_PREFIX)) {
+    console.error(`LLM provider error detail: ${message.slice(0, 500)}`)
+    message = LLM_PROVIDER_ERROR_MESSAGE
   }
   return { status: res.status, message }
 }

@@ -52,7 +52,8 @@ export default {
       availablePlaceholders: "Available placeholders",
       instructionPlaceholder: "Enter an instruction",
       securityWarningUserRequestBlock: "This template wraps injected content in tags to defend against prompt injection; removing the {placeholder} placeholder weakens that defense.",
-      securityWarningMemoryContext: "This template wraps knowledge content in <knowledge> tags; removing the {placeholder} placeholder weakens that defense."
+      securityWarningMemoryContext: "This template wraps knowledge content in <knowledge> tags; removing the {placeholder} placeholder weakens that defense.",
+      phInserted: "Placeholder {ph} inserted"
     },
     simulator: {
       title: "Scenario Simulator",
@@ -660,7 +661,25 @@ export default {
     sanitizing: "Sanitizing...",
     sanitizeOutput: "Sanitized output",
     sanitizeFailed: "Sanitize failed: ",
-    activeDirectives: "Active Directives"
+    activeDirectives: "Active Directives",
+    trace: "Trace Timeline",
+    traceEmpty: "No intermediate outputs",
+    traceRequest: "Request",
+    traceReasoning: "Reasoning",
+    traceToolCall: "Tool Call",
+    traceToolResult: "Tool Result",
+    traceResponse: "Response",
+    traceOther: "Stage",
+    capClear: "Clear All",
+    capClearConfirm: "Clear all captured records? This cannot be undone.",
+    capDel: "Delete",
+    capDeleted: "Capture deleted",
+    capClearSuccess: "All captures cleared",
+    capDelFailed: "Delete failed: {error}",
+    capClearFailed: "Clear failed: {error}",
+    detailFallback: "Failed to parse detail; showing raw content instead.",
+    detailRaw: "Raw JSON",
+    detailHistory: "History ({count})"
   },
   directChat: {
     title: "Direct LLM Chat",
@@ -938,7 +957,23 @@ export default {
     title: "Model Settings — {botId}",
     selectBotFirst: "Select a bot first",
     loadingConfig: "Loading configuration for {botId}...",
-    loading: "Loading..."
+    loading: "Loading...",
+    playground: {
+      title: "Playground",
+      hint: "Testing uses this bot's saved config; unsaved changes take effect after saving",
+      placeholder: "Type a test message... (Enter to send, Shift+Enter for newline)",
+      send: "Send",
+      sending: "Sending...",
+      empty: "Test a conversation with the current model here — no save needed.",
+      thinking: "Thinking...",
+      error: "Send failed: {error}",
+      providerError: "LLM provider error; check backend logs",
+      retry: "Retry",
+      clear: "Clear chat",
+      usage: "Tokens: {p} in · {c} out · {t} total",
+      noModel: "Model name is not configured",
+      emptyInput: "Please enter a message"
+    }
   },
   providersPage: {
     title: "Provider Management — {botId}",
@@ -1034,6 +1069,13 @@ export default {
     colorScheme: "Color Scheme",
     animationSettings: "Animation Settings",
     enablePageTransitions: "Enable page transition animations",
+    effectSettings: "Effect Toggles",
+    effectGrid: "Grid / stripe background",
+    effectScanline: "Scanlines (CRT)",
+    effectGlow: "Glow effect",
+    effectBlink: "Status dot blink",
+    effectGlassblur: "Glass blur",
+    noEffects: "No effect toggles for this style",
     customCSS: "Custom CSS",
     applyCSS: "Apply CSS",
     resetCSS: "Reset to Default",

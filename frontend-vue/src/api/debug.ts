@@ -2,10 +2,12 @@
  * Debug API — simulate, capture inspection, and DSML/thinking sanitize.
  *
  * Backend contract (backend/app/routers/debug.py):
- *   POST /api/debug/simulate                    → DebugSimulateResult
- *   GET  /api/debug/captures?limit=&channel_id= → DebugCaptureSummary[]
- *   GET  /api/debug/captures/{id}               → DebugCaptureDetail
- *   POST /api/debug/sanitize                    → DebugSanitizeResult
+ *   POST   /api/debug/simulate                    → DebugSimulateResult
+ *   GET    /api/debug/captures?limit=&channel_id= → DebugCaptureSummary[]
+ *   GET    /api/debug/captures/{id}               → DebugCaptureDetail
+ *   DELETE /api/debug/captures/{id}               → { message }
+ *   DELETE /api/debug/captures                    → { message }
+ *   POST   /api/debug/sanitize                    → DebugSanitizeResult
  */
 
 import { fetchWithAuth } from './client'
@@ -91,5 +93,20 @@ export async function sanitize(text: string): Promise<DebugSanitizeResult> {
   return fetchWithAuth<DebugSanitizeResult>('/api/debug/sanitize', {
     method: 'POST',
     body: JSON.stringify({ text }),
+  })
+}
+
+/** Delete a single debug capture; 404 → throws (detail: "Capture not found."). */
+export async function deleteCapture(captureId: string): Promise<{ message: string }> {
+  return fetchWithAuth<{ message: string }>(
+    `/api/debug/captures/${encodeURIComponent(captureId)}`,
+    { method: 'DELETE' },
+  )
+}
+
+/** Clear all debug captures. */
+export async function clearCaptures(): Promise<{ message: string }> {
+  return fetchWithAuth<{ message: string }>('/api/debug/captures', {
+    method: 'DELETE',
   })
 }

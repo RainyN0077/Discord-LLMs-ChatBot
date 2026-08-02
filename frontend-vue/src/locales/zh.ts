@@ -480,7 +480,25 @@ export default {
     sanitizing: "清洗中...",
     sanitizeOutput: "清洗后输出",
     sanitizeFailed: "清洗失败：",
-    activeDirectives: "生效指令日志"
+    activeDirectives: "生效指令日志",
+    trace: "Trace 时间线",
+    traceEmpty: "无中间阶段输出",
+    traceRequest: "请求",
+    traceReasoning: "推理",
+    traceToolCall: "工具调用",
+    traceToolResult: "工具结果",
+    traceResponse: "响应",
+    traceOther: "阶段",
+    capClear: "清空",
+    capClearConfirm: "确认清空全部截取记录？此操作不可恢复。",
+    capDel: "删除",
+    capDeleted: "已删除该条截取记录",
+    capClearSuccess: "已清空全部截取记录",
+    capDelFailed: "删除失败：{error}",
+    capClearFailed: "清空失败：{error}",
+    detailFallback: "详情解析失败，已降级显示原始内容。",
+    detailRaw: "原始 JSON",
+    detailHistory: "历史消息（{count}）"
   },
   usage: {
     title: "使用统计",
@@ -726,7 +744,23 @@ export default {
     title: "模型设置 — {botId}",
     selectBotFirst: "请先选择一个 Bot",
     loadingConfig: "正在加载 {botId} 的配置...",
-    loading: "加载中..."
+    loading: "加载中...",
+    playground: {
+      title: "Playground 测试对话",
+      hint: "测试基于该 Bot 已保存的配置；当前未保存的修改保存后生效",
+      placeholder: "输入测试消息...（Enter 发送，Shift+Enter 换行）",
+      send: "发送",
+      sending: "发送中...",
+      empty: "在这里用当前模型测试对话，无需保存配置。",
+      thinking: "正在思考...",
+      error: "发送失败：{error}",
+      providerError: "LLM 提供商错误，请查看后端日志",
+      retry: "重试",
+      clear: "清空对话",
+      usage: "Token 用量：输入 {p} · 输出 {c} · 总计 {t}",
+      noModel: "请先配置模型名称",
+      emptyInput: "请输入消息内容"
+    }
   },
   providersPage: {
     title: "提供商管理 — {botId}",
@@ -893,7 +927,8 @@ export default {
       availablePlaceholders: "可用占位符",
       instructionPlaceholder: "输入一条指令",
       securityWarningUserRequestBlock: "该模板以标签包裹注入内容以防御提示注入，删除 {placeholder} 占位符将削弱安全语义。",
-      securityWarningMemoryContext: "该模板以 <knowledge> 标签包裹知识内容，删除 {placeholder} 占位符将削弱安全语义。"
+      securityWarningMemoryContext: "该模板以 <knowledge> 标签包裹知识内容，删除 {placeholder} 占位符将削弱安全语义。",
+      phInserted: "已插入占位符 {ph}"
     },
     simulator: {
       title: "场景模拟器",

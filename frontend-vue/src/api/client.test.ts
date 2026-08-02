@@ -411,3 +411,43 @@ describe('toApiError — direct extraction', () => {
     expect(body).toEqual({ status: 500, message: 'Server Error' })
   })
 })
+
+describe('toApiError — LLM_PROVIDER_ERROR 泛化（sec-M1）', () => {
+  it('500 + LLM_PROVIDER_ERROR: 前缀 → 泛化文案，原始 detail 仅进 console.error', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const body = await toApiError(
+        makeRes(
+          { detail: 'LLM_PROVIDER_ERROR: upstream quota exceeded (gpt-4o)' },
+          500,
+          'Internal Server Error',
+        ),
+      )
+      // Provider internals must never reach the user — only the generic copy.
+      expect(body).toEqual({
+        status: 500,
+        message: 'LLM provider error. Check backend logs.',
+      })
+      // The raw detail is kept for the logs only.
+      expect(consoleSpy).toHaveBeenCalledWith(
+        'LLM provider error detail: LLM_PROVIDER_ERROR: upstream quota exceeded (gpt-4o)',
+      )
+    } finally {
+      consoleSpy.mockRestore()
+    }
+  })
+
+  it('500 without the prefix → message passed through unchanged', async () => {
+    const body = await toApiError(
+      makeRes({ detail: 'provider pool unavailable' }, 500, 'Internal Server Error'),
+    )
+    expect(body).toEqual({ status: 500, message: 'provider pool unavailable' })
+  })
+
+  it('non-500 with the prefix → message passed through unchanged (no generalization)', async () => {
+    const body = await toApiError(
+      makeRes({ detail: 'LLM_PROVIDER_ERROR: not a 500' }, 400, 'Bad Request'),
+    )
+    expect(body).toEqual({ status: 400, message: 'LLM_PROVIDER_ERROR: not a 500' })
+  })
+})

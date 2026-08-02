@@ -28,6 +28,7 @@ import LLMProviderCard from './model-settings/LLMProviderCard.vue'
 import InferenceParamsCard from './model-settings/InferenceParamsCard.vue'
 import CustomHeadersCard from './model-settings/CustomHeadersCard.vue'
 import CustomParamsCard from './model-settings/CustomParamsCard.vue'
+import PlaygroundCard from './model-settings/PlaygroundCard.vue'
 import {
   KNOWN_PROVIDERS,
   LLM_PROVIDER_VALUES,
@@ -479,6 +480,13 @@ function goBack(): void {
           @remove="removeParameter"
           @update-field="onUpdateParameter"
           @change-type="onChangeParameterType"
+        />
+
+        <PlaygroundCard
+          :provider="draft.llm_provider"
+          :model-name="draft.model_name"
+          :bot-id="selectedBot!.bot_id"
+          :disabled="!!configsStore.loading"
         />
       </template>
     </n-spin>

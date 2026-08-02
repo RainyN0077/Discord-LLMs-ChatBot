@@ -5,9 +5,17 @@
  *   middle: textarea + placeholder hints for the selected key
  *   right: operational_instructions list (add / remove)
  */
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NInput, NTag, NCollapse, NCollapseItem } from 'naive-ui'
+import {
+  NButton,
+  NInput,
+  NTag,
+  NCollapse,
+  NCollapseItem,
+  useMessage,
+  type MessageApi,
+} from 'naive-ui'
 
 import type { PromptTemplate } from '@/api/prompts'
 import {
@@ -24,6 +32,62 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+
+/**
+ * S4: naive-ui NInput (type=textarea) exposes the inner element via
+ * `textareaElRef`. Although typed as a `Ref`, Vue auto-unwraps exposed refs
+ * on the component-instance proxy — at runtime it is usually the raw
+ * `HTMLTextAreaElement` already (M4: verified against naive-ui 2.44.1).
+ * `getTextareaEl()` accepts both shapes, falls back to
+ * `$el.querySelector('textarea')`, and returns null when unavailable —
+ * insertion then degrades silently (tag stays clickable, no crash, no-op).
+ */
+const editorInput = ref<{ textareaElRef?: Ref<HTMLTextAreaElement | null> } | null>(null)
+
+/**
+ * Toast API — null when no <n-message-provider /> wraps this component
+ * (naive-ui 2.x `useMessage` throws outside a provider; degrade silently).
+ */
+let message: MessageApi | null = null
+try {
+  message = useMessage()
+} catch {
+  message = null
+}
+
+function getTextareaEl(): HTMLTextAreaElement | null {
+  const inst = editorInput.value
+  if (!inst) return null
+  const maybeRef = inst.textareaElRef as unknown as
+    | HTMLTextAreaElement
+    | { value?: HTMLTextAreaElement | null }
+    | null
+    | undefined
+  const viaRef = maybeRef instanceof HTMLTextAreaElement ? maybeRef : (maybeRef?.value ?? null)
+  if (viaRef) return viaRef
+  const viaDom = (inst as unknown as { $el?: HTMLElement }).$el
+  return (viaDom?.querySelector('textarea') as HTMLTextAreaElement | null) ?? null
+}
+
+/**
+ * S4: insert a placeholder token at the current cursor position (selected
+ * text is replaced), emit the full new value, then restore the cursor right
+ * after the inserted token inside rAF (after Vue has flushed the new value).
+ * Keyboard users reach this via Enter/Space on the tag (a11y).
+ */
+function insertPlaceholder(ph: string): void {
+  const el = getTextareaEl()
+  if (!el) return
+  const start = el.selectionStart
+  const end = el.selectionEnd
+  const next = el.value.slice(0, start) + ph + el.value.slice(end)
+  updateValue(selectedKey.value, next)
+  requestAnimationFrame(() => {
+    el.focus()
+    el.setSelectionRange(start + ph.length, start + ph.length)
+  })
+  message?.success?.(t('promptStudio.editor.phInserted', { ph }))
+}
 
 const selectedKey = ref('message_format')
 const openSections = ref<string[]>(TEMPLATE_SECTIONS.map((s) => s.titleKey))
@@ -115,6 +179,7 @@ const selectedLabelKey = computed(
           {{ t(selectedLabelKey) }}
         </label>
         <n-input
+          ref="editorInput"
           :value="selectedValue"
           type="textarea"
           :autosize="{ minRows: 10, maxRows: 28 }"
@@ -130,7 +195,18 @@ const selectedLabelKey = computed(
         </div>
         <div v-if="selectedPlaceholders.length" class="template-editor-placeholders">
           <strong>{{ t('promptStudio.editor.availablePlaceholders') }}:</strong>
-          <n-tag v-for="p in selectedPlaceholders" :key="p" size="small" class="placeholder-tag">
+          <n-tag
+            v-for="p in selectedPlaceholders"
+            :key="p"
+            size="small"
+            class="placeholder-tag"
+            tabindex="0"
+            role="button"
+            :title="t('promptStudio.editor.phInserted', { ph: p })"
+            @click="insertPlaceholder(p)"
+            @keydown.enter="insertPlaceholder(p)"
+            @keydown.space.prevent="insertPlaceholder(p)"
+          >
             {{ p }}
           </n-tag>
         </div>
@@ -231,6 +307,10 @@ const selectedLabelKey = computed(
   flex-wrap: wrap;
   font-size: 13px;
   color: var(--text-color-3);
+}
+
+.placeholder-tag {
+  cursor: pointer;
 }
 
 .template-editor-security-warning {
