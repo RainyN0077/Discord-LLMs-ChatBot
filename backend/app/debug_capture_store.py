@@ -38,3 +38,23 @@ async def get_capture(capture_id: str) -> Optional[Dict[str, Any]]:
             if row.get("id") == capture_id:
                 return deepcopy(row)
     return None
+
+
+async def delete_capture(capture_id: str) -> bool:
+    """按 ID 删除单条捕获（持锁）。不存在返回 False。"""
+    if not capture_id:
+        return False
+    async with _lock:
+        for idx, row in enumerate(_captures):
+            if row.get("id") == capture_id:
+                del _captures[idx]
+                return True
+    return False
+
+
+async def clear_captures() -> int:
+    """清空全部捕获（持锁），返回删除条数。"""
+    async with _lock:
+        count = len(_captures)
+        _captures.clear()
+        return count

@@ -7,7 +7,12 @@ from ..bot import strip_dsml_tool_blocks, strip_thinking_sections
 from ..config_cache import load_config
 from ..core_logic.persona_manager import determine_bot_persona, build_system_prompt
 from ..core_logic.context_builder import format_user_message_for_llm, resolve_prompt_templates
-from ..debug_capture_store import list_captures as list_debug_captures, get_capture as get_debug_capture
+from ..debug_capture_store import (
+    list_captures as list_debug_captures,
+    get_capture as get_debug_capture,
+    delete_capture,
+    clear_captures,
+)
 from ..dependencies import get_api_key
 from ..llm_providers.factory import get_provider_pool
 from ..models import (
@@ -187,6 +192,21 @@ async def get_debug_capture_detail(capture_id: str):
         "cleaned_llm_response": _safe_text(row.get("cleaned_llm_response", "")),
         "usage": safe_usage if isinstance(safe_usage, dict) else None,
     }
+
+
+@router.delete("/api/debug/captures/{capture_id}", dependencies=[Depends(get_api_key)])
+async def delete_debug_capture(capture_id: str):
+    """删除单条截取记录。"""
+    if not await delete_capture(capture_id):
+        raise HTTPException(status_code=404, detail="Capture not found.")
+    return {"message": f"Capture '{capture_id}' deleted."}
+
+
+@router.delete("/api/debug/captures", dependencies=[Depends(get_api_key)])
+async def clear_debug_captures():
+    """清空全部截取记录。"""
+    count = await clear_captures()
+    return {"message": f"All debug captures cleared ({count})."}
 
 
 @router.post("/api/debug/sanitize", dependencies=[Depends(get_api_key)], response_model=DebugSanitizeResponse)

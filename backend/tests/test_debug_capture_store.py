@@ -1,7 +1,10 @@
 """Tests for app.debug_capture_store."""
 import asyncio
 import pytest
-from app.debug_capture_store import add_capture, list_captures, get_capture, MAX_CAPTURE_RECORDS
+from app.debug_capture_store import (
+    add_capture, list_captures, get_capture, delete_capture, clear_captures,
+    MAX_CAPTURE_RECORDS,
+)
 
 
 class TestAddCapture:
@@ -117,3 +120,92 @@ class TestConcurrentAccess:
         results = await list_captures(limit=100)
         ids = {r["n"] for r in results}
         assert ids == set(range(50))
+
+
+class TestDeleteCapture:
+    @pytest.mark.asyncio
+    async def test_deletes_existing_and_returns_true(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        item = await add_capture({"n": 1})
+        before = await list_captures(limit=100)
+        assert len(before) == 1
+        assert await delete_capture(item["id"]) is True
+        after = await list_captures(limit=100)
+        assert len(after) == 0
+        assert all(row.get("id") != item["id"] for row in after)
+
+    @pytest.mark.asyncio
+    async def test_returns_false_for_missing(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        await add_capture({"n": 1})
+        assert await delete_capture("nonexistent-id") is False
+        assert len(await list_captures(limit=100)) == 1
+
+    @pytest.mark.asyncio
+    async def test_returns_false_for_empty_id(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        await add_capture({"n": 1})
+        assert await delete_capture("") is False
+        assert len(await list_captures(limit=100)) == 1
+
+    @pytest.mark.asyncio
+    async def test_deleted_capture_returns_none_from_get(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        item = await add_capture({"n": 1})
+        assert await delete_capture(item["id"]) is True
+        assert await get_capture(item["id"]) is None
+
+
+class TestClearCaptures:
+    @pytest.mark.asyncio
+    async def test_clear_returns_count(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        for i in range(5):
+            await add_capture({"n": i})
+        assert await clear_captures() == 5
+
+    @pytest.mark.asyncio
+    async def test_clear_empties_list(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        await add_capture({"n": 1})
+        await add_capture({"n": 2})
+        await clear_captures()
+        assert await list_captures(limit=100) == []
+
+    @pytest.mark.asyncio
+    async def test_clear_on_empty_returns_zero(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        assert await clear_captures() == 0
+
+    @pytest.mark.asyncio
+    async def test_concurrent_add_delete_does_not_raise(self):
+        from app.debug_capture_store import _captures
+        _captures.clear()
+        ids = []
+
+        async def add(n):
+            item = await add_capture({"n": n})
+            ids.append(item["id"])
+
+        async def delete_existing():
+            while ids:
+                target = ids.pop()
+                await delete_capture(target)
+
+        async def delete_missing():
+            await delete_capture("missing-id")
+
+        # 两阶段：先填满再并发删除，避免调度竞态导致残留断言不稳定
+        await asyncio.gather(*[add(i) for i in range(20)])
+        await asyncio.gather(
+            *[delete_existing() for _ in range(5)],
+            *[delete_missing() for _ in range(10)],
+        )
+        assert await clear_captures() == 0
