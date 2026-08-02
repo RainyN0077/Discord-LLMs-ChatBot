@@ -171,7 +171,7 @@ const cssLimitHint = () => {
         :maxlength="MAX_CUSTOM_CSS_LENGTH"
         class="css-input"
       />
-      <div class="css-hint">{{ cssLimitHint() }}</div>
+      <div class="css-hint">{{ cssLimitHint() }} · {{ t('appearance.cssFvHint') }}</div>
       <div class="css-actions">
         <n-button type="primary" size="small" @click="applyCustomCSS">
           {{ t('appearance.applyCSS') }}
