@@ -43,11 +43,16 @@ export interface EffectDef {
 }
 
 export const EFFECT_DEFS: EffectDef[] = [
-  { id: 'grid', labelKey: 'appearance.effectGrid', styles: ['neon', 'cyberpunk'] },
-  { id: 'scanline', labelKey: 'appearance.effectScanline', styles: ['cyberpunk'] },
-  { id: 'glow', labelKey: 'appearance.effectGlow', styles: ['neon', 'cyberpunk'] },
-  { id: 'blink', labelKey: 'appearance.effectBlink', styles: ['neon', 'cyberpunk'] },
-  { id: 'glassblur', labelKey: 'appearance.effectGlassblur', styles: ['glass'] },
+  { id: 'grid', labelKey: 'appearance.effectGrid', styles: ['neon', 'cyberpunk', 'matrix', 'synthwave'] },
+  { id: 'scanline', labelKey: 'appearance.effectScanline', styles: ['cyberpunk', 'matrix', 'synthwave', 'pixel'] },
+  { id: 'glow', labelKey: 'appearance.effectGlow', styles: ['neon', 'cyberpunk', 'aurora', 'matrix', 'synthwave'] },
+  { id: 'blink', labelKey: 'appearance.effectBlink', styles: ['neon', 'cyberpunk', 'matrix', 'pixel'] },
+  { id: 'glassblur', labelKey: 'appearance.effectGlassblur', styles: ['glass', 'aurora'] },
+  { id: 'aurora', labelKey: 'appearance.effectAurora', styles: ['aurora'] },
+  { id: 'sunset', labelKey: 'appearance.effectSunset', styles: ['synthwave'] },
+  { id: 'wash', labelKey: 'appearance.effectWash', styles: ['ink'] },
+  { id: 'fade', labelKey: 'appearance.effectFade', styles: ['ink'] },
+  { id: 'shine', labelKey: 'appearance.effectShine', styles: ['pixel'] },
 ]
 
 export const EFFECT_IDS = EFFECT_DEFS.map((e) => e.id) as readonly string[]
@@ -182,7 +187,11 @@ export const useThemeStore = defineStore('theme', () => {
   )
   const mergedCssVars = computed(() => mergeCssVars(styleId.value, schemeId.value))
   const naiveOverrides = computed(() =>
-    deriveNaiveOverrides(mergedCssVars.value, dark.value ? 'dark' : 'light'),
+    deriveNaiveOverrides(
+      mergedCssVars.value,
+      dark.value ? 'dark' : 'light',
+      styleId.value,
+    ),
   )
   /** Effects whose definition lists the currently active style. */
   const availableEffects = computed(() =>

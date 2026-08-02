@@ -76,6 +76,23 @@ function retryRoute(): void {
     :locale="naiveLocale"
     :date-locale="naiveDateLocale"
   >
+    <!--
+      Decorative FX layers (aurora / grid / sun / scanline / wash / seal /
+      shine / fade). Pure CSS gating in global.css ("NEW STYLES FX"):
+      every child defaults to display:none and only shows when the
+      `:root[data-style='<id>'][data-effects~='<id>']` hooks match. No JS
+      rendering logic — the store only writes the data-* attributes.
+    -->
+    <div class="fv-decor" aria-hidden="true">
+      <div class="fv-layer fv-aurora"></div>
+      <div class="fv-layer fv-grid"></div>
+      <div class="fv-layer fv-sun"></div>
+      <div class="fv-layer fv-scanline"></div>
+      <div class="fv-layer fv-wash"></div>
+      <div class="fv-layer fv-seal">雅</div>
+      <div class="fv-layer fv-shine"></div>
+      <div class="fv-layer fv-fade"></div>
+    </div>
     <NDialogProvider>
       <NMessageProvider>
         <FeedbackBinder>
