@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { resolveLanguage } from '@/locales/languages'
+import { setupOverlayAnimPause } from '@/utils/overlayAnimPause'
 import FeedbackBinder from '@/components/FeedbackBinder.vue'
 import BetaNoticeCard from '@/components/BetaNoticeCard.vue'
 
@@ -30,6 +31,10 @@ const naiveDateLocale = computed(() => resolveLanguage(locale.value).naiveDateLo
 onMounted(() => {
   // Bootstrap the API key on startup; MainLayout renders a banner on failure.
   void authStore.init()
+  // Pause page-level effect animations while modal/dialog overlays are open
+  // (avoids the close-transition compositing spike that froze the page for
+  // seconds under effect-heavy styles). Lives for the app's lifetime.
+  setupOverlayAnimPause()
 })
 
 // ---------------------------------------------------------------------------
