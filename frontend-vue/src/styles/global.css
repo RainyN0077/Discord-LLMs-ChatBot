@@ -285,11 +285,11 @@ body {
    ================================================================ */
 
 @keyframes fx-cp-scanline-flicker {
-  0%, 100% { opacity: .03; }
-  50% { opacity: .05; }
-  92% { opacity: .03; }
-  93% { opacity: .08; }
-  94% { opacity: .03; }
+  0%, 100% { opacity: .1; }
+  50% { opacity: .18; }
+  92% { opacity: .1; }
+  93% { opacity: .28; }
+  94% { opacity: .1; }
 }
 
 @keyframes fx-cp-neon-pulse {
@@ -334,8 +334,8 @@ body {
     0deg,
     transparent,
     transparent 2px,
-    rgba(255, 230, 0, .015) 2px,
-    rgba(255, 230, 0, .015) 4px
+    rgba(255, 230, 0, .12) 2px,
+    rgba(255, 230, 0, .12) 4px
   );
 }
 
@@ -368,10 +368,10 @@ body {
     0deg,
     transparent,
     transparent 3px,
-    rgba(255, 230, 0, .01) 3px,
-    rgba(255, 230, 0, .01) 4px
+    rgba(255, 230, 0, .03) 3px,
+    rgba(255, 230, 0, .03) 4px
   );
-  opacity: .5;
+  opacity: .6;
 }
 
 :root[data-style='cyberpunk']:not([data-effects~='scanline']) .n-layout-header::after {
@@ -588,6 +588,13 @@ body {
 
 /* FX: grid — sider scan stripes + right edge light line (legacy L890-922).
    background-image only: naive paints the sider background-color itself. */
+/* FX: grid — fullscreen 48px neon grid (body::before). The opaque naive
+   layout would hide it, so the main layout bleeds transparent while the
+   grid is on (neon precedent L196-204); the body carries the base color. */
+:root[data-style='cyberpunk'] body {
+  background: var(--bg-color);
+}
+
 :root[data-style='cyberpunk'][data-effects~='grid'] body::before {
   content: '';
   position: fixed;
@@ -599,20 +606,28 @@ body {
       0deg,
       transparent,
       transparent 47px,
-      rgba(255, 230, 0, .028) 47px,
-      rgba(255, 230, 0, .028) 48px
+      rgba(255, 230, 0, .08) 47px,
+      rgba(255, 230, 0, .08) 48px
     ),
     repeating-linear-gradient(
       90deg,
       transparent,
       transparent 47px,
-      rgba(255, 230, 0, .028) 47px,
-      rgba(255, 230, 0, .028) 48px
+      rgba(255, 230, 0, .08) 47px,
+      rgba(255, 230, 0, .08) 48px
     );
 }
 
 :root[data-style='cyberpunk']:not([data-effects~='grid']) body::before {
   content: none;
+}
+
+:root[data-style='cyberpunk'][data-effects~='grid'] .n-layout {
+  background: transparent;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) .n-layout {
+  background-color: var(--bg-color);
 }
 
 :root[data-style='cyberpunk'][data-effects~='grid'] .n-layout-sider {
