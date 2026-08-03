@@ -281,6 +281,7 @@ watch(
             :key="bot.bot_id"
             :bot="bot"
             :active="bot.bot_id === botsStore.selectedBotId"
+            :collapsed="siderCollapsed"
             @select="botsStore.selectBot"
           />
         </n-scrollbar>

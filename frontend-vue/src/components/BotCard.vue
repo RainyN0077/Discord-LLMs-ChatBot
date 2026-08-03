@@ -22,7 +22,12 @@ import {
 import type { BotSummary } from '@/api/bots'
 import { useBotsStore } from '@/stores/bots'
 
-const props = defineProps<{ bot: BotSummary; active: boolean }>()
+const props = defineProps<{
+  bot: BotSummary
+  active: boolean
+  /** Sider collapsed: hide text rows/actions, keep the status dot only. */
+  collapsed?: boolean
+}>()
 const emit = defineEmits<{ select: [botId: string] }>()
 
 const { t } = useI18n()
@@ -255,12 +260,14 @@ async function commitRename(): Promise<void> {
 <template>
   <div
     class="bot-card"
-    :class="{ active, operating }"
+    :class="{ active, operating, collapsed: props.collapsed }"
     role="button"
     tabindex="0"
+    :title="props.collapsed ? bot.bot_name || bot.bot_id : undefined"
     @click="emit('select', bot.bot_id)"
     @keydown="onCardKeydown"
   >
+    <template v-if="!props.collapsed">
     <div class="card-actions" @click.stop>
       <n-button
         size="tiny"
@@ -314,8 +321,8 @@ async function commitRename(): Promise<void> {
 
     <div class="card-row card-row-main">
       <span class="status-dot" :class="status"></span>
-      <span class="bot-name">{{ bot.bot_name || bot.bot_id }}</span>
-      <span v-if="bot.enabled === false" class="disabled-badge">
+      <span v-if="!props.collapsed" class="bot-name">{{ bot.bot_name || bot.bot_id }}</span>
+      <span v-if="!props.collapsed && bot.enabled === false" class="disabled-badge">
         {{ t('sidebar.disabled') }}
       </span>
     </div>
@@ -380,6 +387,7 @@ async function commitRename(): Promise<void> {
         +{{ bot.trigger_keywords.length - 4 }}
       </span>
     </div>
+    </template>
   </div>
 </template>
 
@@ -408,6 +416,20 @@ async function commitRename(): Promise<void> {
 
 .bot-card.operating {
   opacity: 0.75;
+}
+
+/* Collapsed sider: keep only the status dot (centered); hide text rows and
+   the hover actions so nothing overflows the 64px rail. */
+.bot-card.collapsed {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+  margin: 4px 6px;
+}
+
+.bot-card.collapsed .card-row {
+  min-width: 0;
+  flex-shrink: 1;
 }
 
 /* --- hover action buttons (top-right corner) --- */
