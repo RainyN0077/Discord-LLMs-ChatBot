@@ -77,6 +77,13 @@ onMounted(() => {
   isNarrowViewport = siderMql.matches
   siderCollapsed.value = siderMql.matches
   siderMql.addEventListener('change', handleViewportChange)
+  // Fallback bot-list fetch: business pages fetch on their own mount, but
+  // routes without a bot-dependent page (appearance, not-found) would leave
+  // the sider stuck in the empty state. The length/loading guards keep this
+  // idempotent with the per-page fetches.
+  if (!botsStore.bots.length && !botsStore.loading) {
+    void botsStore.fetchBotsList()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -267,7 +274,7 @@ watch(
               </n-button>
             </div>
             <div v-else-if="botsStore.loading" class="sider-hint">…</div>
-            <div v-else class="sider-hint">{{ t('status.loading') }}</div>
+            <div v-else class="sider-hint">{{ t('botManager.noBots') }}</div>
           </template>
           <BotCard
             v-for="bot in botsStore.bots"
