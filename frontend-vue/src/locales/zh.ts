@@ -24,6 +24,8 @@ export default {
   appNav: {
     modelSettings: "模型设置",
     controlPanel: "控制面板",
+    directChat: "直接对话",
+    personaHub: "人设中心",
     userOptions: "用户选项",
     appearance: "外观",
     promptStudio: "提示词工坊",
@@ -883,7 +885,19 @@ export default {
     cyberpunkWipTitle: "🎇 Cyberpunk 2077 风格",
     cyberpunkWipBody: "该风格提供霓虹网格、CRT 扫描线、辉光与故障撕裂等特效，可在下方「特效开关」中按需调节。如遇显示问题或有改进建议，欢迎前往 GitHub 提交 Issue 或 PR。",
     cyberpunkWipConfirm: "仍然启用",
-    cyberpunkWipCancel: "取消"
+    cyberpunkWipCancel: "取消",
+    fontSettings: "字体设置",
+    fontStatusDefault: "当前使用默认字体",
+    fontStatusCustom: "当前使用自定义字体：{name}",
+    fontImport: "导入字体文件",
+    fontImportHint: "支持 TTF / OTF / WOFF / WOFF2（≤{limit}MB，保存在浏览器本地）",
+    fontReset: "重置为默认字体",
+    fontImported: "字体已应用",
+    fontInvalid: "不支持的字体格式",
+    fontTooLarge: "字体文件过大（上限 {limit}MB）",
+    fontReadFailed: "字体文件读取失败",
+    fontStorageFailed: "字体保存失败（存储空间不足或文件过大）",
+    fontResetDone: "已恢复默认字体"
   },
   astrBotMigration: {
     title: "Bot 底层框架",

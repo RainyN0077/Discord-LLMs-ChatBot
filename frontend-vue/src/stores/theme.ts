@@ -21,7 +21,32 @@ const SCHEME_KEY = 'frontend-vue-scheme'
 const CSS_KEY = 'frontend-vue-custom-css'
 const ANIM_KEY = 'frontend-vue-animations'
 const EFFECTS_KEY = 'frontend-vue-effects'
+const FONT_KEY = 'frontend-vue-font'
 const LEGACY_THEME_KEY = 'frontend-vue-theme'
+
+/**
+ * Default font stack (must stay in sync with global.css :root). Used as the
+ * fallback inside the injected `--font-family` override so the custom font
+ * degrades to the system stack when the file fails to load.
+ */
+const DEFAULT_FONT_STACK =
+  '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", ' +
+  '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, ' +
+  '"Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif'
+
+/** Maximum imported font file size in bytes (base64 inflates ~1.33x; must
+ *  fit localStorage, which holds ~2.6M UTF-16 code units in Chromium). */
+export const MAX_FONT_FILE_SIZE = 1.5 * 1024 * 1024
+
+/** User-imported font, persisted as a JSON object under `frontend-vue-font`. */
+export interface CustomFont {
+  /** Display name (file name without the extension). */
+  name: string
+  /** data: URL of the font file. */
+  dataUrl: string
+  /** CSS format token: 'woff2' | 'woff' | 'truetype' | 'opentype'. */
+  format: string
+}
 
 /**
  * 50KB（50000 字符）custom CSS cap, aligned with the legacy frontend's
@@ -66,11 +91,13 @@ function readStorage(key: string): string | null {
   }
 }
 
-function writeStorage(key: string, value: string): void {
+function writeStorage(key: string, value: string): boolean {
   try {
     localStorage.setItem(key, value)
+    return true
   } catch {
-    // ignore persistence failures
+    // e.g. QuotaExceededError for oversized font data URLs
+    return false
   }
 }
 
@@ -133,6 +160,28 @@ function allEffectsEnabled(): Record<string, boolean> {
   return Object.fromEntries(EFFECT_IDS.map((id) => [id, true]))
 }
 
+/** Read the persisted custom font; missing/corrupt values return null. */
+function readInitialFont(): CustomFont | null {
+  const stored = readStorage(FONT_KEY)
+  if (stored === null || stored === '') return null
+  try {
+    const parsed: unknown = JSON.parse(stored)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as CustomFont).name === 'string' &&
+      typeof (parsed as CustomFont).dataUrl === 'string' &&
+      (parsed as CustomFont).dataUrl.startsWith('data:') &&
+      typeof (parsed as CustomFont).format === 'string'
+    ) {
+      return parsed as CustomFont
+    }
+  } catch {
+    // corrupt JSON → default font
+  }
+  return null
+}
+
 function ensureStyleEl(id: string): HTMLStyleElement | null {
   if (typeof document === 'undefined') return null
   let el = document.getElementById(id) as HTMLStyleElement | null
@@ -176,6 +225,7 @@ export const useThemeStore = defineStore('theme', () => {
   const customCSS = ref(readInitialCustomCSS())
   const animationsEnabled = ref(readInitialAnimations())
   const effects = ref<Record<string, boolean>>(readInitialEffects())
+  const customFont = ref<CustomFont | null>(readInitialFont())
 
   const currentStyle = computed(() => STYLES[styleId.value] ?? STYLES.dark)
   const dark = computed(() => currentStyle.value.dark)
@@ -255,6 +305,27 @@ export const useThemeStore = defineStore('theme', () => {
     schemeId.value = STYLES.light.schemes[0]?.id ?? 'default'
     customCSS.value = ''
     effects.value = allEffectsEnabled()
+    customFont.value = null
+  }
+
+  /**
+   * Apply a user-imported font (data URL). Persists first so a quota failure
+   * (oversized file) surfaces as `false` instead of silently dropping the
+   * font after the UI already reported success.
+   *
+   * @returns true when the font was persisted and applied.
+   */
+  function importFont(name: string, dataUrl: string, format: string): boolean {
+    const font: CustomFont = { name, dataUrl, format }
+    if (!writeStorage(FONT_KEY, JSON.stringify(font))) return false
+    customFont.value = font
+    return true
+  }
+
+  /** Restore the default font stack and drop the stored font file. */
+  function resetFont(): void {
+    writeStorage(FONT_KEY, '')
+    customFont.value = null
   }
 
   // Persistence: 5 state keys written back on change.
@@ -263,6 +334,11 @@ export const useThemeStore = defineStore('theme', () => {
   watch(customCSS, (v) => writeStorage(CSS_KEY, v))
   watch(animationsEnabled, (v) => writeStorage(ANIM_KEY, v ? '1' : '0'))
   watch(effects, (v) => writeStorage(EFFECTS_KEY, JSON.stringify(v)), { deep: true })
+  // Font persistence (importFont/resetFont write eagerly; the watch keeps the
+  // store and storage in sync for any other path, e.g. resetAll).
+  watch(customFont, (v) => {
+    if (v) writeStorage(FONT_KEY, JSON.stringify(v))
+  })
 
   // DOM injection: merged vars + custom CSS (lazily created style elements).
   watch(
@@ -292,12 +368,38 @@ export const useThemeStore = defineStore('theme', () => {
     { immediate: true, deep: true },
   )
 
+  // Font-face injection: `#fv-font-face` holds the @font-face rule plus a
+  // `--font-family` override falling back to the default stack. Placed after
+  // #fv-theme-vars in <head>, so it wins over the style vars' --font-family.
+  watch(
+    customFont,
+    (font) => {
+      const el = ensureStyleEl('fv-font-face')
+      if (!el) return
+      if (!font) {
+        el.textContent = ''
+        return
+      }
+      el.textContent =
+        `@font-face {\n` +
+        `  font-family: 'fv-custom-font';\n` +
+        `  src: url(${font.dataUrl}) format('${font.format}');\n` +
+        `  font-display: swap;\n` +
+        `}\n` +
+        `:root {\n` +
+        `  --font-family: 'fv-custom-font', ${DEFAULT_FONT_STACK};\n` +
+        `}`
+    },
+    { immediate: true },
+  )
+
   return {
     styleId,
     schemeId,
     customCSS,
     animationsEnabled,
     effects,
+    customFont,
     dark,
     naiveTheme,
     currentStyle,
@@ -312,6 +414,8 @@ export const useThemeStore = defineStore('theme', () => {
     toggleEffect,
     toggleDark,
     resetAll,
+    importFont,
+    resetFont,
   }
 })
 

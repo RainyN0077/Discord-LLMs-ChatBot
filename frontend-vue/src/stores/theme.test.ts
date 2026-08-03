@@ -417,6 +417,55 @@ describe('theme store — effects', () => {
   })
 })
 
+describe('theme store — custom font', () => {
+  const FONT_KEY = 'frontend-vue-font'
+  const dataUrl = 'data:font/woff2;base64,AAAA'
+
+  it('defaults to no custom font', () => {
+    const store = makeStore()
+    expect(store.customFont).toBeNull()
+    expect(document.getElementById('fv-font-face')?.textContent ?? '').toBe('')
+  })
+
+  it('importFont persists and injects the @font-face rule', async () => {
+    const store = makeStore()
+    const ok = store.importFont('MyFont', dataUrl, 'woff2')
+    await nextTick()
+    expect(ok).toBe(true)
+    expect(store.customFont).toEqual({ name: 'MyFont', dataUrl, format: 'woff2' })
+    const stored = JSON.parse(localStorage.getItem(FONT_KEY) ?? '{}')
+    expect(stored.name).toBe('MyFont')
+    const css = document.getElementById('fv-font-face')?.textContent ?? ''
+    expect(css).toContain("@font-face")
+    expect(css).toContain("font-family: 'fv-custom-font'")
+    expect(css).toContain(`url(${dataUrl}) format('woff2')`)
+    expect(css).toContain("--font-family: 'fv-custom-font'")
+  })
+
+  it('resetFont clears the stored font and the injection', async () => {
+    const store = makeStore()
+    store.importFont('MyFont', dataUrl, 'truetype')
+    await nextTick()
+    store.resetFont()
+    await nextTick()
+    expect(store.customFont).toBeNull()
+    expect(localStorage.getItem(FONT_KEY)).toBe('')
+    expect(document.getElementById('fv-font-face')?.textContent ?? '').toBe('')
+  })
+
+  it('reads a persisted font on init', () => {
+    localStorage.setItem(FONT_KEY, JSON.stringify({ name: 'Kept', dataUrl, format: 'opentype' }))
+    const store = makeStore()
+    expect(store.customFont).toEqual({ name: 'Kept', dataUrl, format: 'opentype' })
+  })
+
+  it('ignores corrupt persisted font payloads', () => {
+    localStorage.setItem(FONT_KEY, '{not json')
+    const store = makeStore()
+    expect(store.customFont).toBeNull()
+  })
+})
+
 describe('initThemeSync — startup migration', () => {
   it('migrates the legacy key, writes the style key and applies the dataset', () => {
     localStorage.setItem(LEGACY_THEME_KEY, 'dark')

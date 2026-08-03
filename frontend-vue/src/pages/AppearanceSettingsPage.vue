@@ -2,10 +2,10 @@
 import { ref } from 'vue'
 import type { CSSProperties } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NInput, NSwitch, useDialog } from 'naive-ui'
+import { NButton, NInput, NSwitch, useDialog, useMessage } from 'naive-ui'
 
 import SectionCard from '@/components/common/SectionCard.vue'
-import { MAX_CUSTOM_CSS_LENGTH, useThemeStore } from '@/stores/theme'
+import { MAX_CUSTOM_CSS_LENGTH, MAX_FONT_FILE_SIZE, useThemeStore } from '@/stores/theme'
 import {
   STYLES,
   STYLE_ORDER,
@@ -17,10 +17,71 @@ import {
 const { t, locale } = useI18n()
 const themeStore = useThemeStore()
 const dialog = useDialog()
+const message = useMessage()
 
 /** Local CSS draft; only pushed to the store on Apply. */
 const cssDraft = ref(themeStore.customCSS)
 const pendingStyleId = ref<string | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+const MAX_FONT_MB = (MAX_FONT_FILE_SIZE / 1024 / 1024).toFixed(1)
+
+/** Map a file name to its CSS font format token; null = unsupported. */
+function fontFormatFromName(name: string): string | null {
+  const ext = name.toLowerCase().split('.').pop() ?? ''
+  switch (ext) {
+    case 'woff2':
+      return 'woff2'
+    case 'woff':
+      return 'woff'
+    case 'ttf':
+      return 'truetype'
+    case 'otf':
+      return 'opentype'
+    default:
+      return null
+  }
+}
+
+function handleFontFileChange(e: Event): void {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  // Reset so selecting the same file again re-triggers change.
+  input.value = ''
+  if (!file) return
+  const format = fontFormatFromName(file.name)
+  if (!format) {
+    message.error(t('appearance.fontInvalid'))
+    return
+  }
+  if (file.size > MAX_FONT_FILE_SIZE) {
+    message.error(t('appearance.fontTooLarge', { limit: MAX_FONT_MB }))
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    const dataUrl = typeof reader.result === 'string' ? reader.result : ''
+    if (!dataUrl) {
+      message.error(t('appearance.fontReadFailed'))
+      return
+    }
+    const name = file.name.replace(/\.[^.]+$/, '')
+    if (!themeStore.importFont(name, dataUrl, format)) {
+      message.error(t('appearance.fontStorageFailed'))
+      return
+    }
+    message.success(t('appearance.fontImported'))
+  }
+  reader.onerror = () => {
+    message.error(t('appearance.fontReadFailed'))
+  }
+  reader.readAsDataURL(file)
+}
+
+function handleResetFont(): void {
+  themeStore.resetFont()
+  message.success(t('appearance.fontResetDone'))
+}
 
 /** Preview block style for a style card (scheme = the style's first scheme). */
 function previewStyleVars(styleId: string): CSSProperties {
@@ -180,6 +241,36 @@ const cssLimitHint = () => {
           {{ t('appearance.resetCSS') }}
         </n-button>
       </div>
+    </SectionCard>
+
+    <SectionCard :title="t('appearance.fontSettings')">
+      <div class="font-status">
+        <span
+          v-if="themeStore.customFont"
+          class="font-status-name"
+        >{{ t('appearance.fontStatusCustom', { name: themeStore.customFont.name }) }}</span>
+        <span v-else class="toggle-label">{{ t('appearance.fontStatusDefault') }}</span>
+      </div>
+      <div class="font-actions">
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept=".ttf,.otf,.woff,.woff2"
+          class="font-file-input"
+          @change="handleFontFileChange"
+        />
+        <n-button size="small" @click="fileInputRef?.click()">
+          {{ t('appearance.fontImport') }}
+        </n-button>
+        <n-button
+          size="small"
+          :disabled="!themeStore.customFont"
+          @click="handleResetFont"
+        >
+          {{ t('appearance.fontReset') }}
+        </n-button>
+      </div>
+      <div class="css-hint">{{ t('appearance.fontImportHint', { limit: MAX_FONT_MB }) }}</div>
     </SectionCard>
 
     <div class="reset-section">
@@ -349,6 +440,25 @@ const cssLimitHint = () => {
   display: flex;
   gap: 0.5rem;
   margin-top: 0.5rem;
+}
+
+.font-file-input {
+  display: none;
+}
+
+.font-status {
+  margin-bottom: 0.5rem;
+}
+
+.font-status-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.font-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 
 .reset-section {

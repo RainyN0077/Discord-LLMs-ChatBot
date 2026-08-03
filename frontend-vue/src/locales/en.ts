@@ -1096,7 +1096,19 @@ export default {
     cyberpunkWipTitle: "🎇 Cyberpunk 2077 Style",
     cyberpunkWipBody: "This style ships neon grid, CRT scanline, glow and glitch effects — tune them per-effect in the toggles below. If you spot rendering issues or have suggestions, please open an issue or PR on GitHub.",
     cyberpunkWipConfirm: "Enable Anyway",
-    cyberpunkWipCancel: "Cancel"
+    cyberpunkWipCancel: "Cancel",
+    fontSettings: "Font Settings",
+    fontStatusDefault: "Using the default font",
+    fontStatusCustom: "Using custom font: {name}",
+    fontImport: "Import Font File",
+    fontImportHint: "Supports TTF / OTF / WOFF / WOFF2 (≤{limit}MB, stored locally in your browser)",
+    fontReset: "Reset to Default Font",
+    fontImported: "Font applied",
+    fontInvalid: "Unsupported font format",
+    fontTooLarge: "Font file too large (max {limit}MB)",
+    fontReadFailed: "Failed to read the font file",
+    fontStorageFailed: "Failed to save the font (storage full or file too large)",
+    fontResetDone: "Default font restored"
   },
   astrBotMigration: {
     title: "Bot Framework",
