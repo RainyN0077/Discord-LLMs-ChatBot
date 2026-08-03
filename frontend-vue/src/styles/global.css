@@ -1273,24 +1273,26 @@ body,
 
 /* FX: glow — nav active item green text glow (matrix.html L109) with the
    demo's `[` / `]` character brackets (matrix.html L110-111: ::before '['
-   + ::after ']', rgba(0,255,136,.45)). display:inline-block overrides the
-   naive horizontal menu's `.n-menu-item-content::before { display:none }`
-   (verified in naive-ui menu cssr). Note the selector is scoped to this
-   style via the :root[data-style='matrix'] prefix, so it cannot collide
-   with cyberpunk's .status-dot rules below. */
+   + ::after ']', rgba(0,255,136,.45)). The brackets go on the *header*
+   (inline flow, adjacent to the label): naive's .n-menu-item-content is a
+   grid with `grid-template-areas: "icon content arrow"` (verified in
+   naive-ui menu cssr), so ::before/::after placed on the grid container
+   get auto-placed into the icon/arrow columns instead of hugging the text.
+   Selector is scoped to this style via the :root[data-style='matrix']
+   prefix, so it cannot collide with cyberpunk's .status-dot rules below. */
 :root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
   color: var(--primary-color);
   text-shadow: 0 0 8px rgba(0, 255, 136, .5);
 }
 
-:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected::before {
+:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header::before {
   content: '[';
   display: inline-block;
   color: rgba(0, 255, 136, .45);
   margin-right: 3px;
 }
 
-:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected::after {
+:root[data-style='matrix'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header::after {
   content: ']';
   display: inline-block;
   color: rgba(0, 255, 136, .45);
@@ -1311,8 +1313,8 @@ body,
   text-shadow: none;
 }
 
-:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected::before,
-:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected::after {
+:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header::before,
+:root[data-style='matrix']:not([data-effects~='glow']) .n-menu-item-content--selected .n-menu-item-content-header::after {
   content: none;
 }
 
