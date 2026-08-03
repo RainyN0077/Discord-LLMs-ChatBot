@@ -588,6 +588,33 @@ body {
 
 /* FX: grid — sider scan stripes + right edge light line (legacy L890-922).
    background-image only: naive paints the sider background-color itself. */
+:root[data-style='cyberpunk'][data-effects~='grid'] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 47px,
+      rgba(255, 230, 0, .028) 47px,
+      rgba(255, 230, 0, .028) 48px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 47px,
+      rgba(255, 230, 0, .028) 47px,
+      rgba(255, 230, 0, .028) 48px
+    );
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='grid']) body::before {
+  content: none;
+}
+
 :root[data-style='cyberpunk'][data-effects~='grid'] .n-layout-sider {
   background-image: repeating-linear-gradient(
     0deg,
@@ -680,6 +707,48 @@ body {
 :root[data-style='cyberpunk']:not([data-effects~='blink']) .bot-card .status-dot.running {
   animation: none;
   opacity: 1;
+}
+
+/* FX: glitch — page-heading glitch bursts (2077 signature). Intermittent:
+   the animation spends most of its cycle idle and only tears the heading
+   for a few frames every ~4s (clip-path slice + cyan/yellow RGB split +
+   translate jitter). Applied to page-level headings only — not to nav or
+   cards — so the effect stays a deliberate accent. Colors are literal
+   rgba constants (48-key closure forbids new cssVars). */
+@keyframes fx-cp-glitch-clip {
+  0%, 88%, 100% { clip-path: inset(0 0 0 0); transform: translateX(0); }
+  89% { clip-path: inset(8% 0 82% 0); transform: translateX(-3px); }
+  91% { clip-path: inset(64% 0 18% 0); transform: translateX(3px); }
+  93% { clip-path: inset(32% 0 46% 0); transform: translateX(-2px); }
+  95% { clip-path: inset(80% 0 4% 0); transform: translateX(2px); }
+  97% { clip-path: inset(0 0 0 0); transform: translateX(0); }
+}
+
+@keyframes fx-cp-glitch-split {
+  0%, 88%, 100% { text-shadow: none; }
+  89% { text-shadow: 2px 0 rgba(0, 255, 238, .55), -2px 0 rgba(255, 230, 0, .55); }
+  91% { text-shadow: -2px 0 rgba(0, 255, 238, .55), 2px 0 rgba(255, 230, 0, .55); }
+  93% { text-shadow: 1px 0 rgba(0, 255, 238, .55), -1px 0 rgba(255, 230, 0, .55); }
+  95% { text-shadow: -1px 0 rgba(0, 255, 238, .55), 1px 0 rgba(255, 230, 0, .55); }
+  97% { text-shadow: none; }
+}
+
+:root[data-style='cyberpunk'][data-effects~='glitch'] .n-layout-content h1,
+:root[data-style='cyberpunk'][data-effects~='glitch'] .n-layout-content h2,
+:root[data-style='cyberpunk'][data-effects~='glitch'] .section-card-title {
+  position: relative;
+  animation:
+    fx-cp-glitch-clip 4s steps(1, end) infinite,
+    fx-cp-glitch-split 4s steps(1, end) infinite;
+}
+
+:root[data-style='cyberpunk']:not([data-effects~='glitch']) .n-layout-content h1,
+:root[data-style='cyberpunk']:not([data-effects~='glitch']) .n-layout-content h2,
+:root[data-style='cyberpunk']:not([data-effects~='glitch']) .section-card-title {
+  animation: none;
+  clip-path: none;
+  transform: none;
+  text-shadow: none;
 }
 
 /* ================================================================

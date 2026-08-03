@@ -42,6 +42,7 @@ const EFFECT_ID_LIST = [
   'wash',
   'fade',
   'shine',
+  'glitch',
 ] as const
 
 function makeStore() {
@@ -353,7 +354,7 @@ describe('theme store — effects', () => {
 
     store.setStyle('cyberpunk')
     expect(store.availableEffects.map((e) => e.id).sort()).toEqual(
-      ['grid', 'scanline', 'glow', 'blink'].sort(),
+      ['grid', 'scanline', 'glow', 'blink', 'glitch'].sort(),
     )
 
     store.setStyle('glass')

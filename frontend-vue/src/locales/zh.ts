@@ -8,6 +8,13 @@ export default {
     loading: "加载中…",
     retry: "重试"
   },
+  betaNotice: {
+    title: "ELA-Bot 测试版",
+    body: "当前版本仍处于测试阶段，部分功能可能不稳定或存在缺陷。欢迎反馈问题或提交改进：",
+    githubIssue: "提交 Issue",
+    githubPr: "提交 PR",
+    dismiss: "知道了"
+  },
   tabs: {
     core: "核心设置",
     directives: "行为与身份",
@@ -867,6 +874,7 @@ export default {
     effectWash: "水墨晕染",
     effectFade: "渐显过渡",
     effectShine: "光泽扫过",
+    effectGlitch: "故障撕裂",
     noEffects: "当前风格无特效开关",
     customCSS: "自定义 CSS",
     applyCSS: "应用 CSS",
@@ -874,8 +882,8 @@ export default {
     resetAll: "恢复全部默认",
     cssPlaceholder: "/* 在此输入自定义 CSS */\n/* 变量参考: --primary-color, --bg-color, --card-bg, --text-color 等 */\n/* 查看 README.md 获取完整 CSS 变量列表 */",
     cssFvHint: ".fv- 前缀为保留命名空间，请勿自定义同名选择器",
-    cyberpunkWipTitle: "⚠ 建设中",
-    cyberpunkWipBody: "Cyberpunk 2077 风格目前仍在积极开发中，视觉效果极差，大量特效尚未完成。如有改进建议，欢迎前往 GitHub 提交 Issue 或 PR。",
+    cyberpunkWipTitle: "🎇 Cyberpunk 2077 风格",
+    cyberpunkWipBody: "该风格提供霓虹网格、CRT 扫描线、辉光与故障撕裂等特效，可在下方「特效开关」中按需调节。如遇显示问题或有改进建议，欢迎前往 GitHub 提交 Issue 或 PR。",
     cyberpunkWipConfirm: "仍然启用",
     cyberpunkWipCancel: "取消"
   },

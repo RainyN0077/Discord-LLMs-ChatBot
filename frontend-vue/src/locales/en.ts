@@ -3,6 +3,13 @@
 
  */
 export default {
+  betaNotice: {
+    title: "ELA-Bot Beta",
+    body: "This version is still in testing — some features may be unstable or buggy. Feedback and improvements are welcome:",
+    githubIssue: "Open an Issue",
+    githubPr: "Open a PR",
+    dismiss: "Got it"
+  },
   appNav: {
     controlPanel: "Control Panel",
     modelSettings: "Model Settings",
@@ -1080,6 +1087,7 @@ export default {
     effectWash: "Ink Wash",
     effectFade: "Fade In",
     effectShine: "Shine Sweep",
+    effectGlitch: "Glitch Tear",
     noEffects: "No effect toggles for this style",
     customCSS: "Custom CSS",
     applyCSS: "Apply CSS",
@@ -1087,8 +1095,8 @@ export default {
     resetAll: "Reset All to Defaults",
     cssPlaceholder: "/* Enter custom CSS here */\n/* CSS variables: --primary-color, --bg-color, --card-bg, --text-color, etc. */\n/* See README.md for the full CSS variable list */",
     cssFvHint: ".fv- prefix is a reserved namespace — avoid using it in custom CSS",
-    cyberpunkWipTitle: "⚠ Under Construction",
-    cyberpunkWipBody: "The Cyberpunk 2077 style is currently under active development. Visual quality is poor and many effects are incomplete. If you have suggestions, please submit an issue or PR on GitHub.",
+    cyberpunkWipTitle: "🎇 Cyberpunk 2077 Style",
+    cyberpunkWipBody: "This style ships neon grid, CRT scanline, glow and glitch effects — tune them per-effect in the toggles below. If you spot rendering issues or have suggestions, please open an issue or PR on GitHub.",
     cyberpunkWipConfirm: "Enable Anyway",
     cyberpunkWipCancel: "Cancel"
   },

@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { resolveLanguage } from '@/locales/languages'
 import FeedbackBinder from '@/components/FeedbackBinder.vue'
+import BetaNoticeCard from '@/components/BetaNoticeCard.vue'
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -120,6 +121,7 @@ function retryRoute(): void {
                 <component :is="Component" />
               </transition>
             </router-view>
+            <BetaNoticeCard />
           </template>
         </FeedbackBinder>
       </NMessageProvider>

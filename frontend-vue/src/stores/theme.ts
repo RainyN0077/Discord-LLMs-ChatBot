@@ -53,6 +53,7 @@ export const EFFECT_DEFS: EffectDef[] = [
   { id: 'wash', labelKey: 'appearance.effectWash', styles: ['ink'] },
   { id: 'fade', labelKey: 'appearance.effectFade', styles: ['ink'] },
   { id: 'shine', labelKey: 'appearance.effectShine', styles: ['pixel'] },
+  { id: 'glitch', labelKey: 'appearance.effectGlitch', styles: ['cyberpunk'] },
 ]
 
 export const EFFECT_IDS = EFFECT_DEFS.map((e) => e.id) as readonly string[]
