@@ -2,13 +2,19 @@
  * i18n instance — shared singleton so both app bootstrap (main.ts) and
  * non-setup modules (e.g. Pinia stores) can translate with `i18n.global.t`.
  *
- * zh/en have real catalogs; the other 6 languages reuse the English catalog
- * and only switch naive-ui's component locale (see src/locales/languages.ts).
+ * All 8 languages ship real message catalogs; naive-ui's component locale is
+ * switched alongside via src/locales/languages.ts.
  */
 
 import { createI18n } from 'vue-i18n'
 import { LANGUAGES } from './languages'
+import de from './de'
 import en from './en'
+import es from './es'
+import fr from './fr'
+import ja from './ja'
+import ko from './ko'
+import ru from './ru'
 import zh from './zh'
 
 /** Read the persisted language; null on absence or storage failure. */
@@ -34,5 +40,5 @@ export const i18n = createI18n({
   fallbackLocale: 'en',
   missingWarn: false,
   fallbackWarn: false,
-  messages: { zh, en, ja: en, ko: en, fr: en, de: en, es: en, ru: en },
+  messages: { zh, en, ja, ko, fr, de, es, ru },
 })

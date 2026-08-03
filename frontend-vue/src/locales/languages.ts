@@ -1,7 +1,6 @@
 /**
  * Language registry — 8 languages with their naive-ui locale pairs.
- * Only zh/en have real message catalogs; the other 6 fall back to the
- * English catalog (see src/locales/index.ts).
+ * Every language ships a full message catalog (see src/locales/index.ts).
  */
 
 import type { NDateLocale, NLocale } from 'naive-ui'
