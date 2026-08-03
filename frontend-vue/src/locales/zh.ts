@@ -24,8 +24,6 @@ export default {
   appNav: {
     modelSettings: "模型设置",
     controlPanel: "控制面板",
-    themeDark: "切换到深色模式",
-    themeLight: "切换到浅色模式",
     userOptions: "用户选项",
     appearance: "外观",
     promptStudio: "提示词工坊",

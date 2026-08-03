@@ -15,8 +15,6 @@ export default {
     modelSettings: "Model Settings",
     directChat: "Direct Chat",
     personaHub: "Persona Hub",
-    themeDark: "Switch to dark mode",
-    themeLight: "Switch to light mode",
     appearance: "Appearance",
     userOptions: "User Options",
     promptStudio: "Prompt Studio",

@@ -20,8 +20,6 @@ import {
 } from 'naive-ui'
 import {
   LanguageOutline,
-  MoonOutline,
-  SunnyOutline,
   RefreshOutline,
   MenuOutline,
   ChevronBackOutline,
@@ -31,7 +29,6 @@ import {
 import { useAuthStore } from '@/stores/auth'
 import { useBotsStore } from '@/stores/bots'
 import { useLogsStore } from '@/stores/logs'
-import { useThemeStore } from '@/stores/theme'
 import { LANGUAGES } from '@/locales/languages'
 import BotCard from '@/components/BotCard.vue'
 import BotModal from '@/components/BotModal.vue'
@@ -43,7 +40,6 @@ const router = useRouter()
 const authStore = useAuthStore()
 const botsStore = useBotsStore()
 const logsStore = useLogsStore()
-const themeStore = useThemeStore()
 
 const siderCollapsed = ref(false)
 const showBotModal = ref(false)
@@ -312,14 +308,6 @@ watch(
               @update:value="handleLanguageChange"
             />
           </div>
-          <n-button quaternary circle size="small" @click="themeStore.toggleDark()">
-            <template #icon>
-              <n-icon>
-                <SunnyOutline v-if="themeStore.dark" />
-                <MoonOutline v-else />
-              </n-icon>
-            </template>
-          </n-button>
         </n-space>
       </n-layout-header>
 
