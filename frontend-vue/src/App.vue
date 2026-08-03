@@ -111,8 +111,13 @@ function retryRoute(): void {
               </div>
             </n-alert>
             <router-view v-slot="{ Component, route }">
+              <!-- Top-level view hosts MainLayout (stable parent of all
+                   sub-routes). No :key on the component: keying by route.path
+                   would destroy/recreate MainLayout on every sub-page switch
+                   (sider collapse state lost + full-page transition). Sub-page
+                   switching animation lives in MainLayout's own router-view. -->
               <transition name="page" mode="out-in">
-                <component :is="Component" :key="route.path" />
+                <component :is="Component" />
               </transition>
             </router-view>
           </template>

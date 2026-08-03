@@ -155,8 +155,8 @@ body {
    NEON FX  (style: neon — effects: grid / glow / blink)
    Ported from legacy Svelte frontend global.css (L179-191 grid,
    L241-255 inputs/buttons, L257-261 nav) + Sidebar.svelte neonPulse.
-   Animations are positively gated on [data-animations='on'] so the
-   existing animation switch kills them with no extra rules. Scoped
+   Effect animations are gated on [data-effects~='<id>'] only — the
+   page-animation switch (data-animations) does not touch them. Scoped
    component animations (e.g. BotCard dot-pulse) are not governed by
    this switch — pre-existing behavior, kept as-is.
    ================================================================ */
@@ -268,7 +268,7 @@ body {
   50% { opacity: .6; filter: drop-shadow(0 0 8px currentColor); }
 }
 
-:root[data-style='neon'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+:root[data-style='neon'][data-effects~='blink'] .bot-card .status-dot.running {
   animation: fx-neon-pulse 1.5s ease-in-out infinite;
 }
 
@@ -322,7 +322,8 @@ body {
 }
 
 /* FX: scanline — fullscreen CRT overlay (legacy L633-646). Static layer
-   survives the animation switch; the flicker needs [data-animations='on']. */
+   always renders when the scanline effect is on; the flicker animation
+   is gated on the effect id only. */
 :root[data-style='cyberpunk'][data-effects~='scanline'] body::after {
   content: '';
   position: fixed;
@@ -338,7 +339,7 @@ body {
   );
 }
 
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='scanline'] body::after {
+:root[data-style='cyberpunk'][data-effects~='scanline'] body::after {
   animation: fx-cp-scanline-flicker 4s infinite;
 }
 
@@ -399,7 +400,7 @@ body {
   transition: box-shadow .3s cubic-bezier(.34, 1.56, .64, 1);
 }
 
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card {
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card {
   animation: fx-cp-hud-sweep 8s linear infinite, fx-cp-border-scan 4s infinite;
 }
 
@@ -431,11 +432,11 @@ body {
   border-right: 2px solid var(--primary-color);
 }
 
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card::before {
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card::before {
   animation: fx-cp-bracket-pulse 3s infinite;
 }
 
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-card::after {
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-card::after {
   animation: fx-cp-bracket-pulse 3s infinite;
   animation-delay: .8s;
 }
@@ -525,7 +526,7 @@ body {
   box-shadow: 0 0 12px var(--primary-color);
 }
 
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='glow'] .n-menu-item-content--selected {
+:root[data-style='cyberpunk'][data-effects~='glow'] .n-menu-item-content--selected {
   animation: fx-cp-neon-pulse 2s ease-in-out infinite;
 }
 
@@ -670,7 +671,7 @@ body {
 /* FX: blink — hard-switch status dot blink (legacy L994-997 cp-dot-blink;
    the cyberpunk primary yellow background overrides the scoped running
    green while the blink is on). */
-:root[data-style='cyberpunk'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+:root[data-style='cyberpunk'][data-effects~='blink'] .bot-card .status-dot.running {
   background: var(--primary-color);
   color: var(--primary-color);
   animation: fx-cp-dot-blink 1.5s infinite;
@@ -734,9 +735,10 @@ body {
 }
 
 /* UX §5 #1 — style-switch smoothness: body/.n-layout fade their
-   background color, .fv-decor children fade opacity. All transitions
-   are killed under [data-animations='off'] (precedent: the existing
-   page-transition off rules L70-79). */
+   background color, .fv-decor children fade opacity. Only the
+   body/.n-layout transitions are killed under [data-animations='off']
+   (page-transition precedent L70-79); the .fv-decor opacity fade is a
+   decoration-layer effect, decoupled from the page-animation switch. */
 body,
 .n-layout {
   transition: background-color 0.3s ease;
@@ -747,8 +749,7 @@ body,
 }
 
 :root[data-animations='off'] body,
-:root[data-animations='off'] .n-layout,
-:root[data-animations='off'] .fv-decor * {
+:root[data-animations='off'] .n-layout {
   transition: none;
 }
 
@@ -758,8 +759,8 @@ body,
    The aurora layer is a single blur(60px) fixed div inside .fv-decor;
    gradient colors are decoration-layer constants (the 48-key closure
    forbids new cssVars). Every positive hook ships a matching off rule
-   on :not([data-effects~='<id>']); animations are doubly gated on
-   [data-animations='on'].
+   on :not([data-effects~='<id>']); animations are gated on the effect
+   ids only — the page-animation switch never touches them.
    ================================================================ */
 
 /* Style-level color repair (not an effect): aurora needs the opaque
@@ -792,7 +793,7 @@ body,
   transform-origin: center;
 }
 
-:root[data-style='aurora'][data-animations='on'][data-effects~='aurora'] .fv-aurora {
+:root[data-style='aurora'][data-effects~='aurora'] .fv-aurora {
   animation: fx-aurora-drift 18s ease-in-out infinite alternate;
 }
 
@@ -941,13 +942,13 @@ body,
 /* FX: glow — status dot halo + pulse (design §2.3: .page-title glow
    maps to the status dot). The dot keeps its scoped animation in other
    styles; here the aurora variant with the cyan halo takes over while
-   both gates ([data-animations='on'] and the glow effect) match. */
+   both gates ( and the glow effect) match. */
 @keyframes fx-aurora-dot-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .4; }
 }
 
-:root[data-style='aurora'][data-animations='on'][data-effects~='glow'] .bot-card .status-dot.running {
+:root[data-style='aurora'][data-effects~='glow'] .bot-card .status-dot.running {
   animation: fx-aurora-dot-pulse 1.5s ease-in-out infinite;
   box-shadow: 0 0 8px rgba(94, 234, 212, .5);
 }
@@ -993,7 +994,7 @@ body,
   filter: blur(26px);
 }
 
-:root[data-style='synthwave'][data-animations='on'][data-effects~='sunset'] .fv-sun::before {
+:root[data-style='synthwave'][data-effects~='sunset'] .fv-sun::before {
   animation: fx-sun-drift 12s ease-in-out infinite;
 }
 
@@ -1070,7 +1071,7 @@ body,
   box-shadow: 0 0 14px rgba(255, 110, 199, .25);
 }
 
-:root[data-style='synthwave'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+:root[data-style='synthwave'][data-effects~='scanline'] .fv-scanline {
   animation: fx-scan-sweep 8s linear infinite;
 }
 
@@ -1092,7 +1093,7 @@ body,
   text-shadow: 0 0 10px rgba(255, 110, 199, .6);
 }
 
-:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
+:root[data-style='synthwave'][data-effects~='glow'] .n-menu-item-content--selected .n-menu-item-content-header {
   animation: fx-sw-neon-pulse 5s ease-in-out infinite;
 }
 
@@ -1119,7 +1120,7 @@ body,
   box-shadow: 0 0 10px rgba(255, 110, 199, .35);
 }
 
-:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .n-button {
+:root[data-style='synthwave'][data-effects~='glow'] .n-button {
   animation: fx-sw-glow-box 5s ease-in-out infinite;
 }
 
@@ -1132,7 +1133,7 @@ body,
   box-shadow: 0 0 8px rgba(255, 110, 199, .8);
 }
 
-:root[data-style='synthwave'][data-animations='on'][data-effects~='glow'] .bot-card .status-dot.running {
+:root[data-style='synthwave'][data-effects~='glow'] .bot-card .status-dot.running {
   animation: fx-sw-dot-pulse 1.5s ease-in-out infinite;
 }
 
@@ -1258,7 +1259,7 @@ body,
   box-shadow: 0 0 12px rgba(0, 255, 136, .2);
 }
 
-:root[data-style='matrix'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+:root[data-style='matrix'][data-effects~='scanline'] .fv-scanline {
   animation: fx-mx-scan 7s linear infinite;
 }
 
@@ -1333,7 +1334,7 @@ body,
    cyberpunk .status-dot.running rules (design §3.8 conflict note).
    Starting dots blink at the demo's faster 0.8s with the warn-yellow
    background (matrix.html L204, --warn #ffd479). */
-:root[data-style='matrix'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running {
+:root[data-style='matrix'][data-effects~='blink'] .bot-card .status-dot.running {
   background: var(--primary-color);
   color: var(--primary-color);
   animation: fx-mx-blink 1.2s steps(2, start) infinite;
@@ -1343,7 +1344,7 @@ body,
   background: #ffd479;
 }
 
-:root[data-style='matrix'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.starting {
+:root[data-style='matrix'][data-effects~='blink'] .bot-card .status-dot.starting {
   animation: fx-mx-blink .8s steps(2, start) infinite;
 }
 
@@ -1460,14 +1461,12 @@ body,
 /* FX: wash — vermilion running status dot (ink.html L79: background
    var(--cinnabar) #b3402a; base styling outside the fx blocks — kept
    unconditional under the style). The demo's `ink-pulse 3s` opacity .45
-   breathing maps here, gated on [data-animations='on'] (the anim-off
-   override below and the scoped dot-pulse are both beaten by the
-   animation gate while animations are on). */
+   breathing maps here, gated on the wash effect id only. */
 :root[data-style='ink'] .bot-card .status-dot.running {
   background: #b3402a;
 }
 
-:root[data-style='ink'][data-animations='on'] .bot-card .status-dot.running {
+:root[data-style='ink'] .bot-card .status-dot.running {
   animation: fx-ink-dot-pulse 3s ease-in-out infinite;
 }
 
@@ -1644,15 +1643,15 @@ body,
   margin-left: 6px;
 }
 
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header,
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title {
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title {
   animation: fx-px-shine 6s steps(3, end) infinite;
 }
 
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header::before,
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title::before,
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .n-card-header::after,
-:root[data-style='pixel'][data-animations='on'][data-effects~='shine'] .section-card-title::after {
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header::before,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title::before,
+:root[data-style='pixel'][data-effects~='shine'] .n-card-header::after,
+:root[data-style='pixel'][data-effects~='shine'] .section-card-title::after {
   animation: fx-px-blink 1s steps(2, start) infinite;
 }
 
@@ -1749,7 +1748,7 @@ body,
   background: linear-gradient(90deg, transparent, rgba(76, 201, 240, .75), transparent);
 }
 
-:root[data-style='pixel'][data-animations='on'][data-effects~='scanline'] .fv-scanline {
+:root[data-style='pixel'][data-effects~='scanline'] .fv-scanline {
   animation: fx-px-scan 5s steps(40, end) infinite;
 }
 
@@ -1772,8 +1771,8 @@ body,
   background: #ffd23f;
 }
 
-:root[data-style='pixel'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.running,
-:root[data-style='pixel'][data-animations='on'][data-effects~='blink'] .bot-card .status-dot.starting {
+:root[data-style='pixel'][data-effects~='blink'] .bot-card .status-dot.running,
+:root[data-style='pixel'][data-effects~='blink'] .bot-card .status-dot.starting {
   animation: fx-px-blink 1s steps(2, start) infinite;
 }
 
@@ -1781,18 +1780,6 @@ body,
 :root[data-style='pixel']:not([data-effects~='blink']) .bot-card .status-dot.starting {
   animation: none;
   opacity: 1;
-}
-
-/* ================================================================
-   Animations-off gate — status dots (demo §8.3 whitelist parity).
-   The scoped BotCard dot-pulse lives in a component style and is not
-   reachable from a plain attribute selector, so this single global
-   gate rule needs !important (the ONLY !important outside the pixel
-   shadow fallback; style-neutral — no cross-style leak). Every style's
-   status-dot animation is killed while [data-animations='off']. */
-:root[data-animations='off'] .bot-card .status-dot.running,
-:root[data-animations='off'] .bot-card .status-dot.starting {
-  animation: none !important;
 }
 
 /* ================================================================
